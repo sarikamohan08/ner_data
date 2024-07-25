@@ -1,0 +1,17 @@
+TRAIN_DATA = [
+    ("The contract will commence on March 15, 2022.", {"entities": [(27, 41, "EFFECTIVE_DATE")]}),
+    ("Effective date of the policy is 01/01/2021.", {"entities": [(28, 38, "EFFECTIVE_DATE")]}),
+    ("The new rules will be effective from July 1st, 2023.", {"entities": [(35, 49, "EFFECTIVE_DATE")]}),
+    ("The agreement starts on 2022-03-15.", {"entities": [(23, 33, "EFFECTIVE_DATE")]}),
+    ("This policy is effective as of 15th March, 2022.", {"entities": [(27, 42, "EFFECTIVE_DATE")]}),
+    ("Effective from 01 January 2021, the terms are revised.", {"entities": [(12, 27, "EFFECTIVE_DATE")]}),
+    ("The new guidelines are in effect starting 1st of July 2023.", {"entities": [(41, 56, "EFFECTIVE_DATE")]}),
+    ("Our service will be available from the first of September, 2024.", {"entities": [(38, 61, "EFFECTIVE_DATE")]}),
+    ("The changes will take effect on 2021/01/01.", {"entities": [(30, 40, "EFFECTIVE_DATE")]}),
+    ("The policy becomes active on the 15th of March 2022.", {"entities": [(30, 47, "EFFECTIVE_DATE")]}),
+    ("The effective date is 2021-01-01.", {"entities": [(20, 30, "EFFECTIVE_DATE")]}),
+    ("Starting from January 1st, 2023, the contract is valid.", {"entities": [(13, 29, "EFFECTIVE_DATE")]}),
+    ("The new policy will be in effect from 01/01/2022.", {"entities": [(34, 44, "EFFECTIVE_DATE")]}),
+    ("The agreement is valid effective 2022 March 15.", {"entities": [(30, 43, "EFFECTIVE_DATE")]}),
+    ("The contract becomes active as of March 15th, 2022.", {"entities": [(31, 46, "EFFECTIVE_DATE")]}),
+]
