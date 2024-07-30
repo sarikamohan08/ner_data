@@ -15,3 +15,69 @@ TRAIN_DATA = [
     ("The agreement is valid effective 2022 March 15.", {"entities": [(30, 43, "EFFECTIVE_DATE")]}),
     ("The contract becomes active as of March 15th, 2022.", {"entities": [(31, 46, "EFFECTIVE_DATE")]}),
 ]
+
+
+import spacy
+from spacy.tokens import DocBin
+from spacy.training.example import Example
+import random
+
+# Define your training data
+TRAIN_DATA = [
+    ("The new policy will be effective from 1st August 2024.", {"entities": [(31, 46, "EFFECTIVE_DATE")]}),
+    ("Effective date: 05/04/2021, please note the changes.", {"entities": [(16, 26, "EFFECTIVE_DATE")]}),
+    ("The agreement is valid from 1 January 2022.", {"entities": [(30, 44, "EFFECTIVE_DATE")]}),
+    ("Please be informed that the effective date is 20th June 2023.", {"entities": [(45, 58, "EFFECTIVE_DATE")]}),
+    ("New regulations start on March 1, 2020.", {"entities": [(25, 36, "EFFECTIVE_DATE")]}),
+    # Add more examples as needed
+]
+
+# Initialize a blank English model
+nlp = spacy.blank("en")
+
+# Add the Named Entity Recognizer to the pipeline
+if "ner" not in nlp.pipe_names:
+    ner = nlp.create_pipe("ner")
+    nlp.add_pipe(ner, last=True)
+else:
+    ner = nlp.get_pipe("ner")
+
+# Add the label "EFFECTIVE_DATE" to the NER
+LABEL = "EFFECTIVE_DATE"
+ner.add_label(LABEL)
+
+# Prepare training data
+examples = []
+for text, annotations in TRAIN_DATA:
+    doc = nlp.make_doc(text)
+    example = Example.from_dict(doc, annotations)
+    examples.append(example)
+
+# Training the model
+other_pipes = [pipe for pipe in nlp.pipe_names if pipe != "ner"]
+with nlp.disable_pipes(*other_pipes):
+    optimizer = nlp.begin_training()
+    for i in range(20):  # Number of iterations
+        random.shuffle(examples)
+        losses = {}
+        for batch in spacy.util.minibatch(examples, size=2):
+            nlp.update(batch, drop=0.35, losses=losses)
+        print(f"Losses at iteration {i}: {losses}")
+
+# Test the trained model
+test_text = "Please review the changes effective on 15th March 2023."
+doc = nlp(test_text)
+print("Entities in '{}'".format(test_text))
+for ent in doc.ents:
+    print(ent.text, ent.label_)
+
+# Save the model to disk
+nlp.to_disk("effective_date_ner")
+
+# Load the saved model and test again
+print("\nLoading the saved model...")
+nlp2 = spacy.load("effective_date_ner")
+doc2 = nlp2(test_text)
+print("Entities in '{}'".format(test_text))
+for ent in doc2.ents:
+    print(ent.text, ent.label_)
