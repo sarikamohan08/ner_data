@@ -4,7 +4,7 @@ from spacy.util import minibatch, compounding
 from datetime import datetime
 import random
 
-# Sample training data
+# Sample training data with annotations
 training_data = [
     ("John Doe's patient ID is 123456789 and his SSN is 987-65-4321. His insurance is effective from 08/10/2022.",
      {"entities": [(0, 8, "PATIENT_NAME"), (27, 36, "MEMBER_ID"), (51, 62, "SSN"), (91, 101, "EFFECTIVE_DATE")]}),
@@ -13,52 +13,60 @@ training_data = [
     # Add more annotated examples here...
 ]
 
-# Load a blank spaCy model
+# Create a blank English model
 nlp = spacy.blank("en")
 
-# Create a new entity recognizer and add it to the pipeline
-if "ner" not in nlp.pipe_names:
-    ner = nlp.add_pipe("ner")
-else:
-    ner = nlp.get_pipe("ner")
+# Create a new Entity Recognizer in the pipeline
+ner = nlp.add_pipe("ner", last=True)
 
-# Add the new labels to the entity recognizer
-labels = ["PATIENT_NAME", "MEMBER_ID", "SSN", "EFFECTIVE_DATE"]
-for label in labels:
-    ner.add_label(label)
+# Add custom labels to the entity recognizer
+for _, annotations in training_data:
+    for ent in annotations.get("entities"):
+        ner.add_label(ent[2])
 
-# Disable other pipelines to train only NER
+# Disable other components during training
 other_pipes = [pipe for pipe in nlp.pipe_names if pipe != "ner"]
 with nlp.disable_pipes(*other_pipes):
     optimizer = nlp.begin_training()
-    for itn in range(30):  # Train for 30 iterations
+    for itn in range(30):  # Number of iterations
         random.shuffle(training_data)
         losses = {}
         batches = minibatch(training_data, size=compounding(4., 32., 1.001))
         for batch in batches:
             examples = []
             for text, annotations in batch:
-                examples.append(Example.from_dict(nlp.make_doc(text), annotations))
+                doc = nlp.make_doc(text)
+                examples.append(Example.from_dict(doc, annotations))
             nlp.update(examples, drop=0.5, losses=losses)
         print(f"Iteration {itn}, Losses: {losses}")
 
-# Save the model
+# Save the trained model
 nlp.to_disk("custom_ner_model")
 
-# Load the saved model
+# Load the trained model
 nlp = spacy.load("custom_ner_model")
 
-# Function to extract entities and check effective date condition
+# Function to extract entities and filter by effective date
 def extract_effective_before(doc, cutoff_date):
     cutoff_date_obj = datetime.strptime(cutoff_date, "%m/%d/%Y")
+    found_entities = []
     for ent in doc.ents:
         if ent.label_ == "EFFECTIVE_DATE":
-            effective_date_obj = datetime.strptime(ent.text, "%m/%d/%Y")
-            if effective_date_obj < cutoff_date_obj:
-                print(f"Effective date {ent.text} is before {cutoff_date}")
-                for ent in doc.ents:
-                    print(ent.text, ent.label_)
+            try:
+                effective_date_obj = datetime.strptime(ent.text, "%m/%d/%Y")
+                if effective_date_obj < cutoff_date_obj:
+                    found_entities.append(ent.text)
+                    print(f"Effective date {ent.text} is before {cutoff_date}")
+            except ValueError:
+                print(f"Date format error for {ent.text}")
+    if not found_entities:
+        print(f"No effective dates before {cutoff_date} found.")
 
-# Test the model on a new example
-doc = nlp("Jane Doe's patient ID is 987654321 and her SSN is 123-45-6789. Her insurance is effective from 09/12/2023.")
+# Test the model with a new example
+test_text = "Jane Doe's patient ID is 987654321 and her SSN is 123-45-6789. Her insurance is effective from 07/10/2022."
+doc = nlp(test_text)
 extract_effective_before(doc, "08/10/2022")
+
+# Print all detected entities
+for ent in doc.ents:
+    print(ent.text, ent.label_)
