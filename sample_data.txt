@@ -1,83 +1,64 @@
-TRAIN_DATA = [
-    ("The contract will commence on March 15, 2022.", {"entities": [(27, 41, "EFFECTIVE_DATE")]}),
-    ("Effective date of the policy is 01/01/2021.", {"entities": [(28, 38, "EFFECTIVE_DATE")]}),
-    ("The new rules will be effective from July 1st, 2023.", {"entities": [(35, 49, "EFFECTIVE_DATE")]}),
-    ("The agreement starts on 2022-03-15.", {"entities": [(23, 33, "EFFECTIVE_DATE")]}),
-    ("This policy is effective as of 15th March, 2022.", {"entities": [(27, 42, "EFFECTIVE_DATE")]}),
-    ("Effective from 01 January 2021, the terms are revised.", {"entities": [(12, 27, "EFFECTIVE_DATE")]}),
-    ("The new guidelines are in effect starting 1st of July 2023.", {"entities": [(41, 56, "EFFECTIVE_DATE")]}),
-    ("Our service will be available from the first of September, 2024.", {"entities": [(38, 61, "EFFECTIVE_DATE")]}),
-    ("The changes will take effect on 2021/01/01.", {"entities": [(30, 40, "EFFECTIVE_DATE")]}),
-    ("The policy becomes active on the 15th of March 2022.", {"entities": [(30, 47, "EFFECTIVE_DATE")]}),
-    ("The effective date is 2021-01-01.", {"entities": [(20, 30, "EFFECTIVE_DATE")]}),
-    ("Starting from January 1st, 2023, the contract is valid.", {"entities": [(13, 29, "EFFECTIVE_DATE")]}),
-    ("The new policy will be in effect from 01/01/2022.", {"entities": [(34, 44, "EFFECTIVE_DATE")]}),
-    ("The agreement is valid effective 2022 March 15.", {"entities": [(30, 43, "EFFECTIVE_DATE")]}),
-    ("The contract becomes active as of March 15th, 2022.", {"entities": [(31, 46, "EFFECTIVE_DATE")]}),
-]
-
-
 import spacy
-from spacy.tokens import DocBin
-from spacy.training.example import Example
+from spacy.training import Example
+from spacy.util import minibatch, compounding
+from datetime import datetime
 import random
 
-# Define your training data
-TRAIN_DATA = [
-    ("The new policy will be effective from 1st August 2024.", {"entities": [(31, 46, "EFFECTIVE_DATE")]}),
-    ("Effective date: 05/04/2021, please note the changes.", {"entities": [(16, 26, "EFFECTIVE_DATE")]}),
-    ("The agreement is valid from 1 January 2022.", {"entities": [(30, 44, "EFFECTIVE_DATE")]}),
-    ("Please be informed that the effective date is 20th June 2023.", {"entities": [(45, 58, "EFFECTIVE_DATE")]}),
-    ("New regulations start on March 1, 2020.", {"entities": [(25, 36, "EFFECTIVE_DATE")]}),
-    # Add more examples as needed
+# Sample training data
+training_data = [
+    ("John Doe's patient ID is 123456789 and his SSN is 987-65-4321. His insurance is effective from 08/10/2022.",
+     {"entities": [(0, 8, "PATIENT_NAME"), (27, 36, "MEMBER_ID"), (51, 62, "SSN"), (91, 101, "EFFECTIVE_DATE")]}),
+    ("Jane Smith's member ID is 987654321 and her SSN is 123-45-6789. The coverage starts from 01/15/2021.",
+     {"entities": [(0, 10, "PATIENT_NAME"), (28, 37, "MEMBER_ID"), (52, 63, "SSN"), (84, 94, "EFFECTIVE_DATE")]}),
+    # Add more annotated examples here...
 ]
 
-# Initialize a blank English model
+# Load a blank spaCy model
 nlp = spacy.blank("en")
 
-# Add the Named Entity Recognizer to the pipeline
+# Create a new entity recognizer and add it to the pipeline
 if "ner" not in nlp.pipe_names:
-    ner = nlp.create_pipe("ner")
-    nlp.add_pipe(ner, last=True)
+    ner = nlp.add_pipe("ner")
 else:
     ner = nlp.get_pipe("ner")
 
-# Add the label "EFFECTIVE_DATE" to the NER
-LABEL = "EFFECTIVE_DATE"
-ner.add_label(LABEL)
+# Add the new labels to the entity recognizer
+labels = ["PATIENT_NAME", "MEMBER_ID", "SSN", "EFFECTIVE_DATE"]
+for label in labels:
+    ner.add_label(label)
 
-# Prepare training data
-examples = []
-for text, annotations in TRAIN_DATA:
-    doc = nlp.make_doc(text)
-    example = Example.from_dict(doc, annotations)
-    examples.append(example)
-
-# Training the model
+# Disable other pipelines to train only NER
 other_pipes = [pipe for pipe in nlp.pipe_names if pipe != "ner"]
 with nlp.disable_pipes(*other_pipes):
     optimizer = nlp.begin_training()
-    for i in range(20):  # Number of iterations
-        random.shuffle(examples)
+    for itn in range(30):  # Train for 30 iterations
+        random.shuffle(training_data)
         losses = {}
-        for batch in spacy.util.minibatch(examples, size=2):
-            nlp.update(batch, drop=0.35, losses=losses)
-        print(f"Losses at iteration {i}: {losses}")
+        batches = minibatch(training_data, size=compounding(4., 32., 1.001))
+        for batch in batches:
+            examples = []
+            for text, annotations in batch:
+                examples.append(Example.from_dict(nlp.make_doc(text), annotations))
+            nlp.update(examples, drop=0.5, losses=losses)
+        print(f"Iteration {itn}, Losses: {losses}")
 
-# Test the trained model
-test_text = "Please review the changes effective on 15th March 2023."
-doc = nlp(test_text)
-print("Entities in '{}'".format(test_text))
-for ent in doc.ents:
-    print(ent.text, ent.label_)
+# Save the model
+nlp.to_disk("custom_ner_model")
 
-# Save the model to disk
-nlp.to_disk("effective_date_ner")
+# Load the saved model
+nlp = spacy.load("custom_ner_model")
 
-# Load the saved model and test again
-print("\nLoading the saved model...")
-nlp2 = spacy.load("effective_date_ner")
-doc2 = nlp2(test_text)
-print("Entities in '{}'".format(test_text))
-for ent in doc2.ents:
-    print(ent.text, ent.label_)
+# Function to extract entities and check effective date condition
+def extract_effective_before(doc, cutoff_date):
+    cutoff_date_obj = datetime.strptime(cutoff_date, "%m/%d/%Y")
+    for ent in doc.ents:
+        if ent.label_ == "EFFECTIVE_DATE":
+            effective_date_obj = datetime.strptime(ent.text, "%m/%d/%Y")
+            if effective_date_obj < cutoff_date_obj:
+                print(f"Effective date {ent.text} is before {cutoff_date}")
+                for ent in doc.ents:
+                    print(ent.text, ent.label_)
+
+# Test the model on a new example
+doc = nlp("Jane Doe's patient ID is 987654321 and her SSN is 123-45-6789. Her insurance is effective from 09/12/2023.")
+extract_effective_before(doc, "08/10/2022")
