@@ -127,3 +127,12 @@ if __name__ == "__main__":
 
     text2 = "Michael Johnson, Member ID: 98765, SSN: 111-22-3333, Effective Date: 2024-07-31"
     print("Extracted Patient Name:", extract_patient_name(text2))
+
+
+
+from transformers import BertTokenizer, BertModel
+tokenizer = BertTokenizer.from_pretrained('bert-large-uncased')
+model = BertModel.from_pretrained("bert-large-uncased")
+text = "Replace me by any text you'd like."
+encoded_input = tokenizer(text, return_tensors='pt')
+output = model(**encoded_input)
