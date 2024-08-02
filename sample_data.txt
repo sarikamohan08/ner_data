@@ -136,3 +136,35 @@ model = BertModel.from_pretrained("bert-large-uncased")
 text = "Replace me by any text you'd like."
 encoded_input = tokenizer(text, return_tensors='pt')
 output = model(**encoded_input)
+
+
+
+
+
+import os
+import ssl
+from transformers import BertTokenizer, BertForTokenClassification
+import torch
+
+# Handle SSL certificate issues (use with caution)
+os.environ['CURL_CA_BUNDLE'] = ''
+ssl._create_default_https_context = ssl._create_unverified_context
+
+# Load tokenizer and model
+tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+model = BertForTokenClassification.from_pretrained('bert-base-uncased')
+
+# Example input text
+text = "BERT is a powerful language model developed by Google."
+
+# Tokenize input
+inputs = tokenizer(text, return_tensors="pt")
+
+# Get predictions
+outputs = model(**inputs)
+logits = outputs.logits
+
+# Print results
+print("Input Tokens:", tokenizer.convert_ids_to_tokens(inputs["input_ids"][0]))
+print("Logits:", logits)
+
