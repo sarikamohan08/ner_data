@@ -168,3 +168,35 @@ logits = outputs.logits
 print("Input Tokens:", tokenizer.convert_ids_to_tokens(inputs["input_ids"][0]))
 print("Logits:", logits)
 
+
+import os
+from pdf2image import convert_from_path
+import pytesseract
+
+def extract_text_from_pdfs(folder_path):
+    # Get a list of all PDF files in the folder
+    pdf_files = [f for f in os.listdir(folder_path) if f.endswith('.pdf')]
+
+    # Iterate over each PDF file
+    for pdf_file in pdf_files:
+        pdf_path = os.path.join(folder_path, pdf_file)
+        
+        # Convert PDF to images
+        images = convert_from_path(pdf_path)
+
+        # Extract text from each image (page)
+        full_text = ''
+        for page_number, image in enumerate(images):
+            # Use pytesseract to extract text from the image
+            text = pytesseract.image_to_string(image, lang='eng')
+            full_text += f"Page {page_number + 1}:\n{text}\n"
+
+        # Print the extracted text or save it to a file
+        print(f"Text from {pdf_file}:\n{full_text}\n")
+
+# Specify the folder containing PDFs
+folder_path = '/path/to/your/folder'
+
+# Call the function to extract text
+extract_text_from_pdfs(folder_path)
+
