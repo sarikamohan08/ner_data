@@ -1,15 +1,25 @@
 import easyocr
 import cv2
+from PIL import Image
+import numpy as np
 
 # Initialize the EasyOCR reader
-reader = easyocr.Reader(['en'])  # 'en' for English
+reader = easyocr.Reader(['en'])
 
-# Load the image
-image_path = 'test.png'  # Replace with your image path
-image = cv2.imread(image_path)
+# Load and process the image
+image_path = 'path_to_your_handwritten_image.jpg'  # Replace with your image path
+
+# Open the image using PIL and resize with LANCZOS
+image_pil = Image.open(image_path)
+width, height = image_pil.size
+new_width, new_height = 800, 600  # Example dimensions
+image_pil = image_pil.resize((new_width, new_height), Image.LANCZOS)
+
+# Convert PIL image to a NumPy array
+image_np = np.array(image_pil)
 
 # Detect text in the image
-results = reader.readtext(image)
+results = reader.readtext(image_np)
 
 # Print the detected text and its confidence level
 for (bbox, text, prob) in results:
@@ -17,21 +27,20 @@ for (bbox, text, prob) in results:
 
 # Draw bounding boxes around detected text
 for (bbox, text, prob) in results:
-    # Unpack the bounding box
     (top_left, top_right, bottom_right, bottom_left) = bbox
     top_left = tuple(map(int, top_left))
     bottom_right = tuple(map(int, bottom_right))
 
     # Draw a rectangle around the text
-    cv2.rectangle(image, top_left, bottom_right, (0, 255, 0), 2)
+    cv2.rectangle(image_np, top_left, bottom_right, (0, 255, 0), 2)
     
     # Put the detected text near the rectangle
-    cv2.putText(image, text, (top_left[0], top_left[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 0, 0), 2)
+    cv2.putText(image_np, text, (top_left[0], top_left[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 0, 0), 2)
 
 # Display the image with the bounding boxes
-cv2.imshow("Detected Handwriting", image)
+cv2.imshow("Detected Handwriting", image_np)
 cv2.waitKey(0)
 cv2.destroyAllWindows()
 
 # Save the result image (optional)
-cv2.imwrite('detected_handwriting.jpg', image)
+cv2.imwrite('detected_handwriting.jpg', image_np)
