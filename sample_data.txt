@@ -1,31 +1,37 @@
 import easyocr
 import cv2
-import matplotlib.pyplot as plt
 
-# Step 1: Load the image
+# Initialize the EasyOCR reader
+reader = easyocr.Reader(['en'])  # 'en' for English
+
+# Load the image
 image_path = 'test.png'  # Replace with your image path
 image = cv2.imread(image_path)
 
-# Step 2: Convert the image to grayscale
-gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+# Detect text in the image
+results = reader.readtext(image)
 
-# Step 3: Initialize the EasyOCR Reader
-reader = easyocr.Reader(['en'])  # 'en' is for English. Add more languages if needed.
+# Print the detected text and its confidence level
+for (bbox, text, prob) in results:
+    print(f"Detected text: {text} (Confidence: {prob:.2f})")
 
-# Step 4: Perform OCR on the image
-result = reader.readtext(gray_image)
+# Draw bounding boxes around detected text
+for (bbox, text, prob) in results:
+    # Unpack the bounding box
+    (top_left, top_right, bottom_right, bottom_left) = bbox
+    top_left = tuple(map(int, top_left))
+    bottom_right = tuple(map(int, bottom_right))
 
-# Step 5: Display the results and annotate the image
-for (bbox, text, prob) in result:
-    print(f"Detected Text: {text} (Confidence: {prob})")
-    # Draw bounding box and text on the image
-    top_left = tuple(map(int, bbox[0]))
-    bottom_right = tuple(map(int, bbox[2]))
+    # Draw a rectangle around the text
     cv2.rectangle(image, top_left, bottom_right, (0, 255, 0), 2)
-    cv2.putText(image, text, (top_left[0], top_left[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+    
+    # Put the detected text near the rectangle
+    cv2.putText(image, text, (top_left[0], top_left[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 0, 0), 2)
 
-# Step 6: Display the image with detected text
-plt.figure(figsize=(10, 10))
-plt.imshow(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
-plt.axis('off')
-plt.show()
+# Display the image with the bounding boxes
+cv2.imshow("Detected Handwriting", image)
+cv2.waitKey(0)
+cv2.destroyAllWindows()
+
+# Save the result image (optional)
+cv2.imwrite('detected_handwriting.jpg', image)
