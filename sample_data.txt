@@ -1,79 +1,38 @@
-import torch
-import torch.nn as nn
-import torch.optim as optim
-from torch.utils.data import DataLoader
-import torchvision.transforms as transforms
-import torchvision.datasets as datasets
+import camelot
+import pandas as pd
 
-# Load MNIST dataset
-transform = transforms.Compose([
-    transforms.ToTensor(),
-    transforms.Normalize((0.1307,), (0.3081,))
-])
+# Path to the PDF file
+pdf_path = 'path_to_your_pdf.pdf'
 
-train_dataset = datasets.MNIST(root='./data', train=True, transform=transform, download=True)
-test_dataset = datasets.MNIST(root='./data', train=False, transform=transform, download=True)
+# Extract tables from the PDF
+tables = camelot.read_pdf(pdf_path, pages='all', flavor='lattice')  # Use 'stream' if needed
 
-train_loader = DataLoader(dataset=train_dataset, batch_size=64, shuffle=True)
-test_loader = DataLoader(dataset=test_dataset, batch_size=1000, shuffle=False)
+# Check if any tables were extracted
+if len(tables) == 0:
+    print("No tables found in the PDF.")
+else:
+    # Initialize an empty list to store the DataFrames
+    df_list = []
 
-# Define a simple CNN model
-class SimpleCNN(nn.Module):
-    def __init__(self):
-        super(SimpleCNN, self).__init__()
-        self.conv1 = nn.Conv2d(1, 10, kernel_size=5)
-        self.conv2 = nn.Conv2d(10, 20, kernel_size=5)
-        self.fc1 = nn.Linear(320, 50)
-        self.fc2 = nn.Linear(50, 10)
+    # Loop over each table, convert to DataFrame, and check if it's not empty
+    for i, table in enumerate(tables):
+        df = table.df
+        if not df.empty:
+            df_list.append(df)
+        else:
+            print(f"Table {i + 1} is empty and will be skipped.")
 
-    def forward(self, x):
-        x = torch.relu(self.conv1(x))
-        x = torch.max_pool2d(x, 2)
-        x = torch.relu(self.conv2(x))
-        x = torch.max_pool2d(x, 2)
-        x = x.view(-1, 320)
-        x = torch.relu(self.fc1(x))
-        x = self.fc2(x)
-        return torch.log_softmax(x, dim=1)
+    # Check if there are any DataFrames to concatenate
+    if len(df_list) == 0:
+        print("No valid tables to concatenate.")
+    else:
+        # Concatenate all DataFrames into one DataFrame
+        combined_df = pd.concat(df_list, ignore_index=True)
 
-# Instantiate the model, loss function, and optimizer
-model = SimpleCNN()
-criterion = nn.CrossEntropyLoss()
-optimizer = optim.SGD(model.parameters(), lr=0.01, momentum=0.9)
+        # Path to save the Excel file
+        excel_path = 'combined_tables.xlsx'
 
-# Training the model
-def train(model, device, train_loader, optimizer, epoch):
-    model.train()
-    for batch_idx, (data, target) in enumerate(train_loader):
-        data, target = data.to(device), target.to(device)
-        optimizer.zero_grad()
-        output = model(data)
-        loss = criterion(output, target)
-        loss.backward()
-        optimizer.step()
-        if batch_idx % 100 == 0:
-            print(f'Train Epoch: {epoch} [{batch_idx * len(data)}/{len(train_loader.dataset)} ({100. * batch_idx / len(train_loader):.0f}%)]\tLoss: {loss.item():.6f}')
+        # Write the combined DataFrame to a single sheet in the Excel file
+        combined_df.to_excel(excel_path, sheet_name='All_Tables', index=False)
 
-# Evaluating the model
-def test(model, device, test_loader):
-    model.eval()
-    test_loss = 0
-    correct = 0
-    with torch.no_grad():
-        for data, target in test_loader:
-            data, target = data.to(device), target.to(device)
-            output = model(data)
-            test_loss += criterion(output, target).item()  # sum up batch loss
-            pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability
-            correct += pred.eq(target.view_as(pred)).sum().item()
-
-    test_loss /= len(test_loader.dataset)
-    print(f'\nTest set: Average loss: {test_loss:.4f}, Accuracy: {correct}/{len(test_loader.dataset)} ({100. * correct / len(test_loader.dataset):.0f}%)\n')
-
-# Training and testing the model
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model.to(device)
-
-for epoch in range(1, 11):
-    train(model, device, train_loader, optimizer, epoch)
-    test(model, device, test_loader)
+        print(f"All tables have been combined and saved to {excel_path}")
