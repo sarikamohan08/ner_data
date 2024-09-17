@@ -22,8 +22,8 @@ def is_valid_excel_file(filepath):
         print(f"Invalid Excel file or error reading '{filepath}': {e}")
         return False
 
-# List to store the data in tabular format
-address_data_combined = []
+# Dictionary to store the combined address-related data
+address_data_combined = {}
 
 # Iterate over each file in the folder
 for filename in os.listdir(excel_folder):
@@ -42,6 +42,9 @@ for filename in os.listdir(excel_folder):
             print(f"Error reading {filename}: {e}. Skipping this file.")
             continue  # Skip to the next file
         
+        # List to hold address-related data for different sheets in the file
+        file_data = []
+        
         for sheet_name in excel_file.sheet_names:
             try:
                 df = pd.read_excel(excel_path, sheet_name=sheet_name)
@@ -51,19 +54,28 @@ for filename in os.listdir(excel_folder):
             
             # Check if the DataFrame contains address-related keywords
             if contains_address_keywords(df):
-                # Flatten the DataFrame into a single row, with file name, sheet name, and content
-                flattened_data = {
-                    'File Name': filename,
-                    'Sheet Name': sheet_name,
-                    'Content': df.to_string(index=False)  # Convert entire DataFrame to a string to store in one cell
-                }
-                address_data_combined.append(flattened_data)
+                # Convert the entire DataFrame to a string and store it in the file_data list
+                file_data.append(df.to_string(index=False))
                 print(f'Address-related data found in sheet "{sheet_name}" of file "{filename}".')
+        
+        # If any address data was found in the file, add it to the dictionary
+        if file_data:
+            address_data_combined[filename] = file_data
 
-# Convert the combined data into a DataFrame
-address_df = pd.DataFrame(address_data_combined)
+# Convert the dictionary to a DataFrame for output
+output_data = []
+for file_name, sheets_data in address_data_combined.items():
+    # Prepare a row for each file, placing the file name and the sheet data in separate columns
+    row = [file_name] + sheets_data
+    output_data.append(row)
+
+# Determine the maximum number of columns needed (in case different files have different numbers of sheets)
+max_columns = max(len(row) for row in output_data)
+
+# Create a DataFrame from the output data, filling in with NaN for missing columns
+output_df = pd.DataFrame(output_data, columns=['File Name'] + [f'Address Data {i+1}' for i in range(max_columns - 1)])
 
 # Save the combined data into a single Excel sheet
-address_df.to_excel(output_excel, index=False)
+output_df.to_excel(output_excel, index=False)
 
 print(f"Combined address-related data saved to {output_excel}.")
