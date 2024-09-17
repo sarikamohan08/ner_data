@@ -1,21 +1,35 @@
 import camelot
 import pandas as pd
+import os
 
-# Path to your PDF file
-pdf_path = 'path_to_your_pdf.pdf'
+# Define the folder containing PDFs and the output Excel file path
+pdf_folder = 'path_to_your_pdf_folder'
+excel_path = 'extracted_tables_from_folder.xlsx'
 
-# Extract tables using camelot
-tables = camelot.read_pdf(pdf_path, pages='all')
+# Get a list of all PDF files in the folder
+pdf_files = [f for f in os.listdir(pdf_folder) if f.endswith('.pdf')]
 
 # Create a Pandas Excel writer
-excel_path = 'extracted_tables.xlsx'
 with pd.ExcelWriter(excel_path, engine='openpyxl') as writer:
-    for i, table in enumerate(tables):
-        # Convert each table to a DataFrame
-        df = table.df
+    for pdf_file in pdf_files:
+        # Full path of the current PDF file
+        pdf_path = os.path.join(pdf_folder, pdf_file)
         
-        # Save each DataFrame to a separate sheet
-        sheet_name = f'Table_{i+1}'
-        df.to_excel(writer, sheet_name=sheet_name, index=False)
+        # Extract tables from the current PDF
+        tables = camelot.read_pdf(pdf_path, pages='all')
+        
+        # Iterate over the tables and save each in a separate sheet
+        for i, table in enumerate(tables):
+            # Convert each table to a DataFrame
+            df = table.df
+            
+            # Create a sheet name using the PDF file name and table index
+            sheet_name = f'{os.path.splitext(pdf_file)[0]}_Table_{i+1}'
+            
+            # Ensure the sheet name is less than 31 characters (Excel's limit)
+            sheet_name = sheet_name[:31]
+            
+            # Save the table to a sheet
+            df.to_excel(writer, sheet_name=sheet_name, index=False)
 
-print(f'Tables extracted and saved to {excel_path}')
+print(f'Tables from all PDFs have been extracted and saved to {excel_path}')
