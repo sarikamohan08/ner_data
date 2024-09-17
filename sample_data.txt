@@ -1,44 +1,21 @@
-import os
 import camelot
 import pandas as pd
 
-# Path to the PDF file
+# Path to your PDF file
 pdf_path = 'path_to_your_pdf.pdf'
-output_folder = 'path_to_save_excel_files'
 
-# Ensure the output folder exists
-if not os.path.exists(output_folder):
-    os.makedirs(output_folder)
+# Extract tables using camelot
+tables = camelot.read_pdf(pdf_path, pages='all')
 
-# Path to save the Excel file
-excel_file_name = os.path.splitext(os.path.basename(pdf_path))[0] + '.xlsx'
-excel_path = os.path.join(output_folder, excel_file_name)
+# Create a Pandas Excel writer
+excel_path = 'extracted_tables.xlsx'
+with pd.ExcelWriter(excel_path, engine='openpyxl') as writer:
+    for i, table in enumerate(tables):
+        # Convert each table to a DataFrame
+        df = table.df
+        
+        # Save each DataFrame to a separate sheet
+        sheet_name = f'Table_{i+1}'
+        df.to_excel(writer, sheet_name=sheet_name, index=False)
 
-# Try both lattice and stream flavors if necessary
-tables_lattice = camelot.read_pdf(pdf_path, pages='all', flavor='lattice')
-tables_stream = camelot.read_pdf(pdf_path, pages='all', flavor='stream')
-
-# Combine tables from both methods
-tables = tables_lattice + tables_stream
-
-# Check if tables were extracted
-if len(tables) == 0:
-    print("No tables found in the PDF.")
-else:
-    # Create an Excel writer object
-    with pd.ExcelWriter(excel_path, engine='openpyxl') as writer:
-        # Loop over each table and write it to a separate sheet
-        for i, table in enumerate(tables):
-            # Convert the extracted table to a pandas DataFrame
-            df = table.df
-            
-            # Name each sheet as 'Table_1', 'Table_2', etc.
-            sheet_name = f'Table_{i+1}'
-            
-            # Write the DataFrame to a sheet in the Excel file
-            df.to_excel(writer, sheet_name=sheet_name, index=False)
-            
-            print(f"Table {i+1} extracted and saved to sheet '{sheet_name}'")
-
-    print(f"All tables have been extracted and saved to {excel_path}")
-
+print(f'Tables extracted and saved to {excel_path}')
