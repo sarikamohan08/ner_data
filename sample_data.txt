@@ -14,8 +14,12 @@ if not os.path.exists(output_folder):
 excel_file_name = os.path.splitext(os.path.basename(pdf_path))[0] + '.xlsx'
 excel_path = os.path.join(output_folder, excel_file_name)
 
-# Extract tables from the PDF (use lattice for better structured tables)
-tables = camelot.read_pdf(pdf_path, pages='all', flavor='lattice')  # Or use 'stream' for simpler tables
+# Try both lattice and stream flavors if necessary
+tables_lattice = camelot.read_pdf(pdf_path, pages='all', flavor='lattice')
+tables_stream = camelot.read_pdf(pdf_path, pages='all', flavor='stream')
+
+# Combine tables from both methods
+tables = tables_lattice + tables_stream
 
 # Check if tables were extracted
 if len(tables) == 0:
@@ -37,3 +41,4 @@ else:
             print(f"Table {i+1} extracted and saved to sheet '{sheet_name}'")
 
     print(f"All tables have been extracted and saved to {excel_path}")
+
