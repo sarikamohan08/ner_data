@@ -3,7 +3,7 @@ import pandas as pd
 
 # Folder containing Excel files
 excel_folder = 'path_to_excel_folder'
-output_excel = 'address_related_data.xlsx'  # Output Excel file
+output_excel = 'combined_address_related_data.xlsx'  # Output Excel file
 address_keywords = ['address', 'location', 'street', 'city', 'state', 'zip', 'postal']  # Add more keywords if needed
 
 # Function to check if any cell in a DataFrame contains address-related keywords
@@ -22,8 +22,8 @@ def is_valid_excel_file(filepath):
         print(f"Invalid Excel file or error reading '{filepath}': {e}")
         return False
 
-# Dictionary to store address-related data
-address_data = {}
+# List to store all DataFrames with address-related data
+combined_data = []
 
 # Iterate over each file in the folder
 for filename in os.listdir(excel_folder):
@@ -42,9 +42,6 @@ for filename in os.listdir(excel_folder):
             print(f"Error reading {filename}: {e}. Skipping this file.")
             continue  # Skip to the next file
         
-        # Create a dictionary to store DataFrames for address-related sheets
-        address_sheets = {}
-        
         for sheet_name in excel_file.sheet_names:
             try:
                 df = pd.read_excel(excel_path, sheet_name=sheet_name)
@@ -54,21 +51,17 @@ for filename in os.listdir(excel_folder):
             
             # Check if the DataFrame contains address-related keywords
             if contains_address_keywords(df):
-                address_sheets[sheet_name] = df
-                print(f'Address-related data found in sheet "{sheet_name}" of file "{filename}".')
-        
-        # Store address-related sheets in the dictionary if any were found
-        if address_sheets:
-            address_data[filename] = address_sheets
+                # Add filename and sheet name as additional columns to identify the source of the data
+                df['Source_File'] = filename
+                df['Sheet_Name'] = sheet_name
+                combined_data.append(df)  # Append the DataFrame to the list
 
-print("Address extraction complete.")
-
-# Convert the extracted data to an Excel file
-with pd.ExcelWriter(output_excel, engine='openpyxl') as writer:
-    for file, sheets in address_data.items():
-        for sheet_name, df in sheets.items():
-            # Use a combination of filename and sheet name as the Excel sheet name, ensuring it's unique
-            unique_sheet_name = f'{os.path.splitext(file)[0]}_{sheet_name[:20]}'
-            df.to_excel(writer, sheet_name=unique_sheet_name, index=False)
-
-print(f"Address-related data saved to {output_excel}.")
+# Combine all DataFrames into one single DataFrame
+if combined_data:
+    combined_df = pd.concat(combined_data, ignore_index=True)
+    
+    # Save the combined data into a single sheet in an Excel file
+    combined_df.to_excel(output_excel, index=False)
+    print(f"Combined address-related data saved to {output_excel}.")
+else:
+    print("No address-related data found in any of the files.")
