@@ -1,6 +1,7 @@
 import os
 import camelot
 import pandas as pd
+from openpyxl import Workbook
 
 # Folder containing PDF files
 pdf_folder = 'path_to_pdf_folder'
@@ -18,15 +19,17 @@ for filename in os.listdir(pdf_folder):
         # Extract tables from the current PDF
         tables = camelot.read_pdf(pdf_path, pages='all')
         
+        if not tables:
+            print(f'No tables found in {filename}. Skipping...')
+            continue
+        
         # Create an Excel file with the name of the PDF
         excel_filename = os.path.splitext(filename)[0] + '.xlsx'
         excel_path = os.path.join(excel_folder, excel_filename)
         
         # Create a Pandas Excel writer for the current PDF
         with pd.ExcelWriter(excel_path, engine='openpyxl') as writer:
-            if not tables:
-                print(f'No tables found in {filename}. Skipping...')
-                continue
+            sheet_count = 0  # Counter to keep track of the number of sheets written
             
             for i, table in enumerate(tables):
                 # Convert each table to a DataFrame
@@ -40,9 +43,10 @@ for filename in os.listdir(pdf_folder):
                 # Save each DataFrame to a separate sheet
                 sheet_name = f'Table_{i+1}'
                 df.to_excel(writer, sheet_name=sheet_name, index=False)
+                sheet_count += 1
             
-            # Check if any sheet was created
-            if len(writer.sheets) == 0:
+            # Verify if at least one sheet was created
+            if sheet_count == 0:
                 print(f'No valid sheets created for {filename}. Skipping...')
                 os.remove(excel_path)  # Remove empty Excel file
                 continue
