@@ -3,6 +3,7 @@ import pandas as pd
 
 # Folder containing Excel files
 excel_folder = 'path_to_excel_folder'
+output_excel = 'combined_address_related_data.xlsx'  # Output Excel file
 address_keywords = ['address', 'location', 'street', 'city', 'state', 'zip', 'postal']  # Add more keywords if needed
 
 # Function to check if any cell in a DataFrame contains address-related keywords
@@ -21,8 +22,8 @@ def is_valid_excel_file(filepath):
         print(f"Invalid Excel file or error reading '{filepath}': {e}")
         return False
 
-# Dictionary to store the extracted sheets with address-related data
-address_data = {}
+# List to store the data in tabular format
+address_data_combined = []
 
 # Iterate over each file in the folder
 for filename in os.listdir(excel_folder):
@@ -41,9 +42,6 @@ for filename in os.listdir(excel_folder):
             print(f"Error reading {filename}: {e}. Skipping this file.")
             continue  # Skip to the next file
         
-        # Dictionary to store all sheets that contain address-related data for this file
-        address_sheets = {}
-        
         for sheet_name in excel_file.sheet_names:
             try:
                 df = pd.read_excel(excel_path, sheet_name=sheet_name)
@@ -53,19 +51,19 @@ for filename in os.listdir(excel_folder):
             
             # Check if the DataFrame contains address-related keywords
             if contains_address_keywords(df):
-                # If keyword is found, save the entire sheet (DataFrame) to the address_sheets dictionary
-                address_sheets[sheet_name] = df
+                # Flatten the DataFrame into a single row, with file name, sheet name, and content
+                flattened_data = {
+                    'File Name': filename,
+                    'Sheet Name': sheet_name,
+                    'Content': df.to_string(index=False)  # Convert entire DataFrame to a string to store in one cell
+                }
+                address_data_combined.append(flattened_data)
                 print(f'Address-related data found in sheet "{sheet_name}" of file "{filename}".')
-        
-        # Store the address-related sheets in the main dictionary if any were found
-        if address_sheets:
-            address_data[filename] = address_sheets
 
-print("Address extraction complete.")
+# Convert the combined data into a DataFrame
+address_df = pd.DataFrame(address_data_combined)
 
-# Example: Access the dictionary content (optional print to verify structure)
-for file, sheets in address_data.items():
-    print(f"\nFile: {file}")
-    for sheet_name, df in sheets.items():
-        print(f"Sheet: {sheet_name}")
-        print(df.head())  # Print first few rows for verification
+# Save the combined data into a single Excel sheet
+address_df.to_excel(output_excel, index=False)
+
+print(f"Combined address-related data saved to {output_excel}.")
