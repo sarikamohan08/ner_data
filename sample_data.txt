@@ -17,19 +17,41 @@ def contains_address_keywords(df):
             return True
     return False
 
-# Iterate over each Excel file in the folder
+# Function to check if a file is a valid Excel file
+def is_valid_excel_file(filepath):
+    try:
+        pd.ExcelFile(filepath)
+        return True
+    except Exception as e:
+        print(f"Invalid Excel file or error reading '{filepath}': {e}")
+        return False
+
+# Iterate over each file in the folder
 for filename in os.listdir(excel_folder):
-    if filename.endswith('.xlsx'):
+    if filename.lower().endswith('.xlsx'):
         excel_path = os.path.join(excel_folder, filename)
         
-        # Load the Excel file
-        excel_file = pd.ExcelFile(excel_path)
+        # Check if the file is a valid Excel file
+        if not is_valid_excel_file(excel_path):
+            print(f"Skipping '{filename}' as it is not a valid Excel file.")
+            continue
+        
+        try:
+            # Load the Excel file
+            excel_file = pd.ExcelFile(excel_path)
+        except Exception as e:
+            print(f"Error reading {filename}: {e}. Skipping this file.")
+            continue  # Skip to the next file
         
         # Create a dictionary to store DataFrames for address-related sheets
         address_sheets = {}
         
         for sheet_name in excel_file.sheet_names:
-            df = pd.read_excel(excel_path, sheet_name=sheet_name)
+            try:
+                df = pd.read_excel(excel_path, sheet_name=sheet_name)
+            except Exception as e:
+                print(f"Error reading sheet '{sheet_name}' in {filename}: {e}. Skipping this sheet.")
+                continue  # Skip to the next sheet
             
             # Check if the DataFrame contains address-related keywords
             if contains_address_keywords(df):
