@@ -2,51 +2,38 @@ import os
 import camelot
 import pandas as pd
 
-# Define the path to the folder containing PDFs
-folder_path = 'path_to_your_folder_of_pdfs'
-output_folder = 'path_to_save_excel_files'  # Folder to save Excel files
+# Path to the PDF file
+pdf_path = 'path_to_your_pdf.pdf'
+output_folder = 'path_to_save_excel_files'
 
 # Ensure the output folder exists
 if not os.path.exists(output_folder):
     os.makedirs(output_folder)
 
-# Loop through each file in the folder
-for file_name in os.listdir(folder_path):
-    if file_name.endswith('.pdf'):  # Process only PDF files
-        # Get the full path to the PDF file
-        pdf_path = os.path.join(folder_path, file_name)
+# Path to save the Excel file
+excel_file_name = os.path.splitext(os.path.basename(pdf_path))[0] + '.xlsx'
+excel_path = os.path.join(output_folder, excel_file_name)
 
-        # Extract tables from the PDF
-        tables = camelot.read_pdf(pdf_path, pages='all', flavor='lattice')  # Or use 'stream'
+# Extract tables from the PDF (use lattice for better structured tables)
+tables = camelot.read_pdf(pdf_path, pages='all', flavor='lattice')  # Or use 'stream' for simpler tables
 
-        # Initialize a list to store the DataFrames for this PDF
-        df_list = []
-
-        # Check if any tables were extracted
-        if len(tables) == 0:
-            print(f"No tables found in {file_name}.")
-            continue  # Skip this file and move to the next PDF
-
-        # Loop through extracted tables and add to the DataFrame list
+# Check if tables were extracted
+if len(tables) == 0:
+    print("No tables found in the PDF.")
+else:
+    # Create an Excel writer object
+    with pd.ExcelWriter(excel_path, engine='openpyxl') as writer:
+        # Loop over each table and write it to a separate sheet
         for i, table in enumerate(tables):
+            # Convert the extracted table to a pandas DataFrame
             df = table.df
-            if not df.empty:
-                df_list.append(df)  # Append the extracted table
-                df_list.append(pd.DataFrame())  # Add an empty DataFrame for a blank row
-            else:
-                print(f"Table {i + 1} in {file_name} is empty and will be skipped.")
+            
+            # Name each sheet as 'Table_1', 'Table_2', etc.
+            sheet_name = f'Table_{i+1}'
+            
+            # Write the DataFrame to a sheet in the Excel file
+            df.to_excel(writer, sheet_name=sheet_name, index=False)
+            
+            print(f"Table {i+1} extracted and saved to sheet '{sheet_name}'")
 
-        # If valid tables exist, concatenate and write to Excel
-        if len(df_list) > 0:
-            # Concatenate all DataFrames for this PDF
-            combined_df = pd.concat(df_list, ignore_index=True)
-
-            # Define the path to save the Excel file (using the PDF name as the Excel name)
-            excel_file_name = os.path.splitext(file_name)[0] + '.xlsx'
-            excel_path = os.path.join(output_folder, excel_file_name)
-
-            # Save to Excel
-            combined_df.to_excel(excel_path, sheet_name='All_Tables', index=False)
-            print(f"Tables from {file_name} have been saved to {excel_file_name}.")
-        else:
-            print(f"No valid tables to save for {file_name}.")
+    print(f"All tables have been extracted and saved to {excel_path}")
