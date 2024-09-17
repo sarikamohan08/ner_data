@@ -5,11 +5,6 @@ import pandas as pd
 excel_folder = 'path_to_excel_folder'
 address_keywords = ['address', 'location', 'street', 'city', 'state', 'zip', 'postal']  # Add more keywords if needed
 
-# Create a folder to save extracted address-related sheets
-output_folder = 'address_sheets'
-if not os.path.exists(output_folder):
-    os.makedirs(output_folder)
-
 # Function to check if any cell in a DataFrame contains address-related keywords
 def contains_address_keywords(df):
     for keyword in address_keywords:
@@ -25,6 +20,9 @@ def is_valid_excel_file(filepath):
     except Exception as e:
         print(f"Invalid Excel file or error reading '{filepath}': {e}")
         return False
+
+# Dictionary to store address-related data
+address_data = {}
 
 # Iterate over each file in the folder
 for filename in os.listdir(excel_folder):
@@ -58,12 +56,17 @@ for filename in os.listdir(excel_folder):
                 address_sheets[sheet_name] = df
                 print(f'Address-related data found in sheet "{sheet_name}" of file "{filename}".')
         
-        # Save address-related sheets to new Excel file if any were found
+        # Store address-related sheets in the dictionary if any were found
         if address_sheets:
-            output_path = os.path.join(output_folder, f'{os.path.splitext(filename)[0]}_address_sheets.xlsx')
-            with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
-                for sheet_name, df in address_sheets.items():
-                    df.to_excel(writer, sheet_name=sheet_name, index=False)
-            print(f'Saved address-related sheets from "{filename}" to "{output_path}".')
+            address_data[filename] = address_sheets
 
 print("Address extraction complete.")
+
+# Example: Print the dictionary keys and their contents (for verification)
+for file, sheets in address_data.items():
+    print(f"\nFile: {file}")
+    for sheet_name, df in sheets.items():
+        print(f"Sheet: {sheet_name}")
+        print(df.head())  # Print the first few rows of the DataFrame for verification
+
+# If needed, you can now work with the `address_data` dictionary in your code
