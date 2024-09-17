@@ -24,13 +24,28 @@ for filename in os.listdir(pdf_folder):
         
         # Create a Pandas Excel writer for the current PDF
         with pd.ExcelWriter(excel_path, engine='openpyxl') as writer:
+            if not tables:
+                print(f'No tables found in {filename}. Skipping...')
+                continue
+            
             for i, table in enumerate(tables):
                 # Convert each table to a DataFrame
                 df = table.df
                 
+                # Check if DataFrame is empty
+                if df.empty:
+                    print(f'Table {i+1} in {filename} is empty. Skipping...')
+                    continue
+                
                 # Save each DataFrame to a separate sheet
                 sheet_name = f'Table_{i+1}'
                 df.to_excel(writer, sheet_name=sheet_name, index=False)
+            
+            # Check if any sheet was created
+            if len(writer.sheets) == 0:
+                print(f'No valid sheets created for {filename}. Skipping...')
+                os.remove(excel_path)  # Remove empty Excel file
+                continue
         
         print(f'Extracted tables from {filename} and saved to {excel_filename}')
 
