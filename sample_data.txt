@@ -1,56 +1,47 @@
 import os
-import camelot
 import pandas as pd
-from openpyxl import Workbook
 
-# Folder containing PDF files
-pdf_folder = 'path_to_pdf_folder'
-excel_folder = 'path_to_excel_folder'  # Folder where Excel files will be saved
+# Folder containing Excel files
+excel_folder = 'path_to_excel_folder'
+address_keywords = ['address', 'location', 'street', 'city', 'state', 'zip', 'postal']  # Add more keywords if needed
 
-# Create the output folder if it doesn't exist
-if not os.path.exists(excel_folder):
-    os.makedirs(excel_folder)
+# Create a folder to save extracted address-related sheets
+output_folder = 'address_sheets'
+if not os.path.exists(output_folder):
+    os.makedirs(output_folder)
 
-# Iterate over each file in the folder
-for filename in os.listdir(pdf_folder):
-    if filename.endswith('.pdf'):
-        pdf_path = os.path.join(pdf_folder, filename)
+# Function to check if any cell in a DataFrame contains address-related keywords
+def contains_address_keywords(df):
+    for keyword in address_keywords:
+        if df.apply(lambda x: x.astype(str).str.contains(keyword, case=False, na=False).any()).any():
+            return True
+    return False
+
+# Iterate over each Excel file in the folder
+for filename in os.listdir(excel_folder):
+    if filename.endswith('.xlsx'):
+        excel_path = os.path.join(excel_folder, filename)
         
-        # Extract tables from the current PDF
-        tables = camelot.read_pdf(pdf_path, pages='all')
+        # Load the Excel file
+        excel_file = pd.ExcelFile(excel_path)
         
-        if not tables:
-            print(f'No tables found in {filename}. Skipping...')
-            continue
+        # Create a dictionary to store DataFrames for address-related sheets
+        address_sheets = {}
         
-        # Create an Excel file with the name of the PDF
-        excel_filename = os.path.splitext(filename)[0] + '.xlsx'
-        excel_path = os.path.join(excel_folder, excel_filename)
-        
-        # Create a Pandas Excel writer for the current PDF
-        with pd.ExcelWriter(excel_path, engine='openpyxl') as writer:
-            sheet_count = 0  # Counter to keep track of the number of sheets written
+        for sheet_name in excel_file.sheet_names:
+            df = pd.read_excel(excel_path, sheet_name=sheet_name)
             
-            for i, table in enumerate(tables):
-                # Convert each table to a DataFrame
-                df = table.df
-                
-                # Check if DataFrame is empty
-                if df.empty:
-                    print(f'Table {i+1} in {filename} is empty. Skipping...')
-                    continue
-                
-                # Save each DataFrame to a separate sheet
-                sheet_name = f'Table_{i+1}'
-                df.to_excel(writer, sheet_name=sheet_name, index=False)
-                sheet_count += 1
-            
-            # Verify if at least one sheet was created
-            if sheet_count == 0:
-                print(f'No valid sheets created for {filename}. Skipping...')
-                os.remove(excel_path)  # Remove empty Excel file
-                continue
+            # Check if the DataFrame contains address-related keywords
+            if contains_address_keywords(df):
+                address_sheets[sheet_name] = df
+                print(f'Address-related data found in sheet "{sheet_name}" of file "{filename}".')
         
-        print(f'Extracted tables from {filename} and saved to {excel_filename}')
+        # Save address-related sheets to new Excel file if any were found
+        if address_sheets:
+            output_path = os.path.join(output_folder, f'{os.path.splitext(filename)[0]}_address_sheets.xlsx')
+            with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
+                for sheet_name, df in address_sheets.items():
+                    df.to_excel(writer, sheet_name=sheet_name, index=False)
+            print(f'Saved address-related sheets from "{filename}" to "{output_path}".')
 
-print("All PDFs have been processed.")
+print("Address extraction complete.")
