@@ -1,10 +1,20 @@
 import os
+import camelot
 import pandas as pd
+from openpyxl import Workbook
 
-# Folder containing Excel files
-excel_folder = 'path_to_excel_folder'
-output_excel = 'combined_address_related_data.xlsx'  # Output Excel file
+# Folder containing PDF files
+pdf_folder = 'path_to_pdf_folder'
+excel_folder = 'path_to_excel_folder'  # Folder where Excel files will be saved
+output_excel = 'combined_address_related_data.xlsx'  # Final output Excel file
 address_keywords = ['address', 'location', 'street', 'city', 'state', 'zip', 'postal']  # Add more keywords if needed
+
+# Create the output folder if it doesn't exist
+if not os.path.exists(excel_folder):
+    os.makedirs(excel_folder)
+
+# Dictionary to store the combined address-related data
+address_data_combined = {}
 
 # Function to check if any cell in a DataFrame contains address-related keywords
 def contains_address_keywords(df):
@@ -13,69 +23,79 @@ def contains_address_keywords(df):
             return True
     return False
 
-# Function to check if a file is a valid Excel file
-def is_valid_excel_file(filepath):
-    try:
-        pd.ExcelFile(filepath)
-        return True
-    except Exception as e:
-        print(f"Invalid Excel file or error reading '{filepath}': {e}")
-        return False
-
-# Dictionary to store the combined address-related data
-address_data_combined = {}
-
 # Iterate over each file in the folder
-for filename in os.listdir(excel_folder):
-    if filename.lower().endswith('.xlsx'):
-        excel_path = os.path.join(excel_folder, filename)
+for filename in os.listdir(pdf_folder):
+    if filename.endswith('.pdf'):
+        pdf_path = os.path.join(pdf_folder, filename)
         
-        # Check if the file is a valid Excel file
-        if not is_valid_excel_file(excel_path):
-            print(f"Skipping '{filename}' as it is not a valid Excel file.")
+        # Extract tables from the current PDF
+        tables = camelot.read_pdf(pdf_path, pages='all')
+        
+        if not tables:
+            print(f'No tables found in {filename}. Skipping...')
             continue
         
-        try:
-            # Load the Excel file
-            excel_file = pd.ExcelFile(excel_path)
-        except Exception as e:
-            print(f"Error reading {filename}: {e}. Skipping this file.")
-            continue  # Skip to the next file
+        # Create an Excel file with the name of the PDF
+        excel_filename = os.path.splitext(filename)[0] + '.xlsx'
+        excel_path = os.path.join(excel_folder, excel_filename)
         
-        # List to hold address-related data for different sheets in the file
+        # List to hold address-related data for different tables in the file
         file_data = []
-        
-        for sheet_name in excel_file.sheet_names:
-            try:
-                df = pd.read_excel(excel_path, sheet_name=sheet_name)
-            except Exception as e:
-                print(f"Error reading sheet '{sheet_name}' in {filename}: {e}. Skipping this sheet.")
-                continue  # Skip to the next sheet
+
+        # Create a Pandas Excel writer for the current PDF
+        with pd.ExcelWriter(excel_path, engine='openpyxl') as writer:
+            sheet_count = 0  # Counter to keep track of the number of sheets written
             
-            # Check if the DataFrame contains address-related keywords
-            if contains_address_keywords(df):
-                # Convert the entire DataFrame to a string and store it in the file_data list
-                file_data.append(df.to_string(index=False))
-                print(f'Address-related data found in sheet "{sheet_name}" of file "{filename}".')
+            for i, table in enumerate(tables):
+                # Convert each table to a DataFrame
+                df = table.df
+                
+                # Check if DataFrame is empty
+                if df.empty:
+                    print(f'Table {i+1} in {filename} is empty. Skipping...')
+                    continue
+                
+                # Save each DataFrame to a separate sheet
+                sheet_name = f'Table_{i+1}'
+                df.to_excel(writer, sheet_name=sheet_name, index=False)
+                sheet_count += 1
+                
+                # Check for address-related keywords in the DataFrame
+                if contains_address_keywords(df):
+                    file_data.append(df.to_string(index=False))
+                    print(f'Address-related data found in table "{sheet_name}" of file "{filename}".')
+            
+            # Verify if at least one sheet was created
+            if sheet_count == 0:
+                print(f'No valid sheets created for {filename}. Skipping...')
+                os.remove(excel_path)  # Remove empty Excel file
+                continue
         
-        # If any address data was found in the file, add it to the dictionary
+        # If any address data was found, add it to the dictionary
         if file_data:
             address_data_combined[filename] = file_data
+        
+        print(f'Extracted tables from {filename} and saved to {excel_filename}')
 
-# Convert the dictionary to a DataFrame for output
-output_data = []
-for file_name, sheets_data in address_data_combined.items():
-    # Prepare a row for each file, placing the file name and the sheet data in separate columns
-    row = [file_name] + sheets_data
-    output_data.append(row)
+# After processing all files, combine address-related data into one Excel sheet
+if address_data_combined:
+    output_data = []
+    for file_name, sheets_data in address_data_combined.items():
+        # Prepare a row for each file, placing the file name and the sheet data in separate columns
+        row = [file_name] + sheets_data
+        output_data.append(row)
 
-# Determine the maximum number of columns needed (in case different files have different numbers of sheets)
-max_columns = max(len(row) for row in output_data)
+    # Determine the maximum number of columns needed (in case different files have different numbers of sheets)
+    max_columns = max(len(row) for row in output_data)
 
-# Create a DataFrame from the output data, filling in with NaN for missing columns
-output_df = pd.DataFrame(output_data, columns=['File Name'] + [f'Address Data {i+1}' for i in range(max_columns - 1)])
+    # Create a DataFrame from the output data, filling in with NaN for missing columns
+    output_df = pd.DataFrame(output_data, columns=['File Name'] + [f'Address Data {i+1}' for i in range(max_columns - 1)])
 
-# Save the combined data into a single Excel sheet
-output_df.to_excel(output_excel, index=False)
+    # Save the combined data into a single Excel sheet
+    output_df.to_excel(output_excel, index=False)
 
-print(f"Combined address-related data saved to {output_excel}.")
+    print(f"Combined address-related data saved to {output_excel}.")
+else:
+    print("No address-related data found in any of the PDFs.")
+
+print("All PDFs have been processed.")
