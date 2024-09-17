@@ -1,51 +1,45 @@
 import os
 import camelot
+from pdf2image import convert_from_path
+import pytesseract
 import pandas as pd
+from PIL import Image
 
-# Define the path to the folder containing PDFs
-folder_path = 'path_to_your_folder_of_pdfs'
+# Define paths
+pdf_path = 'path_to_your_image_based_pdf.pdf'
 output_folder = 'path_to_save_excel_files'  # Folder to save Excel files
 
 # Ensure the output folder exists
 if not os.path.exists(output_folder):
     os.makedirs(output_folder)
 
-# Loop through each file in the folder
-for file_name in os.listdir(folder_path):
-    if file_name.endswith('.pdf'):  # Process only PDF files
-        # Get the full path to the PDF file
-        pdf_path = os.path.join(folder_path, file_name)
+# Convert PDF to images
+images = convert_from_path(pdf_path)
 
-        # Extract tables from the PDF
-        tables = camelot.read_pdf(pdf_path, pages='all', flavor='lattice')  # Or use 'stream'
+# Loop through each image, apply OCR, and extract tables
+for page_num, image in enumerate(images):
+    # Use Tesseract to extract text from the image
+    ocr_text = pytesseract.image_to_string(image)
 
-        # Initialize a list to store the DataFrames for this PDF
-        df_list = []
+    # Save OCR result as a text-based PDF
+    image_path = os.path.join(output_folder, f"page_{page_num+1}.jpg")
+    image.save(image_path)  # Save each page as an image
 
-        # Check if any tables were extracted
-        if len(tables) == 0:
-            print(f"No tables found in {file_name}.")
-            continue  # Skip this file and move to the next PDF
+    # Use Camelot on the OCR text (you may need to adjust based on the OCR result)
+    tables = camelot.read_pdf(image_path, pages='1', flavor='stream')  # You can also try 'lattice' here
 
-        # Loop through extracted tables and add to the DataFrame list
+    # Initialize an empty list to store DataFrames
+    df_list = []
+
+    # Process tables and save as Excel
+    if len(tables) > 0:
         for i, table in enumerate(tables):
             df = table.df
             if not df.empty:
                 df_list.append(df)
-            else:
-                print(f"Table {i + 1} in {file_name} is empty and will be skipped.")
 
-        # If valid tables exist, concatenate and write to Excel
-        if len(df_list) > 0:
-            # Concatenate all DataFrames for this PDF
+        if df_list:
             combined_df = pd.concat(df_list, ignore_index=True)
-
-            # Define the path to save the Excel file (using the PDF name as the Excel name)
-            excel_file_name = os.path.splitext(file_name)[0] + '.xlsx'
-            excel_path = os.path.join(output_folder, excel_file_name)
-
-            # Save to Excel
-            combined_df.to_excel(excel_path, sheet_name='All_Tables', index=False)
-            print(f"Tables from {file_name} have been saved to {excel_file_name}.")
-        else:
-            print(f"No valid tables to save for {file_name}.")
+            excel_path = os.path.join(output_folder, f'page_{page_num+1}.xlsx')
+            combined_df.to_excel(excel_path, index=False)
+            print(f"Extracted tables from page {page_num+1} saved to {excel_path}")
