@@ -3,99 +3,120 @@ import camelot
 import pandas as pd
 from openpyxl import Workbook
 
-# Folder containing PDF files
-pdf_folder = 'path_to_pdf_folder'
-excel_folder = 'path_to_excel_folder'  # Folder where Excel files will be saved
-output_excel = 'combined_address_related_data.xlsx'  # Final output Excel file
-address_keywords = ['address', 'location', 'street', 'city', 'state', 'zip', 'postal']  # Add more keywords if needed
+class PDFTableExtractor:
+    def __init__(self, pdf_folder, excel_folder, output_excel, address_keywords=None):
+        self.pdf_folder = pdf_folder
+        self.excel_folder = excel_folder
+        self.output_excel = output_excel
+        self.address_keywords = address_keywords or ['address', 'location', 'street', 'city', 'state', 'zip', 'postal']
+        self.address_data_combined = {}
 
-# Create the output folder if it doesn't exist
-if not os.path.exists(excel_folder):
-    os.makedirs(excel_folder)
+        # Create the output folder if it doesn't exist
+        if not os.path.exists(self.excel_folder):
+            os.makedirs(self.excel_folder)
 
-# Dictionary to store the combined address-related data
-address_data_combined = {}
+    def extract_tables_from_pdf(self, pdf_path):
+        """
+        Extract tables from a PDF file and return them.
+        """
+        try:
+            tables = camelot.read_pdf(pdf_path, pages='all')
+            if not tables:
+                print(f"No tables found in {os.path.basename(pdf_path)}.")
+            return tables
+        except Exception as e:
+            print(f"Error extracting tables from {os.path.basename(pdf_path)}: {e}")
+            return None
 
-# Function to check if any cell in a DataFrame contains address-related keywords
-def contains_address_keywords(df):
-    for keyword in address_keywords:
-        if df.apply(lambda x: x.astype(str).str.contains(keyword, case=False, na=False).any()).any():
-            return True
-    return False
+    def contains_address_keywords(self, df):
+        """
+        Check if any cell in a DataFrame contains address-related keywords.
+        """
+        for keyword in self.address_keywords:
+            if df.apply(lambda x: x.astype(str).str.contains(keyword, case=False, na=False).any()).any():
+                return True
+        return False
 
-# Iterate over each file in the folder
-for filename in os.listdir(pdf_folder):
-    if filename.endswith('.pdf'):
-        pdf_path = os.path.join(pdf_folder, filename)
-        
-        # Extract tables from the current PDF
-        tables = camelot.read_pdf(pdf_path, pages='all')
-        
-        if not tables:
-            print(f'No tables found in {filename}. Skipping...')
-            continue
-        
-        # Create an Excel file with the name of the PDF
+    def save_tables_to_excel(self, tables, filename):
+        """
+        Save extracted tables to an Excel file with a sheet for each table.
+        """
         excel_filename = os.path.splitext(filename)[0] + '.xlsx'
-        excel_path = os.path.join(excel_folder, excel_filename)
-        
-        # List to hold address-related data for different tables in the file
-        file_data = []
+        excel_path = os.path.join(self.excel_folder, excel_filename)
 
-        # Create a Pandas Excel writer for the current PDF
+        file_data = []  # To store address-related data
+
         with pd.ExcelWriter(excel_path, engine='openpyxl') as writer:
-            sheet_count = 0  # Counter to keep track of the number of sheets written
-            
             for i, table in enumerate(tables):
-                # Convert each table to a DataFrame
                 df = table.df
-                
-                # Check if DataFrame is empty
+
                 if df.empty:
-                    print(f'Table {i+1} in {filename} is empty. Skipping...')
+                    print(f"Table {i+1} in {filename} is empty. Skipping...")
                     continue
-                
-                # Save each DataFrame to a separate sheet
+
                 sheet_name = f'Table_{i+1}'
                 df.to_excel(writer, sheet_name=sheet_name, index=False)
-                sheet_count += 1
-                
-                # Check for address-related keywords in the DataFrame
-                if contains_address_keywords(df):
+
+                # Check for address-related keywords
+                if self.contains_address_keywords(df):
                     file_data.append(df.to_string(index=False))
-                    print(f'Address-related data found in table "{sheet_name}" of file "{filename}".')
-            
-            # Verify if at least one sheet was created
-            if sheet_count == 0:
-                print(f'No valid sheets created for {filename}. Skipping...')
-                os.remove(excel_path)  # Remove empty Excel file
-                continue
-        
-        # If any address data was found, add it to the dictionary
-        if file_data:
-            address_data_combined[filename] = file_data
-        
-        print(f'Extracted tables from {filename} and saved to {excel_filename}')
+                    print(f"Address-related data found in table {i+1} of file {filename}.")
 
-# After processing all files, combine address-related data into one Excel sheet
-if address_data_combined:
-    output_data = []
-    for file_name, sheets_data in address_data_combined.items():
-        # Prepare a row for each file, placing the file name and the sheet data in separate columns
-        row = [file_name] + sheets_data
-        output_data.append(row)
+        return file_data  # Return address-related data
 
-    # Determine the maximum number of columns needed (in case different files have different numbers of sheets)
-    max_columns = max(len(row) for row in output_data)
+    def process_pdfs(self):
+        """
+        Process all PDFs in the folder, extract tables, save them, and look for address-related data.
+        """
+        for filename in os.listdir(self.pdf_folder):
+            if filename.endswith('.pdf'):
+                pdf_path = os.path.join(self.pdf_folder, filename)
+                tables = self.extract_tables_from_pdf(pdf_path)
 
-    # Create a DataFrame from the output data, filling in with NaN for missing columns
-    output_df = pd.DataFrame(output_data, columns=['File Name'] + [f'Address Data {i+1}' for i in range(max_columns - 1)])
+                if not tables:
+                    print(f"Skipping {filename} (no tables found).")
+                    continue
 
-    # Save the combined data into a single Excel sheet
-    output_df.to_excel(output_excel, index=False)
+                # Save tables to Excel and extract address-related data
+                file_data = self.save_tables_to_excel(tables, filename)
 
-    print(f"Combined address-related data saved to {output_excel}.")
-else:
-    print("No address-related data found in any of the PDFs.")
+                if file_data:
+                    self.address_data_combined[filename] = file_data
 
-print("All PDFs have been processed.")
+    def save_combined_address_data(self):
+        """
+        Save all extracted address-related data into a single Excel file.
+        """
+        if self.address_data_combined:
+            output_data = []
+            for file_name, sheets_data in self.address_data_combined.items():
+                row = [file_name] + sheets_data
+                output_data.append(row)
+
+            max_columns = max(len(row) for row in output_data)
+            output_df = pd.DataFrame(output_data, columns=['File Name'] + [f'Address Data {i+1}' for i in range(max_columns - 1)])
+
+            output_df.to_excel(self.output_excel, index=False)
+            print(f"Combined address-related data saved to {self.output_excel}.")
+        else:
+            print("No address-related data found.")
+
+    def run(self):
+        """
+        Main function to process PDFs and save address data.
+        """
+        print("Processing PDFs...")
+        self.process_pdfs()
+        print("Saving combined address data...")
+        self.save_combined_address_data()
+        print("All PDFs have been processed.")
+
+
+# Usage
+if __name__ == "__main__":
+    pdf_folder = 'path_to_pdf_folder'
+    excel_folder = 'path_to_excel_folder'
+    output_excel = 'combined_address_related_data.xlsx'
+
+    extractor = PDFTableExtractor(pdf_folder, excel_folder, output_excel)
+    extractor.run()
