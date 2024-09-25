@@ -2,18 +2,10 @@ import re
 import os
 import pandas as pd
 
-# Define the regular expression patterns for dates and titles
-new_effective_date_pattern = r'(commence\s+on\s+\w+\s+\d{1,2}[_\s]*,[_\s]*20\d{2})'
+# Updated patterns
+date_pattern = r'(?i)(?:effective\s+(?:date|from|until)\s*|commence\s+on\s*.*?)(\d{1,2}[./-]\d{1,2}[./-]\d{2,4}|\w+\s\d{1,2}[,-]?\s*\d{4})|' \
+               r'(?i)(commence\s+on\s.*?$)'  # Capture the whole line with "commence on"
 
-address_pattern = r'(?i)address\s+for\s+notice\s+to:\s*(.*?)(?=\n\s*\n|\Z)' 
-
-
-
-extracted_address = address_match.group(1).strip() if address_match else None
-
-
-date_pattern = r'(?:effective date of|commence on)\s*(\d{1,2}[./]\d{1,2}[./]\d{2,4}|\w+\s\d{1,2},\s\d{4})'|
-r'commence on\s*(\w+\s\d{1,2}[_\s]*,[_\s]*20\d{2})'  # Inc
 title_pattern = r'(?i)(facility participation agreement|' \
                 r'ancillary participation agreement|' \
                 r'ambulatory surgery center provider participation agreement|' \
@@ -22,9 +14,19 @@ title_pattern = r'(?i)(facility participation agreement|' \
                 r'physician participation agreement|' \
                 r'request for taxpayer|' \
                 r'humana\s+physician participation agreement|' \
-                r'umana\s+physician participation agreement|' \
                 r'OSF Healthplans participating specialist physician agreement|' \
                 r'humana ancillary participation agreement)'
+
+# Updated address extraction pattern
+address_pattern = r'(?i)address\s+for\s+notice\s+to:\s*(.*?)(?=\n\s*\n|\Z)'
+
+# Function to clean the text (remove extra newlines and whitespace)
+def clean_text(text):
+    # Remove excessive empty lines
+    text = re.sub(r'\n\s*\n+', '\n\n', text)
+    # Trim leading/trailing whitespaces from the entire text
+    text = text.strip()
+    return text
 
 # Define the path to the folder containing text files
 folder_path = 'path_to_your_folder'  # Replace this with your folder path
@@ -41,24 +43,38 @@ for filename in os.listdir(folder_path):
         with open(file_path, 'r', encoding='utf-8') as file:
             text = file.read()
 
+            # Clean the text before extracting information
+            text = clean_text(text)
+
             # Search for the first occurrence of the full title in the text
             title_match = re.search(title_pattern, text, re.IGNORECASE)
 
             # Search for the first occurrence of the date in the text
-            date_match = re.search(date_pattern, text, re.IGNORECASE)
+            date_matches = re.findall(date_pattern, text, re.IGNORECASE)
 
-            # Extract the title and date if found
+            # Search for the address in the text
+            address_match = re.search(address_pattern, text, re.IGNORECASE)
+
+            # Extract the title if found
             extracted_title = title_match.group(0).strip() if title_match else None
-            extracted_date = date_match.group(0).strip() if date_match else None
+            
+            # If there are matches for dates, join them. Otherwise, set to None.
+            extracted_date = "\n".join(match[0] if match[0] else match[1] for match in date_matches) if date_matches else None
+            
+            # Extract the address if found
+            extracted_address = address_match.group(1).strip() if address_match else None
 
-            # Append file name, extracted title, and date to the data list
-            data.append([filename, extracted_title, extracted_date])
+            # Print debug information
+            print(f"Filename: {filename}, Title: {extracted_title}, Date: {extracted_date}, Address: {extracted_address}")
+
+            # Append file name, extracted title, date, and address to the data list
+            data.append([filename, extracted_title, extracted_date, extracted_address])
 
 # Convert the data into a pandas DataFrame
-df = pd.DataFrame(data, columns=['File Name', 'Extracted Title', 'Extracted Date'])
+df = pd.DataFrame(data, columns=['File Name', 'Extracted Title', 'Extracted Date', 'Extracted Address'])
 
 # Write the DataFrame to an Excel file
-output_file = 'extracted_first_title_and_date.xlsx'  # Output Excel file name
+output_file = 'extracted_first_title_date_and_address.xlsx'  # Output Excel file name
 df.to_excel(output_file, index=False, engine='openpyxl')
 
-print(f"First occurrence of titles and dates has been written to {output_file}")
+print(f"First occurrence of titles, dates, and addresses has been written to {output_file}")
