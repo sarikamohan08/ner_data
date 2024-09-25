@@ -2,11 +2,12 @@ import re
 import os
 import pandas as pd
 
-# Define the regular expression pattern
-pattern = r'(?:effective date of|commence on)\s*(\d{1,2}[./]\d{1,2}[./]\d{2,4}|\w+\s\d{1,2},\s\d{4})'
+# Define the regular expression patterns
+date_pattern = r'(?:effective date of|commence on)\s*(\d{1,2}[./]\d{1,2}[./]\d{2,4}|\w+\s\d{1,2},\s\d{4})'
+title_pattern = r'(?:facility|ancillary|ambulatory surgery center provider|physician and ancillary)\s+participation agreement'
 
 # Define the path to the folder containing text files
-folder_path = 'path_to_your_folder'  # Replace this with your folder path
+folder_path = 'path_to_your_folder'  # Replace with your folder path
 
 # List to store data for the Excel sheet
 data = []
@@ -20,19 +21,23 @@ for filename in os.listdir(folder_path):
         with open(file_path, 'r', encoding='utf-8') as file:
             text = file.read()
 
-            # Find all matches in the text
-            matches = re.findall(pattern, text, re.IGNORECASE)
+            # Find all matches for dates in the text
+            date_matches = re.findall(date_pattern, text, re.IGNORECASE)
 
-            # Append file name and matched dates to the data list
-            if matches:
-                for date in matches:
-                    data.append([filename, date])
+            # Find all matches for titles in the text
+            title_matches = re.findall(title_pattern, text, re.IGNORECASE)
+
+            # Append file name, extracted title, and extracted date to the data list
+            if date_matches or title_matches:
+                for date in date_matches:
+                    for title in title_matches:
+                        data.append([filename, title, date])
 
 # Convert the data into a pandas DataFrame
-df = pd.DataFrame(data, columns=['File Name', 'Extracted Date'])
+df = pd.DataFrame(data, columns=['File Name', 'Extracted Title', 'Extracted Date'])
 
 # Write the DataFrame to an Excel file
-output_file = 'extracted_dates.xlsx'  # Output Excel file name
+output_file = 'extracted_titles_and_dates.xlsx'  # Output Excel file name
 df.to_excel(output_file, index=False, engine='openpyxl')
 
-print(f"Extracted dates have been written to {output_file}")
+print(f"Extracted titles and dates have been written to {output_file}")
