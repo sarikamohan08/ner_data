@@ -4,7 +4,8 @@ import pandas as pd
 
 # Define the regular expression patterns for dates and titles
 
-new_effective_date_pattern = r'commence\s+on\s+(\w+)\s+(\d{1,2})[_\s]*,[_\s]*(20\d{2})'
+new_effective_date_pattern = r'commence\s+on\s+(\w+)\s+(\d{1,2})[_\s]*,[_\s]*(20\d{2})|commence\s+on\s+\w+\s+\d{1,2}[_\s]*,[_\s]*20\d{2}'
+
 date_pattern = r'(?:effective date of|commence on)\s*(\d{1,2}[./]\d{1,2}[./]\d{2,4}|\w+\s\d{1,2},\s\d{4})'|
 r'commence on\s*(\w+\s\d{1,2}[_\s]*,[_\s]*20\d{2})'  # Inc
 title_pattern = r'(?i)(facility participation agreement|' \
