@@ -2,8 +2,7 @@ import re
 import os
 import pandas as pd
 
-# Define the regular expression pattern for dates and the specific full titles
-date_pattern = r'(?:effective date of|commence on)\s*(\d{1,2}[./]\d{1,2}[./]\d{2,4}|\w+\s\d{1,2},\s\d{4})'
+# Define the regular expression pattern for the specific full titles
 title_pattern = r'(?i)(facility participation agreement|' \
                 r'ancillary participation agreement|' \
                 r'ambulatory surgery center provider participation agreement|' \
@@ -31,29 +30,18 @@ for filename in os.listdir(folder_path):
         with open(file_path, 'r', encoding='utf-8') as file:
             text = file.read()
 
-            # Find all date matches in the text
-            date_matches = re.findall(date_pattern, text, re.IGNORECASE)
+            # Search for the first occurrence of the full title in the text
+            title_match = re.search(title_pattern, text, re.IGNORECASE)
 
-            # Find all full title matches in the text
-            title_matches = re.findall(title_pattern, text, re.IGNORECASE)
-
-            # Append file name, matched titles, and dates to the data list
-            if date_matches or title_matches:
-                for date in date_matches:
-                    for title in title_matches:
-                        data.append([filename, title.strip(), date])
-                if not date_matches and title_matches:  # If only title exists
-                    for title in title_matches:
-                        data.append([filename, title.strip(), None])
-                if not title_matches and date_matches:  # If only date exists
-                    for date in date_matches:
-                        data.append([filename, None, date])
+            # If a match is found, append the file name and title to the data list
+            if title_match:
+                data.append([filename, title_match.group(0).strip()])
 
 # Convert the data into a pandas DataFrame
-df = pd.DataFrame(data, columns=['File Name', 'Extracted Title', 'Extracted Date'])
+df = pd.DataFrame(data, columns=['File Name', 'Extracted Title'])
 
 # Write the DataFrame to an Excel file
-output_file = 'extracted_specific_titles_and_dates.xlsx'  # Output Excel file name
+output_file = 'extracted_first_title.xlsx'  # Output Excel file name
 df.to_excel(output_file, index=False, engine='openpyxl')
 
-print(f"Extracted specific titles and dates have been written to {output_file}")
+print(f"First occurrence of titles has been written to {output_file}")
