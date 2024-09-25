@@ -5,7 +5,8 @@ import pandas as pd
 # Define the regular expression patterns for dates and titles
 new_effective_date_pattern = r'(commence\s+on\s+\w+\s+\d{1,2}[_\s]*,[_\s]*20\d{2})'
 
-address_pattern = r'(?i)(?:address\s*to\s*notice\s*for\s*|address\s*for\s*notice\s*of\s*)(.*?)(?:\n|$)'
+address_pattern = r'(?i)(?:address\s*to\s*notice\s*for\s*|address\s*for\s*notice\s*of\s*)(.*?)(?:\n\n|\Z)'  # Matches until a double newline or end of text
+
 
 extracted_address = address_match.group(1).strip() if address_match else None
 
