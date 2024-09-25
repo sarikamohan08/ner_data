@@ -2,12 +2,12 @@ import re
 import os
 import pandas as pd
 
-# Define the regular expression patterns
+# Define the regular expression pattern for dates and titles
 date_pattern = r'(?:effective date of|commence on)\s*(\d{1,2}[./]\d{1,2}[./]\d{2,4}|\w+\s\d{1,2},\s\d{4})'
-title_pattern = r'(?:facility|ancillary|ambulatory surgery center provider|physician and ancillary)\s+participation agreement'
+title_pattern = r'(?i)(facility|ancillary|ambulatory surgery center provider|physician and ancillary|group|physician|request for taxpayer|humana\s+physician|umana\s+physician|OSF Healthplans participating specialist physician|humana ancillary)\s+participation\s+agreement'
 
 # Define the path to the folder containing text files
-folder_path = 'path_to_your_folder'  # Replace with your folder path
+folder_path = 'path_to_your_folder'  # Replace this with your folder path
 
 # List to store data for the Excel sheet
 data = []
@@ -21,17 +21,23 @@ for filename in os.listdir(folder_path):
         with open(file_path, 'r', encoding='utf-8') as file:
             text = file.read()
 
-            # Find all matches for dates in the text
+            # Find all date matches in the text
             date_matches = re.findall(date_pattern, text, re.IGNORECASE)
 
-            # Find all matches for titles in the text
+            # Find all title matches in the text
             title_matches = re.findall(title_pattern, text, re.IGNORECASE)
 
-            # Append file name, extracted title, and extracted date to the data list
+            # Append file name, matched titles, and dates to the data list
             if date_matches or title_matches:
                 for date in date_matches:
                     for title in title_matches:
-                        data.append([filename, title, date])
+                        data.append([filename, title.strip(), date])
+                if not date_matches and title_matches:  # If only title exists
+                    for title in title_matches:
+                        data.append([filename, title.strip(), None])
+                if not title_matches and date_matches:  # If only date exists
+                    for date in date_matches:
+                        data.append([filename, None, date])
 
 # Convert the data into a pandas DataFrame
 df = pd.DataFrame(data, columns=['File Name', 'Extracted Title', 'Extracted Date'])
