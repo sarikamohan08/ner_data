@@ -1,97 +1,183 @@
-import re
 import os
+import camelot
 import pandas as pd
+from openpyxl import Workbook
 
-# Updated date pattern to handle various separators
-date_pattern = r'(?i)(?:effective\s+(?:date|from|until)\s*|commence\s+on\s*[-_\s]*)(\w+\s*\d{1,2}[-_\s,]*20\d{2})'
+class PDFTableExtractor:
+    def __init__(self, pdf_folder, excel_folder, output_excel, address_keywords=None):
+        self.pdf_folder = pdf_folder
+        self.excel_folder = excel_folder
+        self.output_excel = output_excel
+        self.address_keywords = address_keywords or ['address', 'location', 'street', 'city', 'state', 'zip', 'postal']
+        self.service_address_keyword = 'service address'
+        self.address_data_combined = {}
+        self.service_address_data_combined = {}
 
-# Updated title extraction pattern
-title_pattern = r'(?i)(facility participation agreement|' \
-                r'ancillary participation agreement|' \
-                r'ambulatory surgery center provider participation agreement|' \
-                r'physician and ancillary participation agreement|' \
-                r'group participation agreement|' \
-                r'physician participation agreement|' \
-                r'request for taxpayer|' \
-                r'humana\s+physician participation agreement|' \
-                r'OSF Healthplans participating specialist physician agreement|' \
-                r'humana ancillary participation agreement)'
+        # Create the output folder if it doesn't exist
+        if not os.path.exists(self.excel_folder):
+            os.makedirs(self.excel_folder)
 
-# Address extraction pattern: match 'address for notice' and capture the next 6-8 lines
-address_keyword_pattern = r'(?i)address\s+for\s+notice'
+    def extract_tables_from_pdf(self, pdf_path):
+        """
+        Extract tables from a PDF file and return them.
+        """
+        try:
+            tables = camelot.read_pdf(pdf_path, pages='all')
+            if not tables:
+                print(f"No tables found in {os.path.basename(pdf_path)}.")
+            return tables
+        except Exception as e:
+            print(f"Error extracting tables from {os.path.basename(pdf_path)}: {e}")
+            return None
 
-# Function to clean the text (remove extra newlines and whitespace)
-def clean_text(text):
-    # Remove excessive empty lines and any extra spaces around the text
-    text = re.sub(r'\n\s*\n+', '\n', text)  # Replace multiple newlines with a single newline
-    text = re.sub(r'\s+', ' ', text)  # Collapse multiple spaces into a single space
-    text = text.strip()  # Remove leading and trailing whitespaces
-    return text
+    def contains_keywords(self, df, keyword_list):
+        """
+        Check if any cell in a DataFrame contains any keyword from a given list.
+        """
+        for keyword in keyword_list:
+            if df.apply(lambda x: x.astype(str).str.contains(keyword, case=False, na=False).any()).any():
+                return True
+        return False
 
-# Function to extract the block of lines after the address keyword
-def extract_address_block(text, keyword_pattern, num_lines=8):
-    # Search for the keyword in the text
-    keyword_match = re.search(keyword_pattern, text)
-    if keyword_match:
-        # Split the text into lines starting from after the keyword
-        start_pos = keyword_match.end()  # Start extracting after the keyword
-        lines_after_keyword = text[start_pos:].splitlines()[:num_lines]  # Extract the next 'num_lines' lines
-        
-        # Join the lines and clean up the address block
-        address_block = "\n".join(lines_after_keyword).strip()
-        address_block = clean_text(address_block)  # Clean the extracted address block
-        
-        return address_block
-    return None
+    def save_tables_to_excel(self, tables, filename):
+        """
+        Save extracted tables to an Excel file with a sheet for each table.
+        """
+        excel_filename = os.path.splitext(filename)[0] + '.xlsx'
+        excel_path = os.path.join(self.excel_folder, excel_filename)
 
-# Define the path to the folder containing text files
-folder_path = 'path_to_your_folder'  # Replace this with your folder path
+        file_data = []  # To store address-related data
+        service_address_data = []  # To store service address data
 
-# List to store data for the Excel sheet
-data = []
+        with pd.ExcelWriter(excel_path, engine='openpyxl') as writer:
+            for i, table in enumerate(tables):
+                df = table.df
 
-# Iterate through all text files in the folder
-for filename in os.listdir(folder_path):
-    if filename.endswith('.txt'):  # Process only .txt files
-        file_path = os.path.join(folder_path, filename)
+                if df.empty:
+                    print(f"Table {i+1} in {filename} is empty. Skipping...")
+                    continue
 
-        # Open and read the contents of the file
-        with open(file_path, 'r', encoding='utf-8') as file:
-            text = file.read()
+                sheet_name = f'Table_{i+1}'
+                df.to_excel(writer, sheet_name=sheet_name, index=False)
 
-            # Clean the text before extracting information
-            text = clean_text(text)
+                # Check for address-related keywords
+                if self.contains_keywords(df, self.address_keywords):
+                    file_data.append(df.to_string(index=False))
+                    print(f"Address-related data found in table {i+1} of file {filename}.")
 
-            # Search for the first occurrence of the full title in the text
-            title_match = re.search(title_pattern, text, re.IGNORECASE)
+                # Check for service address specifically
+                if self.contains_keywords(df, [self.service_address_keyword]):
+                    service_address_data.append(df.to_string(index=False))
+                    print(f"Service Address data found in table {i+1} of file {filename}.")
 
-            # Search for the first occurrence of the date in the text
-            date_matches = re.findall(date_pattern, text, re.IGNORECASE)
+        return file_data, service_address_data  # Return both address-related and service address data
 
-            # Search for and extract the address block (next 6-8 lines after "address for notice")
-            extracted_address = extract_address_block(text, address_keyword_pattern)
+    def process_pdfs(self):
+        """
+        Process all PDFs in the folder, extract tables, save them, and look for address-related and service address data.
+        """
+        for filename in os.listdir(self.pdf_folder):
+            if filename.endswith('.pdf'):
+                pdf_path = os.path.join(self.pdf_folder, filename)
+                tables = self.extract_tables_from_pdf(pdf_path)
 
-            # Extract the title if found
-            extracted_title = title_match.group(0).strip() if title_match else None
-            
-            # If there are matches for dates, join them. Otherwise, set to None.
-            extracted_date = "\n".join(date for date in date_matches) if date_matches else None
+                if not tables:
+                    print(f"Skipping {filename} (no tables found).")
+                    continue
 
-            # Print debug information to understand what's happening
-            print(f"Filename: {filename}")
-            print(f"Extracted Title: {extracted_title}")
-            print(f"Extracted Date: {extracted_date}")
-            print(f"Extracted Address: {extracted_address}")
-            print("="*50)  # Separator for clarity
+                # Save tables to Excel and extract address-related and service address data
+                file_data, service_address_data = self.save_tables_to_excel(tables, filename)
 
-            # Append file name, extracted title, date, and address to the data list
-            data.append([filename, extracted_title, extracted_date, extracted_address])
+                if file_data:
+                    self.address_data_combined[filename] = file_data
 
-# Convert the data into a pandas DataFrame
-df = pd.DataFrame(data, columns=['File Name', 'Extracted Title', 'Extracted Date', 'Extracted Address'])
+                if service_address_data:
+                    self.service_address_data_combined[filename] = service_address_data
 
-# Write the DataFrame to an Excel file
-output_file = 'extracted_first_title_date_and_address.xlsx'  # Output Excel file name
-df.to_excel(output_file, index=False, engine='openpyxl')
+    def save_combined_address_data(self):
+        """
+        Save all extracted address-related data into a single Excel file.
+        """
+        if self.address_data_combined:
+            output_data = []
+            for file_name, sheets_data in self.address_data_combined.items():
+                row = [file_name] + sheets_data
+                output_data.append(row)
 
-print(f"First occurrence of titles, dates, and addresses has been written to {output_file}")
+            max_columns = max(len(row) for row in output_data)
+            output_df = pd.DataFrame(output_data, columns=['File Name'] + [f'Address Data {i+1}' for i in range(max_columns - 1)])
+
+            return output_df
+        else:
+            print("No address-related data found.")
+            return pd.DataFrame()
+
+    def save_combined_service_address_data(self):
+        """
+        Save all extracted service address data into a separate Excel file.
+        """
+        if self.service_address_data_combined:
+            output_data = []
+            for file_name, sheets_data in self.service_address_data_combined.items():
+                row = [file_name] + sheets_data
+                output_data.append(row)
+
+            max_columns = max(len(row) for row in output_data)
+            output_df = pd.DataFrame(output_data, columns=['File Name'] + [f'Service Address {i+1}' for i in range(max_columns - 1)])
+
+            return output_df
+        else:
+            print("No service address data found.")
+            return pd.DataFrame()
+
+    def merge_with_other_df(self, other_df):
+        """
+        Merge the address-related data and service address data with another DataFrame based on the filename.
+        """
+        # Extract the combined address-related data into a DataFrame
+        combined_address_df = self.save_combined_address_data()
+
+        # Extract service address data into a DataFrame
+        combined_service_address_df = self.save_combined_service_address_data()
+
+        if combined_address_df.empty and combined_service_address_df.empty:
+            print("No address or service address data available to merge.")
+            return other_df
+
+        # Merge with the other DataFrame on 'File Name'
+        merged_df = pd.merge(other_df, combined_address_df, how='left', left_on='filename_column', right_on='File Name')
+
+        # Merge the service address data separately
+        merged_df = pd.merge(merged_df, combined_service_address_df, how='left', on='File Name', suffixes=('', '_cam'))
+
+        return merged_df
+
+    def run(self, other_df_path, merged_output_excel):
+        """
+        Main function to process PDFs, merge with another DataFrame, and save the final result.
+        """
+        print("Processing PDFs...")
+        self.process_pdfs()
+
+        print("Merging with the provided DataFrame...")
+        # Load the other DataFrame (assuming it's in CSV format; adjust accordingly if it's in a different format)
+        other_df = pd.read_csv(other_df_path)
+
+        # Merge the extracted data with the other DataFrame
+        merged_df = self.merge_with_other_df(other_df)
+
+        print(f"Saving the merged data to {merged_output_excel}...")
+        merged_df.to_excel(merged_output_excel, index=False)
+        print("All PDFs have been processed and data merged successfully.")
+
+
+# Usage
+if __name__ == "__main__":
+    pdf_folder = 'path_to_pdf_folder'
+    excel_folder = 'path_to_excel_folder'
+    output_excel = 'combined_address_related_data.xlsx'
+    other_df_path = 'path_to_other_df.csv'  # Path to the other DataFrame (e.g., a CSV file)
+    merged_output_excel = 'merged_output.xlsx'  # Output Excel file after merging
+
+    extractor = PDFTableExtractor(pdf_folder, excel_folder, output_excel)
+    extractor.run(other_df_path, merged_output_excel)
