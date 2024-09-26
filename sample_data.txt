@@ -8,10 +8,17 @@ class PDFTableExtractor:
         self.pdf_folder = pdf_folder
         self.excel_folder = excel_folder
         self.output_excel = output_excel
+
+        # Define all the keywords for different address/contact information
         self.address_keywords = address_keywords or ['address', 'location', 'street', 'city', 'state', 'zip', 'postal']
         self.service_address_keyword = 'service address'
-        self.address_data_combined = {}
-        self.service_address_data_combined = {}
+        self.remit_address_keyword = 'remit address'
+        self.notice_address_keyword = 'notice address'
+        self.contract_contact_keyword = 'contract contact information'
+        self.contact_information_keyword = 'contact information'
+
+        # Storage for extracted data
+        self.extracted_data_combined = []
 
         # Create the output folder if it doesn't exist
         if not os.path.exists(self.excel_folder):
@@ -39,6 +46,34 @@ class PDFTableExtractor:
                 return True
         return False
 
+    def extract_address_data(self, df):
+        """
+        Extract data related to different address categories from a DataFrame.
+        """
+        address_data = {'address': '', 'service_address': '', 'remit_address': '', 'notice_address': '', 'contract_contact': '', 'contact_information': ''}
+
+        # Check for general address-related data
+        if self.contains_keywords(df, self.address_keywords):
+            address_data['address'] = df.to_string(index=False)
+
+        # Check for specific address/contact categories
+        if self.contains_keywords(df, [self.service_address_keyword]):
+            address_data['service_address'] = df.to_string(index=False)
+
+        if self.contains_keywords(df, [self.remit_address_keyword]):
+            address_data['remit_address'] = df.to_string(index=False)
+
+        if self.contains_keywords(df, [self.notice_address_keyword]):
+            address_data['notice_address'] = df.to_string(index=False)
+
+        if self.contains_keywords(df, [self.contract_contact_keyword]):
+            address_data['contract_contact'] = df.to_string(index=False)
+
+        if self.contains_keywords(df, [self.contact_information_keyword]):
+            address_data['contact_information'] = df.to_string(index=False)
+
+        return address_data
+
     def save_tables_to_excel(self, tables, filename):
         """
         Save extracted tables to an Excel file with a sheet for each table.
@@ -46,8 +81,7 @@ class PDFTableExtractor:
         excel_filename = os.path.splitext(filename)[0] + '.xlsx'
         excel_path = os.path.join(self.excel_folder, excel_filename)
 
-        file_data = []  # To store address-related data
-        service_address_data = []  # To store service address data
+        extracted_file_data = {'File Name': filename, 'address': '', 'service_address': '', 'remit_address': '', 'notice_address': '', 'contract_contact': '', 'contact_information': ''}
 
         with pd.ExcelWriter(excel_path, engine='openpyxl') as writer:
             for i, table in enumerate(tables):
@@ -60,21 +94,20 @@ class PDFTableExtractor:
                 sheet_name = f'Table_{i+1}'
                 df.to_excel(writer, sheet_name=sheet_name, index=False)
 
-                # Check for address-related keywords
-                if self.contains_keywords(df, self.address_keywords):
-                    file_data.append(df.to_string(index=False))
-                    print(f"Address-related data found in table {i+1} of file {filename}.")
+                # Extract address-related data from this table
+                extracted_data = self.extract_address_data(df)
 
-                # Check for service address specifically
-                if self.contains_keywords(df, [self.service_address_keyword]):
-                    service_address_data.append(df.to_string(index=False))
-                    print(f"Service Address data found in table {i+1} of file {filename}.")
+                # Update the extracted_file_data dictionary with the address data from this table
+                for key in extracted_data:
+                    if extracted_data[key]:  # If we have data for this category, concatenate it
+                        extracted_file_data[key] += f"Table {i+1}:\n{extracted_data[key]}\n\n"
 
-        return file_data, service_address_data  # Return both address-related and service address data
+        # Append the extracted file data to the combined list
+        self.extracted_data_combined.append(extracted_file_data)
 
     def process_pdfs(self):
         """
-        Process all PDFs in the folder, extract tables, save them, and look for address-related and service address data.
+        Process all PDFs in the folder, extract tables, and extract address-related data.
         """
         for filename in os.listdir(self.pdf_folder):
             if filename.endswith('.pdf'):
@@ -85,77 +118,38 @@ class PDFTableExtractor:
                     print(f"Skipping {filename} (no tables found).")
                     continue
 
-                # Save tables to Excel and extract address-related and service address data
-                file_data, service_address_data = self.save_tables_to_excel(tables, filename)
-
-                if file_data:
-                    self.address_data_combined[filename] = file_data
-
-                if service_address_data:
-                    self.service_address_data_combined[filename] = service_address_data
+                # Save tables to Excel and extract address-related data
+                self.save_tables_to_excel(tables, filename)
 
     def save_combined_address_data(self):
         """
-        Save all extracted address-related data into a single Excel file.
+        Save all extracted address-related data into a single Excel file with separate columns for each category.
         """
-        if self.address_data_combined:
-            output_data = []
-            for file_name, sheets_data in self.address_data_combined.items():
-                row = [file_name] + sheets_data
-                output_data.append(row)
+        if self.extracted_data_combined:
+            output_df = pd.DataFrame(self.extracted_data_combined)
 
-            max_columns = max(len(row) for row in output_data)
-            output_df = pd.DataFrame(output_data, columns=['File Name'] + [f'Address Data {i+1}' for i in range(max_columns - 1)])
-
-            return output_df
+            # Save the combined data to a single Excel file
+            output_df.to_excel(self.output_excel, index=False)
+            print(f"All address-related data saved to {self.output_excel}.")
         else:
             print("No address-related data found.")
-            return pd.DataFrame()
-
-    def save_combined_service_address_data(self):
-        """
-        Save all extracted service address data into a separate Excel file.
-        """
-        if self.service_address_data_combined:
-            output_data = []
-            for file_name, sheets_data in self.service_address_data_combined.items():
-                row = [file_name] + sheets_data
-                output_data.append(row)
-
-            max_columns = max(len(row) for row in output_data)
-            output_df = pd.DataFrame(output_data, columns=['File Name'] + [f'Service Address {i+1}' for i in range(max_columns - 1)])
-
-            return output_df
-        else:
-            print("No service address data found.")
-            return pd.DataFrame()
 
     def run(self):
         """
-        Main function to process PDFs and save the extracted address and service address data into separate Excel files.
+        Main function to process PDFs and save the extracted data into a single Excel file with separate columns.
         """
         print("Processing PDFs...")
         self.process_pdfs()
 
-        # Save combined address-related data
-        combined_address_df = self.save_combined_address_data()
-        if not combined_address_df.empty:
-            combined_address_df.to_excel(self.output_excel, index=False)
-            print(f"Address-related data saved to {self.output_excel}.")
-
-        # Save combined service address-related data
-        service_address_output_excel = self.output_excel.replace('.xlsx', '_service_address.xlsx')
-        combined_service_address_df = self.save_combined_service_address_data()
-        if not combined_service_address_df.empty:
-            combined_service_address_df.to_excel(service_address_output_excel, index=False)
-            print(f"Service address data saved to {service_address_output_excel}.")
+        print("Saving combined address-related data...")
+        self.save_combined_address_data()
 
 
 # Usage
 if __name__ == "__main__":
     pdf_folder = 'path_to_pdf_folder'
     excel_folder = 'path_to_excel_folder'
-    output_excel = 'combined_address_related_data.xlsx'
+    output_excel = 'combined_address_data.xlsx'  # Single output file for all address-related data
 
     extractor = PDFTableExtractor(pdf_folder, excel_folder, output_excel)
     extractor.run()
