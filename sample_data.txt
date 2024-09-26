@@ -2,10 +2,10 @@ import re
 import os
 import pandas as pd
 
-# Updated patterns
-date_pattern = r'(?i)(?:effective\s+(?:date|from|until)\s*|commence\s+on\s*.*?)(\d{1,2}[./-]\d{1,2}[./-]\d{2,4}|\w+\s\d{1,2}[,-]?\s*\d{4})|' \
-               r'(?i)(commence\s+on\s.*?$)'  # Capture the whole line with "commence on"
+# Updated date pattern to handle various separators
 date_pattern = r'(?i)(?:effective\s+(?:date|from|until)\s*|commence\s+on\s*[-_\s]*)(\w+\s*\d{1,2}[-_\s,]*20\d{2})'
+
+# Updated title extraction pattern
 title_pattern = r'(?i)(facility participation agreement|' \
                 r'ancillary participation agreement|' \
                 r'ambulatory surgery center provider participation agreement|' \
@@ -17,16 +17,31 @@ title_pattern = r'(?i)(facility participation agreement|' \
                 r'OSF Healthplans participating specialist physician agreement|' \
                 r'humana ancillary participation agreement)'
 
-# Updated address extraction pattern
-address_pattern = r'(?i)address\s+for\s+notice\s+to:\s*(.*?)(?=\n\s*\n|\Z)'
+# Address extraction pattern: match 'address for notice' and capture the next 6-8 lines
+address_keyword_pattern = r'(?i)address\s+for\s+notice'
 
 # Function to clean the text (remove extra newlines and whitespace)
 def clean_text(text):
-    # Remove excessive empty lines
-    text = re.sub(r'\n\s*\n+', '\n\n', text)
-    # Trim leading/trailing whitespaces from the entire text
-    text = text.strip()
+    # Remove excessive empty lines and any extra spaces around the text
+    text = re.sub(r'\n\s*\n+', '\n', text)  # Replace multiple newlines with a single newline
+    text = text.strip()  # Remove leading and trailing whitespaces
     return text
+
+# Function to extract the block of lines after the address keyword
+def extract_address_block(text, keyword_pattern, num_lines=8):
+    # Search for the keyword in the text
+    keyword_match = re.search(keyword_pattern, text)
+    if keyword_match:
+        # If found, extract the following lines after the keyword
+        start_pos = keyword_match.end()  # Start after the keyword
+        lines_after_keyword = text[start_pos:].splitlines()[:num_lines]  # Extract the next 'num_lines' lines
+        
+        # Join the lines and clean up
+        address_block = "\n".join(lines_after_keyword).strip()
+        address_block = clean_text(address_block)  # Clean the extracted address block
+        
+        return address_block
+    return None
 
 # Define the path to the folder containing text files
 folder_path = 'path_to_your_folder'  # Replace this with your folder path
@@ -52,17 +67,14 @@ for filename in os.listdir(folder_path):
             # Search for the first occurrence of the date in the text
             date_matches = re.findall(date_pattern, text, re.IGNORECASE)
 
-            # Search for the address in the text
-            address_match = re.search(address_pattern, text, re.IGNORECASE)
+            # Search for and extract the address block (next 6-8 lines after "address for notice")
+            extracted_address = extract_address_block(text, address_keyword_pattern)
 
             # Extract the title if found
             extracted_title = title_match.group(0).strip() if title_match else None
             
             # If there are matches for dates, join them. Otherwise, set to None.
-            extracted_date = "\n".join(match[0] if match[0] else match[1] for match in date_matches) if date_matches else None
-            
-            # Extract the address if found
-            extracted_address = address_match.group(1).strip() if address_match else None
+            extracted_date = "\n".join(date for date in date_matches) if date_matches else None
 
             # Print debug information
             print(f"Filename: {filename}, Title: {extracted_title}, Date: {extracted_date}, Address: {extracted_address}")
