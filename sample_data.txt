@@ -5,7 +5,7 @@ import pandas as pd
 # Updated patterns
 date_pattern = r'(?i)(?:effective\s+(?:date|from|until)\s*|commence\s+on\s*.*?)(\d{1,2}[./-]\d{1,2}[./-]\d{2,4}|\w+\s\d{1,2}[,-]?\s*\d{4})|' \
                r'(?i)(commence\s+on\s.*?$)'  # Capture the whole line with "commence on"
-date_pattern =  r'(?i)(?:effective\s+(?:date|from|until)\s*|commence\s+on\s*[-\s]*)(\w+\s*\d{1,2}[-\s,]*20\d{2})'
+date_pattern = r'(?i)(?:effective\s+(?:date|from|until)\s*|commence\s+on\s*[-_\s]*)(\w+\s*\d{1,2}[-_\s,]*20\d{2})'
 title_pattern = r'(?i)(facility participation agreement|' \
                 r'ancillary participation agreement|' \
                 r'ambulatory surgery center provider participation agreement|' \
