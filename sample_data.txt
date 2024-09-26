@@ -130,45 +130,25 @@ class PDFTableExtractor:
             print("No service address data found.")
             return pd.DataFrame()
 
-    def merge_with_other_df(self, other_df):
+    def run(self):
         """
-        Merge the address-related data and service address data with another DataFrame based on the filename.
-        """
-        # Extract the combined address-related data into a DataFrame
-        combined_address_df = self.save_combined_address_data()
-
-        # Extract service address data into a DataFrame
-        combined_service_address_df = self.save_combined_service_address_data()
-
-        if combined_address_df.empty and combined_service_address_df.empty:
-            print("No address or service address data available to merge.")
-            return other_df
-
-        # Merge with the other DataFrame on 'File Name'
-        merged_df = pd.merge(other_df, combined_address_df, how='left', left_on='filename_column', right_on='File Name')
-
-        # Merge the service address data separately
-        merged_df = pd.merge(merged_df, combined_service_address_df, how='left', on='File Name', suffixes=('', '_cam'))
-
-        return merged_df
-
-    def run(self, other_df_path, merged_output_excel):
-        """
-        Main function to process PDFs, merge with another DataFrame, and save the final result.
+        Main function to process PDFs and save the extracted address and service address data into separate Excel files.
         """
         print("Processing PDFs...")
         self.process_pdfs()
 
-        print("Merging with the provided DataFrame...")
-        # Load the other DataFrame (assuming it's in CSV format; adjust accordingly if it's in a different format)
-        other_df = pd.read_csv(other_df_path)
+        # Save combined address-related data
+        combined_address_df = self.save_combined_address_data()
+        if not combined_address_df.empty:
+            combined_address_df.to_excel(self.output_excel, index=False)
+            print(f"Address-related data saved to {self.output_excel}.")
 
-        # Merge the extracted data with the other DataFrame
-        merged_df = self.merge_with_other_df(other_df)
-
-        print(f"Saving the merged data to {merged_output_excel}...")
-        merged_df.to_excel(merged_output_excel, index=False)
-        print("All PDFs have been processed and data merged successfully.")
+        # Save combined service address-related data
+        service_address_output_excel = self.output_excel.replace('.xlsx', '_service_address.xlsx')
+        combined_service_address_df = self.save_combined_service_address_data()
+        if not combined_service_address_df.empty:
+            combined_service_address_df.to_excel(service_address_output_excel, index=False)
+            print(f"Service address data saved to {service_address_output_excel}.")
 
 
 # Usage
@@ -176,8 +156,6 @@ if __name__ == "__main__":
     pdf_folder = 'path_to_pdf_folder'
     excel_folder = 'path_to_excel_folder'
     output_excel = 'combined_address_related_data.xlsx'
-    other_df_path = 'path_to_other_df.csv'  # Path to the other DataFrame (e.g., a CSV file)
-    merged_output_excel = 'merged_output.xlsx'  # Output Excel file after merging
 
     extractor = PDFTableExtractor(pdf_folder, excel_folder, output_excel)
-    extractor.run(other_df_path, merged_output_excel)
+    extractor.run()
