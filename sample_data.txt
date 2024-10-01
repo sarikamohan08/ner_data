@@ -8,6 +8,8 @@ pattern = r'(Federal Tax Id Number:\s*(EIN:\s*)?|\bEIN:\s*)\s*\n?\s*(\d{2,}-?\d{
 
 pattern = r'(Federal Tax Id Number:\s*(EIN:\s*)?|EIN:\s*)\n?\s*(\d{2,}-?\d{2,}-?\d{4,}|\d{7,})'
 pattern = r'(Federal Tax Id Number\s*:\s*(EIN:\s*)?|EIN:\s*)\n?\s*(\d{2,}-?\d{2,}-?\d{4,}|\d{7,})'
+pattern = r'(Federal Tax Id Number:\s*(EIN:\s*)?|EIN:\s*)\n?\s*(\d{2,}-?\d{2,}-?\d{4,}|\d{7,})'
+
 
 import os
 import camelot
