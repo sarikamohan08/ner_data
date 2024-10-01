@@ -3,7 +3,7 @@ pattern = r'^.*effective date.*$'
 pattern = r'.*Federal Tax Id Number:\s*(EIN:\s*)?\S+.*'
 
 
-
+pattern = r'.*(Federal Tax Id Number:\s*(EIN:\s*)?|\bEIN:\s*)\d{2}-?\d{2,}-?\d{4,}.*'
 import os
 import camelot
 import pandas as pd
