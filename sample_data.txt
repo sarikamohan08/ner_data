@@ -1,5 +1,7 @@
 pattern = r'^.*effective date.*$'
 
+pattern = r'.*Federal Tax Id Number:\s*(EIN:\s*)?\S+.*'
+
 
 
 import os
