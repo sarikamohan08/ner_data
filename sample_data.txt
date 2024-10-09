@@ -10,14 +10,6 @@ pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tessera
 
 class TaxIDProcessor:
     def __init__(self, input_folder, output_folder, excel_file, taxid_column):
-        """
-        Initialize the TaxIDProcessor with input/output folders and Excel file with Tax IDs.
-        
-        :param input_folder: The path to the input folder containing tax ID subfolders.
-        :param output_folder: The path to the output folder where results will be stored.
-        :param excel_file: The path to the Excel file containing the list of Tax IDs.
-        :param taxid_column: The column name in the Excel file where Tax IDs are listed.
-        """
         self.input_folder = input_folder
         self.output_folder = output_folder
         self.excel_file = excel_file
@@ -28,22 +20,13 @@ class TaxIDProcessor:
         os.makedirs(self.output_folder, exist_ok=True)
 
     def read_taxid_from_excel(self):
-        """
-        Read the list of Tax IDs from the given Excel file.
-        
-        :return: A list of Tax IDs extracted from the specified column in the Excel file.
-        """
         df = pd.read_excel(self.excel_file)
         return df[self.taxid_column].astype(str).tolist()  # Convert to string to match folder names
 
     def process_taxid_folders(self):
-        """
-        Process the folders corresponding to the Tax IDs from the Excel file.
-        """
-        # Loop through each Tax ID from the Excel file
         for tax_id in self.taxid_list:
             tax_id_path = os.path.join(self.input_folder, tax_id)
-            if os.path.isdir(tax_id_path):  # Check if the folder for the Tax ID exists
+            if os.path.isdir(tax_id_path):
                 output_subfolder = os.path.join(self.output_folder, tax_id)
                 os.makedirs(output_subfolder, exist_ok=True)
                 self.process_subfolders(tax_id_path, output_subfolder)
@@ -51,12 +34,8 @@ class TaxIDProcessor:
                 print(f"Folder for Tax ID {tax_id} does not exist. Skipping...")
 
     def process_subfolders(self, tax_id_path, output_subfolder):
-        """
-        Process the subfolders inside each Tax ID folder, extracting text and tables.
-        """
         for item in os.listdir(tax_id_path):
             item_path = os.path.join(tax_id_path, item)
-
             if os.path.isdir(item_path):  # Check for subfolder
                 self.extract_text_from_pdfs(item_path, output_subfolder)  # Directly extract text from PDFs
                 self.extract_tables_from_pdfs(item_path, output_subfolder)
@@ -68,19 +47,31 @@ class TaxIDProcessor:
         for filename in os.listdir(folder_path):
             file_path = os.path.join(folder_path, filename)
             if filename.lower().endswith('.pdf'):
-                # Convert PDF pages to images
-                pages = convert_from_path(file_path)
-                for i, page in enumerate(pages):
-                    # Use pytesseract to extract text from the image
-                    text = pytesseract.image_to_string(page)
-                    text_filename = os.path.splitext(filename)[0] + f'_page_{i + 1}.txt'
-                    with open(os.path.join(output_subfolder, text_filename), 'w') as text_file:
-                        text_file.write(text)
+                try:
+                    print(f"Processing file: {filename}")  # Debugging line
+                    # Convert PDF pages to images
+                    pages = convert_from_path(file_path)
+
+                    if not pages:
+                        print(f"No pages found in {filename}. Skipping...")
+                        continue
+
+                    for i, page in enumerate(pages):
+                        # Use pytesseract to extract text from the image
+                        text = pytesseract.image_to_string(page)
+
+                        if not text.strip():  # Check if the extracted text is empty
+                            print(f"No text extracted from page {i + 1} of {filename}.")
+                        else:
+                            text_filename = os.path.splitext(filename)[0] + f'_page_{i + 1}.txt'
+                            with open(os.path.join(output_subfolder, text_filename), 'w') as text_file:
+                                text_file.write(text)
+                                print(f"Extracted text saved as: {text_filename}")  # Debugging line
+
+                except Exception as e:
+                    print(f"Error processing {filename}: {e}")  # Catching errors for debugging
 
     def extract_tables_from_pdfs(self, folder_path, output_subfolder):
-        """
-        Extract tables from PDF files in the given folder and save as .xlsx files.
-        """
         for filename in os.listdir(folder_path):
             file_path = os.path.join(folder_path, filename)
             if filename.lower().endswith('.pdf'):
