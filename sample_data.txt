@@ -15,6 +15,9 @@ class PDFExtractor:
 
     def extract_from_pdf(self, pdf_file, tax_id):
         """Extract text and tables from the specified PDF file."""
+        # Ensure tax_id is a string
+        tax_id = str(tax_id)
+
         # Create output folder for the Tax ID inside the main output path
         output_folder = os.path.join(self.output_path, tax_id)
         os.makedirs(output_folder, exist_ok=True)
