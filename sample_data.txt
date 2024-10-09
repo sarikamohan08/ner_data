@@ -53,7 +53,7 @@ class FolderProcessor:
             img = Image.open(file_path)
             # Use PyTesseract to extract text
             text = pytesseract.image_to_string(img)
-            return text
+            return text.strip()  # Remove leading/trailing whitespace
         except Exception as e:
             print(f"Error reading image file {file_path}: {e}")
             return ""
@@ -95,21 +95,29 @@ class FolderProcessor:
 
             # Ensure it's a file and not a directory
             if os.path.isfile(file_path):
+                print(f"Found file: {file_name}")  # Debug statement
                 if file_name.lower().endswith(('.png', '.jpg', '.jpeg', '.tiff', '.bmp', '.gif')):
                     # If the file is an image, read it using PyTesseract
                     print(f"Processing image file: {file_name}")
-                    subfolder_text_content += self.read_image_file(file_path) + "\n"
+                    extracted_text = self.read_image_file(file_path)
+                    subfolder_text_content += extracted_text + "\n"
                 elif file_name.lower().endswith(('.txt', '.csv', '.log')):
                     # If the file is a text file, read it
                     print(f"Processing text file: {file_name}")
-                    subfolder_text_content += self.read_text_file(file_path) + "\n"
+                    extracted_text = self.read_text_file(file_path)
+                    subfolder_text_content += extracted_text + "\n"
                 elif file_name.lower().endswith('.pdf'):
                     # If the file is a PDF, extract tables
                     print(f"Processing PDF file: {file_name}")
                     tables = self.extract_tables_from_pdf(file_path)
                     self.save_tables_as_excel(tables, tax_id)  # Pass tax_id here
+                else:
+                    print(f"Unsupported file type: {file_name}")  # Debug statement for unsupported files
 
-        return subfolder_text_content
+        if not subfolder_text_content.strip():  # Check if content is empty
+            print(f"No text content extracted from files in {subfolder_path} for TaxID {tax_id}.")
+        
+        return subfolder_text_content.strip()  # Strip leading/trailing whitespace
 
     def save_subfolder_content(self, tax_id, content):
         """
@@ -145,7 +153,10 @@ class FolderProcessor:
                 content = self.read_subfolder_files(subfolder_path, tax_id)  # Pass tax_id here
                 
                 # Step 2: Save the combined content to the output folder
-                self.save_subfolder_content(tax_id, content)
+                if content:  # Only save if there is content
+                    self.save_subfolder_content(tax_id, content)
+                else:
+                    print(f"No content to save for TaxID {tax_id}.")
             else:
                 print(f"Subfolder {tax_id} does not exist at {subfolder_path}")
 
