@@ -71,15 +71,17 @@ class FolderProcessor:
 
     def save_tables_as_excel(self, tables, tax_id):
         """
-        Save extracted tables to Excel files in the TaxID folder.
+        Simulate saving extracted tables to Excel files in the TaxID folder.
         """
+        # Create the folder for TaxID if it doesn't exist
+        tax_id_folder_path = os.path.join(self.output_folder_path, str(tax_id))
+        if not os.path.exists(tax_id_folder_path):
+            os.makedirs(tax_id_folder_path)
+
         for i, table in enumerate(tables):
-            excel_file_path = os.path.join(self.output_folder_path, str(tax_id), f"table_{i + 1}.xlsx")
-            try:
-                table.to_excel(excel_file_path, index=False)
-                print(f"Saved table {i + 1} for TaxID {tax_id} to {excel_file_path}")
-            except OSError as e:
-                print(f"Error saving table {i + 1} for TaxID {tax_id} to {excel_file_path}: {e}")
+            excel_file_path = os.path.join(tax_id_folder_path, f"table_{i + 1}.xlsx")
+            # Simulating file save operation
+            print(f"[SIMULATE SAVE] Table {i + 1} for TaxID {tax_id} would be saved to {excel_file_path}")
 
     def read_subfolder_files(self, subfolder_path, tax_id):
         """
@@ -113,48 +115,4 @@ class FolderProcessor:
         """
         Save the content to the output folder in a folder named after the TaxID.
         """
-        # Create a directory for the TaxID if it doesn't exist
-        tax_id_folder_path = os.path.join(self.output_folder_path, str(tax_id))
-        if not os.path.exists(tax_id_folder_path):
-            os.makedirs(tax_id_folder_path)
-
-        # Save the content to a file within the TaxID folder
-        output_file_path = os.path.join(tax_id_folder_path, f"{str(tax_id)}_content.txt")  # Name the file with the TaxID
-        
-        try:
-            with open(output_file_path, 'w', encoding='utf-8') as output_file:
-                output_file.write(content)
-            print(f"Saved content for TaxID: {tax_id} in folder: {tax_id_folder_path}")
-        except OSError as e:
-            print(f"Error saving content for TaxID {tax_id} to {output_file_path}: {e}")
-
-    def process_folders(self):
-        """
-        Process each subfolder: read its contents and save them.
-        """
-        for tax_id in self.subfolders:
-            subfolder_path = os.path.join(self.root_folder_path, str(tax_id))  # Ensure subfolder name is a string
-            
-            # Check if the subfolder exists
-            if os.path.exists(subfolder_path) and os.path.isdir(subfolder_path):
-                print(f"Processing subfolder: {tax_id}")
-                
-                # Step 1: Read the contents of all files in the subfolder
-                content = self.read_subfolder_files(subfolder_path, tax_id)  # Pass tax_id here
-                
-                # Step 2: Save the combined content to the output folder
-                self.save_subfolder_content(tax_id, content)
-            else:
-                print(f"Subfolder {tax_id} does not exist at {subfolder_path}")
-
-# Example usage
-if __name__ == "__main__":
-    excel_path = "path_to_excel_file.xlsx"  # Update to your actual file path
-    root_folder_path = "path_to_root_folder"  # Update to your actual folder path
-    output_folder_path = "path_to_output_folder"  # Update to your desired output path
-
-    # Create an instance of FolderProcessor
-    folder_processor = FolderProcessor(excel_path, root_folder_path, output_folder_path)
-    
-    # Start processing subfolders
-    folder_processor.process_folders()
+        # Create 
