@@ -4,6 +4,8 @@ import pandas as pd
 from openpyxl import Workbook
 import pytesseract
 from PIL import Image
+import fitz  # PyMuPDF for handling PDF pages and images
+
 
 class PDFTableExtractor:
     def __init__(self, pdf_folder, excel_folder, output_excel, address_keywords=None):
@@ -39,15 +41,60 @@ class PDFTableExtractor:
             print(f"Error extracting tables from {os.path.basename(pdf_path)}: {e}")
             return None
 
-    def extract_text_from_image(self, image_path):
+    def extract_text_from_pdf(self, pdf_path):
         """
-        Extract text from an image using pytesseract.
+        Extract text from all pages in the PDF using PyMuPDF (fitz).
         """
         try:
-            text = pytesseract.image_to_string(Image.open(image_path))
-            return text
+            doc = fitz.open(pdf_path)  # Open the PDF
+            full_text = ""
+
+            # Iterate through each page in the PDF
+            for page_num in range(len(doc)):
+                page = doc.load_page(page_num)
+                full_text += page.get_text("text")  # Extract the text from the page
+
+            return full_text.strip()
         except Exception as e:
-            print(f"Error extracting text from {os.path.basename(image_path)}: {e}")
+            print(f"Error extracting text from {os.path.basename(pdf_path)}: {e}")
+            return ""
+
+    def extract_images_from_pdf(self, pdf_path):
+        """
+        Extract images from the PDF using PyMuPDF (fitz) and apply OCR using pytesseract.
+        """
+        try:
+            doc = fitz.open(pdf_path)
+            text_from_images = ""
+            image_count = 0
+
+            for page_num in range(len(doc)):
+                page = doc.load_page(page_num)
+                image_list = page.get_images(full=True)
+
+                # Extract images from the page
+                for image_index, img in enumerate(image_list):
+                    image_count += 1
+                    xref = img[0]
+                    base_image = doc.extract_image(xref)
+                    image_bytes = base_image["image"]
+                    image_ext = base_image["ext"]
+                    image_filename = f"image_{page_num + 1}_{image_index + 1}.{image_ext}"
+
+                    with open(image_filename, "wb") as image_file:
+                        image_file.write(image_bytes)
+
+                    # Perform OCR on the extracted image
+                    image_text = pytesseract.image_to_string(Image.open(image_filename))
+                    text_from_images += f"\n--- Image {image_count} from Page {page_num + 1} ---\n"
+                    text_from_images += image_text
+
+                    # Clean up: remove the saved image file after processing
+                    os.remove(image_filename)
+
+            return text_from_images.strip()
+        except Exception as e:
+            print(f"Error extracting images from {os.path.basename(pdf_path)}: {e}")
             return ""
 
     def contains_keywords(self, df, keywords):
@@ -149,14 +196,25 @@ class PDFTableExtractor:
                 if filename.endswith('.pdf'):
                     pdf_path = os.path.join(folder_path, filename)
                     print(f"Processing {filename} in {folder_name}...")
-                    tables = self.extract_tables_from_pdf(pdf_path)
 
+                    # Extract tables
+                    tables = self.extract_tables_from_pdf(pdf_path)
                     if not tables:
                         print(f"Skipping {filename} (no tables found).")
                         continue
 
                     # Save tables to Excel in the specific subfolder
                     self.save_tables_to_excel(tables, filename, folder_name)
+
+                    # Extract text from PDF
+                    pdf_text = self.extract_text_from_pdf(pdf_path)
+                    if pdf_text:
+                        print(f"Text extracted from {filename}:\n{pdf_text}")
+
+                    # Extract text from images in the PDF
+                    image_text = self.extract_images_from_pdf(pdf_path)
+                    if image_text:
+                        print(f"Text extracted from images in {filename}:\n{image_text}")
 
     def save_combined_address_data(self):
         """
@@ -184,14 +242,4 @@ class PDFTableExtractor:
 
 # Usage
 if __name__ == "__main__":
-    pdf_folder = 'path_to_pdf_folder'  # Folder containing your PDF files
-    excel_folder = 'path_to_excel_folder'  # Folder to store individual Excel files
-    output_excel = 'combined_address_data.xlsx'  # Single output file for all address-related data
-
-    # Load folder names from Excel
-    excel_file_with_folder_names = 'folders.xlsx'
-    df_folders = pd.read_excel(excel_file_with_folder_names)
-    folder_names = df_folders['Folder Names'].tolist()
-
-    extractor = PDFTableExtractor(pdf_folder, excel_folder, output_excel)
-    extractor.run(folder_names)
+    pdf_folder = 'path_to_pdf_folder'  # Folder containing your
