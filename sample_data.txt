@@ -3,7 +3,7 @@ import pandas as pd
 import pytesseract
 from PIL import Image
 import chardet
-import fitz  # PyMuPDF
+from pdf2image import convert_from_path
 import camelot
 
 class FolderProcessor:
@@ -48,16 +48,15 @@ class FolderProcessor:
 
     def read_pdf_file(self, file_path):
         """
-        Extract text from a PDF file using PyMuPDF.
+        Extract text from a PDF file using PyTesseract.
         """
         text = ""
         try:
-            # Open the PDF file
-            doc = fitz.open(file_path)
-            # Extract text from each page
-            for page in doc:
-                text += page.get_text() + "\n"
-            doc.close()
+            # Convert PDF to images
+            pages = convert_from_path(file_path)
+            for page in pages:
+                # Use PyTesseract to extract text from each page image
+                text += pytesseract.image_to_string(page) + "\n"
         except Exception as e:
             print(f"Error reading PDF file {file_path}: {e}")
         return text
@@ -89,8 +88,9 @@ class FolderProcessor:
         if not os.path.exists(tax_id_folder_path):
             os.makedirs(tax_id_folder_path)
 
-        # Step 1: Extract text using PyTesseract (for image or scanned PDFs)
+        # Step 1: Extract text using PyTesseract (for images or scanned PDFs)
         if file_path.lower().endswith(('.png', '.jpg', '.jpeg', '.tiff', '.bmp', '.gif', '.pdf')):
+            text_content = ""
             if file_path.lower().endswith('.pdf'):
                 # If the file is a PDF, read it for text extraction and table extraction
                 text_content = self.read_pdf_file(file_path)
