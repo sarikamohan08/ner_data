@@ -1,141 +1,105 @@
-import os
-import pytesseract
 import pandas as pd
-import camelot
 import re
-from PIL import Image
-from pdf2image import convert_from_path
 
-class TaxIDProcessor:
-    def __init__(self, excel_file, input_dir, output_dir):
+class AddressExtractor:
+    def __init__(self, excel_file):
         self.excel_file = excel_file
-        self.input_dir = input_dir
-        self.output_dir = output_dir
-        self.taxids = self.load_taxids()
-        self.extracted_data = []  # To store extracted metadata
+        self.data = self.read_excel_file()
     
-    def load_taxids(self):
-        df = pd.read_excel(self.excel_file)
-        return df['taxid'].tolist()
-    
-    def process_taxids(self):
-        for taxid in self.taxids:
-            taxid_folder = os.path.join(self.input_dir, str(taxid))
-            output_taxid_folder = os.path.join(self.output_dir, str(taxid))
-            
-            if os.path.exists(taxid_folder):
-                os.makedirs(output_taxid_folder, exist_ok=True)
-                self.process_folder(taxid_folder, output_taxid_folder)
-            else:
-                print(f"No subfolder found for taxid {taxid}")
-    
-    def process_folder(self, taxid_folder, output_taxid_folder):
-        for root, dirs, files in os.walk(taxid_folder):
-            for file in files:
-                file_path = os.path.join(root, file)
-
-                # If the file is an image
-                if file.lower().endswith(('.png', '.jpg', '.jpeg')):
-                    self.extract_text(file_path, output_taxid_folder)
-
-                # If the file is a PDF
-                elif file.lower().endswith('.pdf'):
-                    self.extract_text(file_path, output_taxid_folder)
-
-    def extract_text(self, file_path, output_taxid_folder):
+    def read_excel_file(self):
         """
-        Extract text from an image or a PDF file using Pytesseract and save it as a .txt file.
-        """
-        # Check if the file is a PDF
-        if file_path.lower().endswith('.pdf'):
-            # Convert PDF pages to images
-            try:
-                images = convert_from_path(file_path)
-                all_text = ""
-                
-                # Iterate through each image
-                for i, image in enumerate(images):
-                    text = pytesseract.image_to_string(image)
-                    all_text += text + "\n"  # Append text from each page
-
-                # Save the extracted text to a .txt file
-                text_filename = os.path.join(output_taxid_folder, os.path.basename(file_path).replace('.pdf', '.txt'))
-                with open(text_filename, 'w') as f:
-                    f.write(all_text)
-                print(f"Extracted text from PDF and saved to {text_filename}")
-                
-                # Extract effective date and title from the text
-                self.extract_metadata_from_text(text_filename, taxid=os.path.basename(file_path))
-            
-            except Exception as e:
-                print(f"An error occurred while processing {file_path}: {e}")
-
-        # If the file is an image
-        else:
-            try:
-                img = Image.open(file_path)
-                text = pytesseract.image_to_string(img)
-
-                # Save the extracted text to a .txt file
-                text_filename = os.path.join(output_taxid_folder, os.path.basename(file_path).replace('.png', '.txt').replace('.jpg', '.txt').replace('.jpeg', '.txt'))
-                with open(text_filename, 'w') as f:
-                    f.write(text)
-                print(f"Extracted text from image and saved to {text_filename}")
-                
-                # Extract effective date and title from the text
-                self.extract_metadata_from_text(text_filename, taxid=os.path.basename(file_path))
-            
-            except Exception as e:
-                print(f"An error occurred while processing {file_path}: {e}")
-
-    def extract_metadata_from_text(self, text_filename, taxid):
-        """
-        Extract the Effective Date and Title from the text file using regex and store it in a DataFrame.
+        Load the Excel file and return the content as a DataFrame.
         """
         try:
-            with open(text_filename, 'r') as f:
-                text_content = f.read()
-            
-            # Regex patterns for Effective Date and Title
-            effective_date_pattern = r'(\d{1,2}/\d{1,2}/\d{4})|([A-Za-z]+\s\d{1,2},\s\d{4})|(\d{4}-\d{2}-\d{2})'
-            title_pattern = r'(Title:?\s*(.*))'  # You can customize this pattern based on the document structure
-            
-            # Search for Effective Date
-            effective_date_match = re.search(effective_date_pattern, text_content)
-            effective_date = effective_date_match.group(0) if effective_date_match else "N/A"
-            
-            # Search for Title
-            title_match = re.search(title_pattern, text_content, re.IGNORECASE)
-            title = title_match.group(2).strip() if title_match else text_content.splitlines()[0]  # First line fallback
-
-            # Add the extracted information to a list (for DataFrame)
-            self.extracted_data.append({
-                'taxid': taxid,
-                'title': title,
-                'effective_date': effective_date,
-                'source_text_file': os.path.basename(text_filename)
-            })
-            
-            print(f"Extracted metadata for {taxid}: Title='{title}', Effective Date='{effective_date}'")
-        
+            df = pd.read_excel(self.excel_file)
+            print(f"Successfully loaded {self.excel_file}")
+            return df
         except Exception as e:
-            print(f"An error occurred while extracting metadata from {text_filename}: {e}")
-    
-    def save_extracted_data(self, output_file='extracted_data.csv'):
+            print(f"An error occurred while loading the Excel file: {e}")
+            return None
+
+    def extract_addresses(self):
         """
-        Save the extracted metadata to a CSV file.
+        Extract service address, notice address, remit address, contract contact,
+        and contract information from the DataFrame based on keywords.
         """
-        df = pd.DataFrame(self.extracted_data)
-        df.to_csv(output_file, index=False)
-        print(f"Extracted data saved to {output_file}")
+        keywords = {
+            'service_address': r'service\s*address',
+            'notice_address': r'(notice\s*address|address\s*for\s*notice)',
+            'remit_address': r'remit\s*address',
+            'contract_contact': r'contract\s*contact',
+            'contract_information': r'(contract\s*information|contractor\s*information)'
+        }
+
+        extracted_data = {
+            'filename': [],
+            'service_address': [],
+            'notice_address': [],
+            'remit_address': [],
+            'contract_contact': [],
+            'contract_information': []
+        }
+
+        for index, row in self.data.iterrows():
+            text_content = row['Content']  # Assuming the extracted text is in a column named 'Content'
+            filename = row['Filename']  # Assuming each row has a Filename column
+
+            # Initialize empty fields for each keyword
+            service_address = ""
+            notice_address = ""
+            remit_address = ""
+            contract_contact = ""
+            contract_information = ""
+
+            # Search for keywords in the content
+            for key, pattern in keywords.items():
+                match = re.search(pattern, text_content, re.IGNORECASE)
+                if match:
+                    # Extract the address or information by taking the surrounding text (e.g., the next few words after the keyword)
+                    extracted_value = self.extract_after_match(text_content, match)
+                    if key == 'service_address':
+                        service_address = extracted_value
+                    elif key == 'notice_address':
+                        notice_address = extracted_value
+                    elif key == 'remit_address':
+                        remit_address = extracted_value
+                    elif key == 'contract_contact':
+                        contract_contact = extracted_value
+                    elif key == 'contract_information':
+                        contract_information = extracted_value
+
+            # Append the extracted values to the respective lists
+            extracted_data['filename'].append(filename)
+            extracted_data['service_address'].append(service_address)
+            extracted_data['notice_address'].append(notice_address)
+            extracted_data['remit_address'].append(remit_address)
+            extracted_data['contract_contact'].append(contract_contact)
+            extracted_data['contract_information'].append(contract_information)
+
+        # Convert the extracted data to a DataFrame and return
+        extracted_df = pd.DataFrame(extracted_data)
+        return extracted_df
+
+    def extract_after_match(self, text, match, window=100):
+        """
+        Extract the text following the match keyword, within a window of characters.
+        We can adjust the `window` parameter to control how many characters after
+        the keyword should be captured.
+        """
+        start = match.end()  # Start extracting text after the match ends
+        end = min(start + window, len(text))  # Extract up to the specified window or end of the text
+        return text[start:end].strip()
 
 # Example Usage:
-excel_file = 'taxid_list.xlsx'  # Path to the Excel file containing taxid
-input_dir = 'input_folder'  # Input folder where taxid subfolders are located
-output_dir = 'output_folder'  # Output folder to store the results
+# Assuming the Excel file has a "Content" column that contains the extracted text, and "Filename" column.
+excel_file = 'extracted_data.xlsx'  # Path to the Excel file with extracted content
+address_extractor = AddressExtractor(excel_file)
 
-processor = TaxIDProcessor(excel_file, input_dir, output_dir)
-processor.process_taxids()
+# Extract the addresses and information from the Excel file
+extracted_df = address_extractor.extract_addresses()
 
-# After processing, save the extracted metadata
-processor.save_extracted_data('extracted_metadata.csv')
+# Show the extracted DataFrame
+print(extracted_df)
+
+# Optionally, save the extracted addresses to a new Excel or CSV file
+extracted_df.to_excel('extracted_addresses.xlsx', index=False)
