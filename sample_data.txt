@@ -1,82 +1,189 @@
 import os
-import pytesseract
+import camelot
 import pandas as pd
-from pdf2image import convert_from_path
-from PyPDF2 import PdfReader
+import shutil
+from openpyxl import Workbook
 
-# Function to extract text from a PDF using PyPDF2 (for text-based PDFs)
-def extract_text_from_pdf(pdf_path):
-    text = ""
-    try:
-        reader = PdfReader(pdf_path)
-        for page_num in range(len(reader.pages)):
-            page = reader.pages[page_num]
-            text += page.extract_text()
-    except Exception as e:
-        print(f"Error reading {pdf_path}: {e}")
-    return text
+class PDFTableExtractor:
+    def __init__(self, base_directory, excel_file, output_excel, address_keywords=None):
+        self.base_directory = base_directory
+        self.excel_file = excel_file
+        self.excel_folder = 'extracted_excel_files'  # Folder to store extracted Excel files
+        self.output_excel = output_excel
 
-# Function to extract text from an image-based PDF using pytesseract (OCR)
-def extract_text_with_ocr(pdf_path):
-    text = ""
-    try:
-        # Convert PDF pages to images
-        images = convert_from_path(pdf_path)
-        for image in images:
-            # Use pytesseract to do OCR on each image
-            text += pytesseract.image_to_string(image)
-    except Exception as e:
-        print(f"Error in OCR processing {pdf_path}: {e}")
-    return text
+        # Define keywords for address/contact information
+        self.address_keywords = address_keywords or ['address', 'location', 'street', 'city', 'state', 'zip', 'postal']
+        self.service_address_keyword = 'service address'
+        self.remit_address_keyword = 'remit address'
+        self.notice_address_keyword = 'notice address'
+        self.contract_contact_keyword = 'contract contact information'
+        self.contact_information_keyword = 'contact information'
 
-# Read Excel to get list of Tax IDs
-excel_file = 'path_to_excel_file.xlsx'
-tax_id_column_name = 'Tax_ID'  # Adjust according to your Excel column name
-df = pd.read_excel(excel_file)
+        # Storage for extracted data
+        self.extracted_data_combined = []
 
-# Directory containing folders for each Tax ID
-base_directory = 'path_to_tax_id_folders'
+        # Create the Excel folder if it doesn't exist
+        if not os.path.exists(self.excel_folder):
+            os.makedirs(self.excel_folder)
 
-# Iterate over each Tax ID
-for tax_id in df[tax_id_column_name]:
-    tax_folder = os.path.join(base_directory, str(tax_id))
-    
-    if os.path.isdir(tax_folder):
-        print(f"Processing folder: {tax_folder}")
-        
-        # List all PDF files in the Tax ID folder
-        for filename in os.listdir(tax_folder):
-            if filename.endswith(".pdf"):
-                pdf_path = os.path.join(tax_folder, filename)
-                print(f"Processing PDF: {pdf_path}")
-                
-                # Extract text from the PDF
-                text = extract_text_from_pdf(pdf_path)
-                
-                # If no text is found (could be image-based), try OCR
-                if not text.strip():
-                    print(f"No text found, applying OCR to {pdf_path}")
-                    text = extract_text_with_ocr(pdf_path)
-                
-                # Save extracted text to a text file
-                output_text_file = os.path.join(tax_folder, f"{os.path.splitext(filename)[0]}.txt")
-                with open(output_text_file, "w", encoding="utf-8") as f:
-                    f.write(text)
-                
-                print(f"Text saved to: {output_text_file}")
-    else:
-        print(f"Folder not found for Tax ID: {tax_id}")
+    def extract_tables_from_pdf(self, pdf_path):
+        """
+        Extract tables from a PDF file and return them.
+        """
+        try:
+            tables = camelot.read_pdf(pdf_path, pages='all', flavor='stream')  # Use 'stream' flavor for structure-based tables
+            if tables.n == 0:  # No tables found
+                print(f"No tables found in {os.path.basename(pdf_path)}.")
+            return tables
+        except Exception as e:
+            print(f"Error extracting tables from {os.path.basename(pdf_path)}: {e}")
+            return None
+
+    def contains_keywords(self, df, keywords):
+        """
+        Check if any cell in a DataFrame contains any of the specified keywords.
+        """
+        for keyword in keywords:
+            if df.apply(lambda x: x.astype(str).str.contains(keyword, case=False, na=False).any()).any():
+                return True
+        return False
+
+    def extract_address_data(self, df):
+        """
+        Extract data related to the specific address categories from a DataFrame.
+        """
+        address_data = {
+            'address': '', 
+            'service_address': '', 
+            'remit_address': '', 
+            'notice_address': '', 
+            'contract_contact': '', 
+            'contact_information': ''
+        }
+
+        # Check for general address-related keywords
+        if self.contains_keywords(df, self.address_keywords):
+            address_data['address'] = df.to_string(index=False)
+
+        # Check for specific address/contact categories
+        if self.contains_keywords(df, [self.service_address_keyword]):
+            address_data['service_address'] = df.to_string(index=False)
+
+        if self.contains_keywords(df, [self.remit_address_keyword]):
+            address_data['remit_address'] = df.to_string(index=False)
+
+        if self.contains_keywords(df, [self.notice_address_keyword]):
+            address_data['notice_address'] = df.to_string(index=False)
+
+        if self.contains_keywords(df, [self.contract_contact_keyword]):
+            address_data['contract_contact'] = df.to_string(index=False)
+
+        if self.contains_keywords(df, [self.contact_information_keyword]):
+            address_data['contact_information'] = df.to_string(index=False)
+
+        return address_data
+
+    def save_tables_to_excel(self, tables, filename):
+        """
+        Save extracted tables to an Excel file and store data in specific columns based on the type of address found.
+        """
+        excel_filename = os.path.splitext(filename)[0] + '.xlsx'
+        excel_path = os.path.join(self.excel_folder, excel_filename)
+
+        extracted_file_data = {
+            'File Name': filename, 
+            'address': '', 
+            'service_address': '', 
+            'remit_address': '', 
+            'notice_address': '', 
+            'contract_contact': '', 
+            'contact_information': ''
+        }
+
+        with pd.ExcelWriter(excel_path, engine='openpyxl') as writer:
+            for i, table in enumerate(tables):
+                df = table.df
+
+                if df.empty:
+                    print(f"Table {i+1} in {filename} is empty. Skipping...")
+                    continue
+
+                sheet_name = f'Table_{i+1}'
+                df.to_excel(writer, sheet_name=sheet_name, index=False)
+
+                # Extract and classify address-related data
+                extracted_data = self.extract_address_data(df)
+
+                # Update the extracted_file_data dictionary with the address data from this table
+                for key in extracted_data:
+                    if extracted_data[key]:  # If we have data for this category, concatenate it
+                        extracted_file_data[key] += f"Table {i+1}:\n{extracted_data[key]}\n\n"
+
+        # Append the extracted file data to the combined list
+        self.extracted_data_combined.append(extracted_file_data)
+
+    def process_pdfs(self, folder_names):
+        """
+        Process PDFs in subfolders as per the names in the Excel file.
+        """
+        for folder_name in folder_names:
+            subfolder_path = os.path.join(self.base_directory, folder_name)
+
+            if not os.path.exists(subfolder_path):
+                print(f"Subfolder '{folder_name}' not found. Skipping.")
+                continue
+
+            for filename in os.listdir(subfolder_path):
+                if filename.endswith('.pdf'):
+                    pdf_path = os.path.join(subfolder_path, filename)
+                    print(f"Processing {filename} in {folder_name}...")
+                    tables = self.extract_tables_from_pdf(pdf_path)
+
+                    if not tables:
+                        print(f"Skipping {filename} (no tables found).")
+                        continue
+
+                    # Save tables to Excel and extract address-related data
+                    self.save_tables_to_excel(tables, filename)
+
+    def read_folder_names_from_excel(self):
+        """
+        Read subfolder names from the Excel file.
+        """
+        df = pd.read_excel(self.excel_file)
+        folder_names = df['FolderName'].tolist()  # Ensure the Excel file has a 'FolderName' column
+        return folder_names
+
+    def save_combined_address_data(self):
+        """
+        Save all extracted address-related data into a single Excel file with separate columns for each category.
+        """
+        if self.extracted_data_combined:
+            output_df = pd.DataFrame(self.extracted_data_combined)
+            output_df.to_excel(self.output_excel, index=False)
+            print(f"All address-related data saved to {self.output_excel}.")
+        else:
+            print("No address-related data found.")
+
+    def run(self):
+        """
+        Main function to process PDFs based on subfolder names in Excel and save extracted data.
+        """
+        print("Reading folder names from Excel...")
+        folder_names = self.read_folder_names_from_excel()
+
+        print("Processing PDFs in selected subfolders...")
+        self.process_pdfs(folder_names)
+
+        print("Saving combined address-related data...")
+        self.save_combined_address_data()
 
 
-for index, row in df.iterrows():
-    tax_id = row[tax_id_column_name]
-    tax_folder = os.path.join(base_directory, str(tax_id))
-    
-    if os.path.isdir(tax_folder):
-        print(f"Processing folder: {tax_folder}")
-        
-        # List all PDF files in the Tax ID folder
-        for filename in os.listdir(tax_folder):
-            if filename.endswith(".pdf"):
-                pdf_path = os.path.join(tax_folder, filename)
-                print(f"Processing PDF: {pdf_path}")
+# Usage
+if __name__ == "__main__":
+    base_directory = 'path_to_base_directory'  # Directory where subfolders are located
+    excel_file = 'subfolder_names.xlsx'  # Excel file with folder names
+    output_excel = 'combined_address_data.xlsx'  # Single output file for all address-related data
+
+    extractor = PDFTableExtractor(base_directory, excel_file, output_excel)
+    extractor.run()
