@@ -78,7 +78,7 @@ class FolderProcessor:
             table.to_excel(excel_file_path, index=False)
             print(f"Saved table {i + 1} for TaxID {tax_id} to {excel_file_path}")
 
-    def read_subfolder_files(self, subfolder_path):
+    def read_subfolder_files(self, subfolder_path, tax_id):
         """
         Read all files in the given subfolder and return their combined content.
         """
@@ -102,7 +102,7 @@ class FolderProcessor:
                     # If the file is a PDF, extract tables
                     print(f"Processing PDF file: {file_name}")
                     tables = self.extract_tables_from_pdf(file_path)
-                    self.save_tables_as_excel(tables, str(tax_id))
+                    self.save_tables_as_excel(tables, tax_id)  # Pass tax_id here
 
         return subfolder_text_content
 
@@ -135,7 +135,7 @@ class FolderProcessor:
                 print(f"Processing subfolder: {tax_id}")
                 
                 # Step 1: Read the contents of all files in the subfolder
-                content = self.read_subfolder_files(subfolder_path)
+                content = self.read_subfolder_files(subfolder_path, tax_id)  # Pass tax_id here
                 
                 # Step 2: Save the combined content to the output folder
                 self.save_subfolder_content(tax_id, content)
