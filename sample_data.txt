@@ -66,3 +66,17 @@ for tax_id in df[tax_id_column_name]:
                 print(f"Text saved to: {output_text_file}")
     else:
         print(f"Folder not found for Tax ID: {tax_id}")
+
+
+for index, row in df.iterrows():
+    tax_id = row[tax_id_column_name]
+    tax_folder = os.path.join(base_directory, str(tax_id))
+    
+    if os.path.isdir(tax_folder):
+        print(f"Processing folder: {tax_folder}")
+        
+        # List all PDF files in the Tax ID folder
+        for filename in os.listdir(tax_folder):
+            if filename.endswith(".pdf"):
+                pdf_path = os.path.join(tax_folder, filename)
+                print(f"Processing PDF: {pdf_path}")
