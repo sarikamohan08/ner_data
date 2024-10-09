@@ -1,104 +1,93 @@
 import os
 import pytesseract
-from PIL import Image
-import camelot
 import pandas as pd
-from pdf2image import convert_from_path
-
-# Set the path to the Tesseract executable if it's not in your PATH
-pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'  # Update this if necessary
+import camelot
+from PIL import Image
+import openpyxl
 
 class TaxIDProcessor:
-    def __init__(self, input_folder, output_folder, excel_file, taxid_column):
-        self.input_folder = input_folder
-        self.output_folder = output_folder
+    def __init__(self, excel_file, input_dir, output_dir):
+        """
+        Initialize the processor with the Excel file containing TaxIDs, input folder, and output folder.
+        """
         self.excel_file = excel_file
-        self.taxid_column = taxid_column
-        self.taxid_list = self.read_taxid_from_excel()  # Read the Tax IDs from Excel
-        
-        # Ensure the output folder exists
-        os.makedirs(self.output_folder, exist_ok=True)
-        print(f"Output folder created: {self.output_folder}")  # Debugging line
-
-    def read_taxid_from_excel(self):
+        self.input_dir = input_dir
+        self.output_dir = output_dir
+        self.taxids = self.load_taxids()
+    
+    def load_taxids(self):
+        """
+        Load TaxIDs from the provided Excel file.
+        """
         df = pd.read_excel(self.excel_file)
-        print(f"Tax IDs loaded from Excel: {df[self.taxid_column].tolist()}")  # Debugging line
-        return df[self.taxid_column].astype(str).tolist()  # Convert to string to match folder names
-
-    def process_taxid_folders(self):
-        for tax_id in self.taxid_list:
-            tax_id_path = os.path.join(self.input_folder, tax_id)
-            print(f"Checking folder for Tax ID: {tax_id}")  # Debugging line
-            if os.path.isdir(tax_id_path):
-                output_subfolder = os.path.join(self.output_folder, tax_id)
-                os.makedirs(output_subfolder, exist_ok=True)
-                print(f"Processing Tax ID folder: {tax_id_path}")  # Debugging line
-                self.process_subfolders(tax_id_path, output_subfolder)
+        return df['taxid'].tolist()
+    
+    def process_taxids(self):
+        """
+        Process each TaxID, check for subfolders, and extract data from files in subfolders.
+        """
+        for taxid in self.taxids:
+            taxid_folder = os.path.join(self.input_dir, str(taxid))
+            output_taxid_folder = os.path.join(self.output_dir, str(taxid))
+            
+            # Check if taxid folder exists
+            if os.path.exists(taxid_folder):
+                os.makedirs(output_taxid_folder, exist_ok=True)
+                
+                # Process files in the taxid folder
+                self.process_folder(taxid_folder, output_taxid_folder)
             else:
-                print(f"Folder for Tax ID {tax_id} does not exist. Skipping...")  # Debugging line
-
-    def process_subfolders(self, tax_id_path, output_subfolder):
-        print(f"Checking for subfolders in: {tax_id_path}")  # Debugging line
-        for item in os.listdir(tax_id_path):
-            item_path = os.path.join(tax_id_path, item)
-            print(f"Found item: {item_path}")  # Debugging line
-            if os.path.isdir(item_path):  # Check for subfolder
-                print(f"Processing subfolder: {item_path}")  # Debugging line
-                self.extract_text_from_pdfs(item_path, output_subfolder)  # Directly extract text from PDFs
-                self.extract_tables_from_pdfs(item_path, output_subfolder)
-
-    def extract_text_from_pdfs(self, folder_path, output_subfolder):
+                print(f"No subfolder found for taxid {taxid}")
+    
+    def process_folder(self, taxid_folder, output_taxid_folder):
         """
-        Extract text from PDF files in the given folder and save as .txt files.
+        Process files within a TaxID folder, extracting text and tables.
         """
-        print(f"Looking for PDF files in: {folder_path}")  # Debugging line
-        for filename in os.listdir(folder_path):
-            file_path = os.path.join(folder_path, filename)
-            if filename.lower().endswith('.pdf'):
-                try:
-                    print(f"Processing file: {filename}")  # Debugging line
-                    # Convert PDF pages to images
-                    pages = convert_from_path(file_path)
+        for root, dirs, files in os.walk(taxid_folder):
+            for file in files:
+                file_path = os.path.join(root, file)
+                
+                # If the file is an image, use Pytesseract for text extraction
+                if file.lower().endswith(('.png', '.jpg', '.jpeg')):
+                    self.extract_text(file_path, output_taxid_folder)
+                
+                # If the file is a PDF, use Camelot for table extraction
+                elif file.lower().endswith('.pdf'):
+                    self.extract_tables(file_path, output_taxid_folder)
+    
+    def extract_text(self, image_path, output_taxid_folder):
+        """
+        Extract text from an image using Pytesseract and save it as a .txt file.
+        """
+        img = Image.open(image_path)
+        text = pytesseract.image_to_string(img)
+        
+        # Save the extracted text to a .txt file
+        text_filename = os.path.join(output_taxid_folder, os.path.basename(image_path).replace('.png', '.txt').replace('.jpg', '.txt').replace('.jpeg', '.txt'))
+        with open(text_filename, 'w') as f:
+            f.write(text)
+        print(f"Extracted text and saved to {text_filename}")
+    
+    def extract_tables(self, pdf_path, output_taxid_folder):
+        """
+        Extract tables from a PDF using Camelot and save as an Excel file.
+        """
+        tables = camelot.read_pdf(pdf_path, pages='all')
+        
+        # Save each table to an Excel file
+        if tables:
+            excel_filename = os.path.join(output_taxid_folder, os.path.basename(pdf_path).replace('.pdf', '.xlsx'))
+            with pd.ExcelWriter(excel_filename, engine='openpyxl') as writer:
+                for i, table in enumerate(tables):
+                    table.df.to_excel(writer, sheet_name=f'Table_{i+1}', index=False)
+            print(f"Extracted tables and saved to {excel_filename}")
+        else:
+            print(f"No tables found in {pdf_path}")
 
-                    if not pages:
-                        print(f"No pages found in {filename}. Skipping...")
-                        continue
+# Example Usage:
+excel_file = 'taxid_list.xlsx'  # Path to the Excel file containing taxid
+input_dir = 'input_folder'  # Input folder where taxid subfolders are located
+output_dir = 'output_folder'  # Output folder to store the results
 
-                    for i, page in enumerate(pages):
-                        # Use pytesseract to extract text from the image
-                        text = pytesseract.image_to_string(page)
-
-                        if text.strip():  # If text was extracted
-                            text_filename = os.path.splitext(filename)[0] + f'_page_{i + 1}.txt'
-                            with open(os.path.join(output_subfolder, text_filename), 'w') as text_file:
-                                text_file.write(text)
-                                print(f"Extracted text saved as: {text_filename}")  # Debugging line
-                        else:
-                            print(f"No text extracted from page {i + 1} of {filename}.")  # Debugging line
-
-                except Exception as e:
-                    print(f"Error processing {filename}: {e}")  # Catching errors for debugging
-
-    def extract_tables_from_pdfs(self, folder_path, output_subfolder):
-        print(f"Looking for tables in PDF files in: {folder_path}")  # Debugging line
-        for filename in os.listdir(folder_path):
-            file_path = os.path.join(folder_path, filename)
-            if filename.lower().endswith('.pdf'):
-                try:
-                    tables = camelot.read_pdf(file_path, pages='all')
-                    if tables:
-                        for i, table in enumerate(tables):
-                            excel_filename = os.path.splitext(filename)[0] + f'_table_{i}.xlsx'
-                            table.to_excel(os.path.join(output_subfolder, excel_filename), index=False)
-                            print(f"Extracted table saved as: {excel_filename}")  # Debugging line
-                    else:
-                        print(f"No tables found in {filename}.")  # Debugging line
-                except Exception as e:
-                    print(f"Error extracting tables from {filename}: {e}")
-
-# Example usage
-if __name__ == "__main__":
-    main_input_folder = 'path_to_input_folder'  # Replace with your input folder path
-    main_output_folder = 'path_to_output_folder'  # Replace with your desired output folder path
-    excel_file = 'path_to_excel_file.xlsx'  # Replace with your Excel file path
-    taxid_column = 'TaxID'  # Replace with the
+processor = TaxIDProcessor(excel_file, input_dir, output_dir)
+processor.process_taxids()
