@@ -148,6 +148,18 @@ class PDFTableExtractor:
         # Append the extracted file data to the combined list
         self.extracted_data_combined.append(extracted_file_data)
 
+        return subfolder_excel_path  # Return the subfolder path where the Excel is saved
+
+    def save_text_to_file(self, text, filename, subfolder_path):
+        """
+        Save the extracted text to a .txt file in the same subfolder where the Excel file is saved.
+        """
+        text_filename = os.path.splitext(filename)[0] + '.txt'
+        text_path = os.path.join(subfolder_path, text_filename)
+
+        with open(text_path, 'w', encoding='utf-8') as text_file:
+            text_file.write(text)
+
     def process_pdfs(self, folder_names):
         """
         Process all PDFs in the folder, extract tables, and extract address-related data.
@@ -166,12 +178,13 @@ class PDFTableExtractor:
                         continue
 
                     # Save tables to Excel in the specific subfolder
-                    self.save_tables_to_excel(tables, filename, folder_name)
+                    subfolder_path = self.save_tables_to_excel(tables, filename, folder_name)
 
                     # Extract text from PDF images
                     pdf_text = self.extract_text_from_pdf(pdf_path)
                     if pdf_text:
-                        print(f"Text extracted from {filename}:\n{pdf_text}")
+                        # Save the extracted text to a .txt file in the same subfolder
+                        self.save_text_to_file(pdf_text, filename, subfolder_path)
 
     def save_combined_address_data(self):
         """
@@ -195,3 +208,18 @@ class PDFTableExtractor:
 
         print("Saving combined address-related data...")
         self.save_combined_address_data()
+
+
+# Usage
+if __name__ == "__main__":
+    pdf_folder = 'path_to_pdf_folder'  # Folder containing your PDF files
+    excel_folder = 'path_to_excel_folder'  # Folder to store individual Excel files
+    output_excel = 'combined_address_data.xlsx'  # Single output file for all address-related data
+
+    # Load folder names from Excel
+    excel_file_with_folder_names = 'folders.xlsx'
+    df_folders = pd.read_excel(excel_file_with_folder_names)
+    folder_names = df_folders['Folder Names'].tolist()
+
+    extractor = PDFTableExtractor(pdf_folder, excel_folder, output_excel)
+    extractor.run(folder_names)
