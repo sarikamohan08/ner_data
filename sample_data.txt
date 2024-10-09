@@ -17,11 +17,11 @@ class PDFExtractor:
         """Extract text and tables from the specified PDF file."""
         # Ensure tax_id is a string
         tax_id = str(tax_id)
-        print(f"Tax ID: {tax_id} (type: {type(tax_id)})")  # Debugging line
+        print(f"Tax ID: '{tax_id}' (type: {type(tax_id)})")  # Debugging line
 
         # Create output folder for the Tax ID inside the main output path
         output_folder = os.path.join(self.output_path, tax_id)
-        print(f"Output folder: {output_folder} (type: {type(output_folder)})")  # Debugging line
+        print(f"Output folder: '{output_folder}' (type: {type(output_folder)})")  # Debugging line
         os.makedirs(output_folder, exist_ok=True)
 
         # Extract text and tables
@@ -39,7 +39,7 @@ class PDFExtractor:
 
         # Save text to file
         text_filename = os.path.join(output_folder, os.path.basename(pdf_file).replace('.pdf', '.txt'))
-        print(f"Text filename: {text_filename} (type: {type(text_filename)})")  # Debugging line
+        print(f"Text filename: '{text_filename}' (type: {type(text_filename)})")  # Debugging line
         with open(text_filename, 'w', encoding='utf-8') as f:
             f.write(text)
 
@@ -48,7 +48,7 @@ class PDFExtractor:
         tables = camelot.read_pdf(pdf_file, pages='all')
         if tables:
             excel_filename = os.path.join(output_folder, os.path.basename(pdf_file).replace('.pdf', '.xlsx'))
-            print(f"Excel filename: {excel_filename} (type: {type(excel_filename)})")  # Debugging line
+            print(f"Excel filename: '{excel_filename}' (type: {type(excel_filename)})")  # Debugging line
             tables.export(excel_filename, f='excel')
         else:
             print(f"No tables found in {pdf_file}")
@@ -58,17 +58,18 @@ class PDFExtractor:
         subfolders = self.read_excel(excel_file)
         for subfolder in subfolders:
             folder_path = os.path.join(self.input_path, subfolder)
-            print(f"Processing folder: {folder_path} (type: {type(folder_path)})")  # Debugging line
+            print(f"Processing folder: '{folder_path}' (type: {type(folder_path)})")  # Debugging line
             if os.path.exists(folder_path):
                 for filename in os.listdir(folder_path):
                     if filename.endswith('.pdf'):
                         pdf_file_path = os.path.join(folder_path, filename)
-                        print(f"Found PDF: {pdf_file_path} (type: {type(pdf_file_path)})")  # Debugging line
+                        print(f"Found PDF: '{pdf_file_path}' (type: {type(pdf_file_path)})")  # Debugging line
                         # Assuming the Tax ID is part of the filename (like "TaxID_filename.pdf")
                         tax_id = filename.split('_')[0]  # Extract Tax ID from filename
-                        print(f"Extracted Tax ID: {tax_id} (type: {type(tax_id)})")  # Debugging line
+                        tax_id = str(tax_id)  # Ensure tax_id is a string
+                        print(f"Extracted Tax ID: '{tax_id}' (type: {type(tax_id)})")  # Debugging line
 
-                        print(f"Processing '{pdf_file_path}' for Tax ID: {tax_id}")
+                        print(f"Processing '{pdf_file_path}' for Tax ID: '{tax_id}'")
                         self.extract_from_pdf(pdf_file_path, tax_id)
             else:
                 print(f"Subfolder '{folder_path}' does not exist.")
