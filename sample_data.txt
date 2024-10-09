@@ -1,75 +1,60 @@
 import os
-import pandas as pd
 import pytesseract
+from PIL import Image
 import camelot
-from pdf2image import convert_from_path
 
-class PDFExtractor:
-    def __init__(self, input_path, output_path):
-        self.input_path = input_path
-        self.output_path = output_path
+# Set the path to the Tesseract executable if it's not in your PATH
+pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 
-    def read_excel(self, excel_file):
-        """Read the subfolder list from an Excel file."""
-        return pd.read_excel(excel_file)['Subfolder'].tolist()
+class TaxIDProcessor:
+    def __init__(self, input_folder, output_folder):
+        self.input_folder = input_folder
+        self.output_folder = output_folder
+        
+        # Ensure the output folder exists
+        os.makedirs(self.output_folder, exist_ok=True)
 
-    def extract_from_pdf(self, pdf_file, tax_id):
-        """Extract text and tables from the specified PDF file."""
-        # Create output folder for the Tax ID inside the main output path
-        output_folder = os.path.join(self.output_path, tax_id)
-        os.makedirs(output_folder, exist_ok=True)
+    def process_taxid_folders(self):
+        # Loop through each tax ID folder
+        for tax_id in os.listdir(self.input_folder):
+            tax_id_path = os.path.join(self.input_folder, tax_id)
+            if os.path.isdir(tax_id_path):  # Check if it's a folder
+                output_subfolder = os.path.join(self.output_folder, tax_id)
+                os.makedirs(output_subfolder, exist_ok=True)
+                self.process_subfolders(tax_id_path, output_subfolder)
 
-        # Extract text and tables
-        self.extract_text(pdf_file, output_folder)
-        self.extract_tables(pdf_file, output_folder)
+    def process_subfolders(self, tax_id_path, output_subfolder):
+        for item in os.listdir(tax_id_path):
+            item_path = os.path.join(tax_id_path, item)
 
-    def extract_text(self, pdf_file, output_folder):
-        """Extract text from PDF using pytesseract and save it as a text file."""
-        # Convert PDF to images
-        images = convert_from_path(pdf_file)
-        text = ""
-        for image in images:
-            # Use pytesseract to extract text from the image
-            text += pytesseract.image_to_string(image) + "\n"
+            if os.path.isdir(item_path):  # Check for subfolder
+                self.extract_text_from_images(item_path, output_subfolder)
+                self.extract_tables_from_pdfs(item_path, output_subfolder)
 
-        # Save text to file
-        text_filename = os.path.join(output_folder, os.path.basename(pdf_file).replace('.pdf', '.txt'))
-        with open(text_filename, 'w', encoding='utf-8') as f:
-            f.write(text)
+    def extract_text_from_images(self, folder_path, output_subfolder):
+        """Extract text from image files in the given folder and save as .txt files."""
+        for filename in os.listdir(folder_path):
+            file_path = os.path.join(folder_path, filename)
+            if filename.lower().endswith(('.png', '.jpg', '.jpeg')):
+                text = pytesseract.image_to_string(Image.open(file_path))
+                text_filename = os.path.splitext(filename)[0] + '.txt'
+                with open(os.path.join(output_subfolder, text_filename), 'w') as text_file:
+                    text_file.write(text)
 
-    def extract_tables(self, pdf_file, output_folder):
-        """Extract tables from PDF using Camelot and save them to Excel."""
-        tables = camelot.read_pdf(pdf_file, pages='all')
-        if tables:
-            excel_filename = os.path.join(output_folder, os.path.basename(pdf_file).replace('.pdf', '.xlsx'))
-            tables.export(excel_filename, f='excel')
-        else:
-            print(f"No tables found in {pdf_file}")
+    def extract_tables_from_pdfs(self, folder_path, output_subfolder):
+        """Extract tables from PDF files in the given folder and save as .xlsx files."""
+        for filename in os.listdir(folder_path):
+            file_path = os.path.join(folder_path, filename)
+            if filename.lower().endswith('.pdf'):
+                tables = camelot.read_pdf(file_path, pages='all')
+                for i, table in enumerate(tables):
+                    excel_filename = os.path.splitext(filename)[0] + f'_table_{i}.xlsx'
+                    table.to_excel(os.path.join(output_subfolder, excel_filename), index=False)
 
-    def process_subfolders(self, excel_file):
-        """Process each subfolder to extract PDFs based on Tax ID."""
-        subfolders = self.read_excel(excel_file)
-        for subfolder in subfolders:
-            folder_path = os.path.join(self.input_path, subfolder)
-            if os.path.exists(folder_path):
-                for filename in os.listdir(folder_path):
-                    if filename.endswith('.pdf'):
-                        pdf_file_path = os.path.join(folder_path, filename)
-                        # Assuming the Tax ID is part of the filename (like "TaxID_filename.pdf")
-                        tax_id = filename.split('_')[0]  # Extract Tax ID from filename
-
-                        print(f"Processing '{pdf_file_path}' for Tax ID: {tax_id}")
-                        self.extract_from_pdf(pdf_file_path, tax_id)
-            else:
-                print(f"Subfolder '{folder_path}' does not exist.")
-
+# Example usage
 if __name__ == "__main__":
-    input_path = r"C:\path\to\your\subfolders"  # Path to the folder containing subfolders
-    output_path = r"C:\path\to\your\output\extraction"  # Main output path for extracted content
-    excel_file = r"C:\path\to\your\subfolders.xlsx"  # Excel file containing the subfolder list
+    main_input_folder = 'path_to_input_folder'  # Replace with your input folder path
+    main_output_folder = 'path_to_output_folder'  # Replace with your desired output folder path
 
-    # Ensure Tesseract is configured correctly
-    pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'  # Adjust path if necessary
-
-    extractor = PDFExtractor(input_path, output_path)
-    extractor.process_subfolders(excel_file)
+    processor = TaxIDProcessor(main_input_folder, main_output_folder)
+    processor.process_taxid_folders()
