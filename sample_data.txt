@@ -6,7 +6,7 @@ import pandas as pd
 from pdf2image import convert_from_path
 
 # Set the path to the Tesseract executable if it's not in your PATH
-pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'  # Update this if necessary
 
 class TaxIDProcessor:
     def __init__(self, input_folder, output_folder, excel_file, taxid_column):
@@ -60,13 +60,13 @@ class TaxIDProcessor:
                         # Use pytesseract to extract text from the image
                         text = pytesseract.image_to_string(page)
 
-                        if not text.strip():  # Check if the extracted text is empty
-                            print(f"No text extracted from page {i + 1} of {filename}.")
-                        else:
+                        if text.strip():  # If text was extracted
                             text_filename = os.path.splitext(filename)[0] + f'_page_{i + 1}.txt'
                             with open(os.path.join(output_subfolder, text_filename), 'w') as text_file:
                                 text_file.write(text)
                                 print(f"Extracted text saved as: {text_filename}")  # Debugging line
+                        else:
+                            print(f"No text extracted from page {i + 1} of {filename}.")  # Debugging line
 
                 except Exception as e:
                     print(f"Error processing {filename}: {e}")  # Catching errors for debugging
@@ -75,10 +75,14 @@ class TaxIDProcessor:
         for filename in os.listdir(folder_path):
             file_path = os.path.join(folder_path, filename)
             if filename.lower().endswith('.pdf'):
-                tables = camelot.read_pdf(file_path, pages='all')
-                for i, table in enumerate(tables):
-                    excel_filename = os.path.splitext(filename)[0] + f'_table_{i}.xlsx'
-                    table.to_excel(os.path.join(output_subfolder, excel_filename), index=False)
+                try:
+                    tables = camelot.read_pdf(file_path, pages='all')
+                    for i, table in enumerate(tables):
+                        excel_filename = os.path.splitext(filename)[0] + f'_table_{i}.xlsx'
+                        table.to_excel(os.path.join(output_subfolder, excel_filename), index=False)
+                        print(f"Extracted table saved as: {excel_filename}")  # Debugging line
+                except Exception as e:
+                    print(f"Error extracting tables from {filename}: {e}")
 
 # Example usage
 if __name__ == "__main__":
