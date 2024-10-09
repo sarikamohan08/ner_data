@@ -80,40 +80,41 @@ class FolderProcessor:
 
         return subfolder_text_content
 
-    def save_subfolder_content(self, subfolder, content):
+    def save_subfolder_content(self, tax_id, content):
         """
-        Save the content to the output folder as a .txt file.
+        Save the content to the output folder in a folder named after the TaxID.
         """
-        output_file_path = os.path.join(self.output_folder_path, f"{str(subfolder)}.txt")  # Cast subfolder to string
+        # Create a directory for the TaxID if it doesn't exist
+        tax_id_folder_path = os.path.join(self.output_folder_path, str(tax_id))
+        if not os.path.exists(tax_id_folder_path):
+            os.makedirs(tax_id_folder_path)
+
+        # Save the content to a file within the TaxID folder
+        output_file_path = os.path.join(tax_id_folder_path, f"{str(tax_id)}_content.txt")  # Name the file with the TaxID
         
-        # Ensure the output folder exists
-        if not os.path.exists(self.output_folder_path):
-            os.makedirs(self.output_folder_path)
-        
-        # Save the content to a file
         with open(output_file_path, 'w', encoding='utf-8') as output_file:
             output_file.write(content)
         
-        print(f"Saved content for subfolder: {subfolder}")
+        print(f"Saved content for TaxID: {tax_id} in folder: {tax_id_folder_path}")
 
     def process_folders(self):
         """
         Process each subfolder: read its contents and save them.
         """
-        for subfolder in self.subfolders:
-            subfolder_path = os.path.join(self.root_folder_path, str(subfolder))  # Ensure subfolder name is a string
+        for tax_id in self.subfolders:
+            subfolder_path = os.path.join(self.root_folder_path, str(tax_id))  # Ensure subfolder name is a string
             
             # Check if the subfolder exists
             if os.path.exists(subfolder_path) and os.path.isdir(subfolder_path):
-                print(f"Processing subfolder: {subfolder}")
+                print(f"Processing subfolder: {tax_id}")
                 
                 # Step 1: Read the contents of all files in the subfolder
                 content = self.read_subfolder_files(subfolder_path)
                 
                 # Step 2: Save the combined content to the output folder
-                self.save_subfolder_content(subfolder, content)
+                self.save_subfolder_content(tax_id, content)
             else:
-                print(f"Subfolder {subfolder} does not exist at {subfolder_path}")
+                print(f"Subfolder {tax_id} does not exist at {subfolder_path}")
 
 # Example usage
 if __name__ == "__main__":
