@@ -144,7 +144,7 @@ class PDFTableExtractor:
         Process all PDFs in the folder, extract tables, and extract address-related data.
         """
         for folder_name in folder_names:
-            folder_path = os.path.join(self.pdf_folder, folder_name)
+            folder_path = os.path.join(self.pdf_folder, str(folder_name))  # Convert folder_name to string
             for filename in os.listdir(folder_path):
                 if filename.endswith('.pdf'):
                     pdf_path = os.path.join(folder_path, filename)
