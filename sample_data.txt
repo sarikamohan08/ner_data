@@ -16,7 +16,7 @@ class FolderProcessor:
         Load the list of subfolders from the Excel file.
         """
         df = pd.read_excel(self.excel_path)
-        return df.iloc[:, 0].tolist()  # Assuming subfolder names are in the first column
+        return df.iloc[:, 0].astype(str).tolist()  # Ensure subfolder names are cast to strings
 
     def read_subfolder_files(self, subfolder_path):
         """
@@ -26,7 +26,7 @@ class FolderProcessor:
         
         # Loop through each file in the subfolder
         for file_name in os.listdir(subfolder_path):
-            file_path = os.path.join(subfolder_path, file_name)
+            file_path = os.path.join(subfolder_path, str(file_name))  # Ensure file names are strings
             
             # Ensure it's a file and not a directory
             if os.path.isfile(file_path):
@@ -39,7 +39,7 @@ class FolderProcessor:
         """
         Save the content to the output folder as a .txt file.
         """
-        output_file_path = os.path.join(self.output_folder_path, f"{subfolder}.txt")
+        output_file_path = os.path.join(self.output_folder_path, f"{str(subfolder)}.txt")  # Cast subfolder to string
         
         # Ensure the output folder exists
         if not os.path.exists(self.output_folder_path):
@@ -56,7 +56,7 @@ class FolderProcessor:
         Process each subfolder: read its contents and save them.
         """
         for subfolder in self.subfolders:
-            subfolder_path = os.path.join(self.root_folder_path, subfolder)
+            subfolder_path = os.path.join(self.root_folder_path, str(subfolder))  # Ensure subfolder name is a string
             
             # Check if the subfolder exists
             if os.path.exists(subfolder_path) and os.path.isdir(subfolder_path):
