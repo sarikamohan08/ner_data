@@ -18,25 +18,32 @@ class TaxIDProcessor:
         
         # Ensure the output folder exists
         os.makedirs(self.output_folder, exist_ok=True)
+        print(f"Output folder created: {self.output_folder}")  # Debugging line
 
     def read_taxid_from_excel(self):
         df = pd.read_excel(self.excel_file)
+        print(f"Tax IDs loaded from Excel: {df[self.taxid_column].tolist()}")  # Debugging line
         return df[self.taxid_column].astype(str).tolist()  # Convert to string to match folder names
 
     def process_taxid_folders(self):
         for tax_id in self.taxid_list:
             tax_id_path = os.path.join(self.input_folder, tax_id)
+            print(f"Checking folder for Tax ID: {tax_id}")  # Debugging line
             if os.path.isdir(tax_id_path):
                 output_subfolder = os.path.join(self.output_folder, tax_id)
                 os.makedirs(output_subfolder, exist_ok=True)
+                print(f"Processing Tax ID folder: {tax_id_path}")  # Debugging line
                 self.process_subfolders(tax_id_path, output_subfolder)
             else:
-                print(f"Folder for Tax ID {tax_id} does not exist. Skipping...")
+                print(f"Folder for Tax ID {tax_id} does not exist. Skipping...")  # Debugging line
 
     def process_subfolders(self, tax_id_path, output_subfolder):
+        print(f"Checking for subfolders in: {tax_id_path}")  # Debugging line
         for item in os.listdir(tax_id_path):
             item_path = os.path.join(tax_id_path, item)
+            print(f"Found item: {item_path}")  # Debugging line
             if os.path.isdir(item_path):  # Check for subfolder
+                print(f"Processing subfolder: {item_path}")  # Debugging line
                 self.extract_text_from_pdfs(item_path, output_subfolder)  # Directly extract text from PDFs
                 self.extract_tables_from_pdfs(item_path, output_subfolder)
 
@@ -44,6 +51,7 @@ class TaxIDProcessor:
         """
         Extract text from PDF files in the given folder and save as .txt files.
         """
+        print(f"Looking for PDF files in: {folder_path}")  # Debugging line
         for filename in os.listdir(folder_path):
             file_path = os.path.join(folder_path, filename)
             if filename.lower().endswith('.pdf'):
@@ -72,15 +80,19 @@ class TaxIDProcessor:
                     print(f"Error processing {filename}: {e}")  # Catching errors for debugging
 
     def extract_tables_from_pdfs(self, folder_path, output_subfolder):
+        print(f"Looking for tables in PDF files in: {folder_path}")  # Debugging line
         for filename in os.listdir(folder_path):
             file_path = os.path.join(folder_path, filename)
             if filename.lower().endswith('.pdf'):
                 try:
                     tables = camelot.read_pdf(file_path, pages='all')
-                    for i, table in enumerate(tables):
-                        excel_filename = os.path.splitext(filename)[0] + f'_table_{i}.xlsx'
-                        table.to_excel(os.path.join(output_subfolder, excel_filename), index=False)
-                        print(f"Extracted table saved as: {excel_filename}")  # Debugging line
+                    if tables:
+                        for i, table in enumerate(tables):
+                            excel_filename = os.path.splitext(filename)[0] + f'_table_{i}.xlsx'
+                            table.to_excel(os.path.join(output_subfolder, excel_filename), index=False)
+                            print(f"Extracted table saved as: {excel_filename}")  # Debugging line
+                    else:
+                        print(f"No tables found in {filename}.")  # Debugging line
                 except Exception as e:
                     print(f"Error extracting tables from {filename}: {e}")
 
@@ -89,7 +101,4 @@ if __name__ == "__main__":
     main_input_folder = 'path_to_input_folder'  # Replace with your input folder path
     main_output_folder = 'path_to_output_folder'  # Replace with your desired output folder path
     excel_file = 'path_to_excel_file.xlsx'  # Replace with your Excel file path
-    taxid_column = 'TaxID'  # Replace with the column name in the Excel file containing Tax IDs
-
-    processor = TaxIDProcessor(main_input_folder, main_output_folder, excel_file, taxid_column)
-    processor.process_taxid_folders()
+    taxid_column = 'TaxID'  # Replace with the
