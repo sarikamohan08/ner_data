@@ -1,14 +1,15 @@
 import os
 import camelot
 import pandas as pd
-import shutil
+from pdf2image import convert_from_path
+import pytesseract
 from openpyxl import Workbook
 
 class PDFTableExtractor:
     def __init__(self, base_directory, excel_file, output_excel, address_keywords=None):
         self.base_directory = base_directory
         self.excel_file = excel_file
-        self.excel_folder = 'extracted_excel_files'  # Folder to store extracted Excel files
+        self.excel_folder = 'extracted_excel_files'  # Root folder for storing extracted Excel and text files
         self.output_excel = output_excel
 
         # Define keywords for address/contact information
@@ -22,7 +23,7 @@ class PDFTableExtractor:
         # Storage for extracted data
         self.extracted_data_combined = []
 
-        # Create the Excel folder if it doesn't exist
+        # Create the root Excel folder if it doesn't exist
         if not os.path.exists(self.excel_folder):
             os.makedirs(self.excel_folder)
 
@@ -38,6 +39,21 @@ class PDFTableExtractor:
         except Exception as e:
             print(f"Error extracting tables from {os.path.basename(pdf_path)}: {e}")
             return None
+
+    def extract_text_from_pdf(self, pdf_path):
+        """
+        Extract text from the given PDF file using pytesseract and pdf2image.
+        """
+        text = ""
+        try:
+            # Convert PDF pages to images
+            images = convert_from_path(pdf_path)
+            for i, image in enumerate(images):
+                # Use pytesseract to do OCR on each image (page)
+                text += pytesseract.image_to_string(image)
+        except Exception as e:
+            print(f"Error extracting text from {os.path.basename(pdf_path)}: {e}")
+        return text
 
     def contains_keywords(self, df, keywords):
         """
@@ -83,12 +99,18 @@ class PDFTableExtractor:
 
         return address_data
 
-    def save_tables_to_excel(self, tables, filename):
+    def save_tables_to_excel(self, tables, filename, subfolder_name):
         """
-        Save extracted tables to an Excel file and store data in specific columns based on the type of address found.
+        Save extracted tables to an Excel file inside a subfolder and store data based on the type of address found.
         """
+        subfolder_excel_path = os.path.join(self.excel_folder, subfolder_name)
+
+        # Create a subfolder inside the Excel folder if it doesn't exist
+        if not os.path.exists(subfolder_excel_path):
+            os.makedirs(subfolder_excel_path)
+
         excel_filename = os.path.splitext(filename)[0] + '.xlsx'
-        excel_path = os.path.join(self.excel_folder, excel_filename)
+        excel_path = os.path.join(subfolder_excel_path, excel_filename)
 
         extracted_file_data = {
             'File Name': filename, 
@@ -122,6 +144,22 @@ class PDFTableExtractor:
         # Append the extracted file data to the combined list
         self.extracted_data_combined.append(extracted_file_data)
 
+    def save_text_to_file(self, text, filename, subfolder_name):
+        """
+        Save extracted text to a text file inside a subfolder.
+        """
+        subfolder_text_path = os.path.join(self.excel_folder, subfolder_name)
+
+        # Create a subfolder inside the Excel folder if it doesn't exist
+        if not os.path.exists(subfolder_text_path):
+            os.makedirs(subfolder_text_path)
+
+        text_filename = os.path.splitext(filename)[0] + '.txt'
+        text_path = os.path.join(subfolder_text_path, text_filename)
+
+        with open(text_path, 'w', encoding='utf-8') as text_file:
+            text_file.write(text)
+
     def process_pdfs(self, folder_names):
         """
         Process PDFs in subfolders as per the names in the Excel file.
@@ -137,14 +175,20 @@ class PDFTableExtractor:
                 if filename.endswith('.pdf'):
                     pdf_path = os.path.join(subfolder_path, filename)
                     print(f"Processing {filename} in {folder_name}...")
+
+                    # Extract tables
                     tables = self.extract_tables_from_pdf(pdf_path)
 
                     if not tables:
                         print(f"Skipping {filename} (no tables found).")
-                        continue
+                    else:
+                        # Save tables to Excel inside the subfolder
+                        self.save_tables_to_excel(tables, filename, folder_name)
 
-                    # Save tables to Excel and extract address-related data
-                    self.save_tables_to_excel(tables, filename)
+                    # Extract text and save to a file
+                    text = self.extract_text_from_pdf(pdf_path)
+                    if text:
+                        self.save_text_to_file(text, filename, folder_name)
 
     def read_folder_names_from_excel(self):
         """
@@ -181,8 +225,8 @@ class PDFTableExtractor:
 
 # Usage
 if __name__ == "__main__":
-    base_directory = 'path_to_base_directory'  # Directory where subfolders are located
-    excel_file = 'subfolder_names.xlsx'  # Excel file with folder names
+    base_directory = 'path_to_base_directory'  # Base directory containing subfolders with PDFs
+    excel_file = 'subfolder_names.xlsx'  # Excel file containing subfolder names
     output_excel = 'combined_address_data.xlsx'  # Single output file for all address-related data
 
     extractor = PDFTableExtractor(base_directory, excel_file, output_excel)
