@@ -3,78 +3,89 @@ import pytesseract
 import pandas as pd
 import camelot
 from PIL import Image
-import openpyxl
+from pdf2image import convert_from_path
 
 class TaxIDProcessor:
     def __init__(self, excel_file, input_dir, output_dir):
-        """
-        Initialize the processor with the Excel file containing TaxIDs, input folder, and output folder.
-        """
         self.excel_file = excel_file
         self.input_dir = input_dir
         self.output_dir = output_dir
         self.taxids = self.load_taxids()
     
     def load_taxids(self):
-        """
-        Load TaxIDs from the provided Excel file.
-        """
         df = pd.read_excel(self.excel_file)
         return df['taxid'].tolist()
     
     def process_taxids(self):
-        """
-        Process each TaxID, check for subfolders, and extract data from files in subfolders.
-        """
         for taxid in self.taxids:
             taxid_folder = os.path.join(self.input_dir, str(taxid))
             output_taxid_folder = os.path.join(self.output_dir, str(taxid))
             
-            # Check if taxid folder exists
             if os.path.exists(taxid_folder):
                 os.makedirs(output_taxid_folder, exist_ok=True)
-                
-                # Process files in the taxid folder
                 self.process_folder(taxid_folder, output_taxid_folder)
             else:
                 print(f"No subfolder found for taxid {taxid}")
     
     def process_folder(self, taxid_folder, output_taxid_folder):
-        """
-        Process files within a TaxID folder, extracting text and tables.
-        """
         for root, dirs, files in os.walk(taxid_folder):
             for file in files:
                 file_path = os.path.join(root, file)
-                
-                # If the file is an image, use Pytesseract for text extraction
+
+                # If the file is an image
                 if file.lower().endswith(('.png', '.jpg', '.jpeg')):
                     self.extract_text(file_path, output_taxid_folder)
-                
-                # If the file is a PDF, use Camelot for table extraction
+
+                # If the file is a PDF
                 elif file.lower().endswith('.pdf'):
-                    self.extract_tables(file_path, output_taxid_folder)
-    
-    def extract_text(self, image_path, output_taxid_folder):
+                    self.extract_text(file_path, output_taxid_folder)
+
+    def extract_text(self, file_path, output_taxid_folder):
         """
-        Extract text from an image using Pytesseract and save it as a .txt file.
+        Extract text from an image or a PDF file using Pytesseract and save it as a .txt file.
         """
-        img = Image.open(image_path)
-        text = pytesseract.image_to_string(img)
-        
-        # Save the extracted text to a .txt file
-        text_filename = os.path.join(output_taxid_folder, os.path.basename(image_path).replace('.png', '.txt').replace('.jpg', '.txt').replace('.jpeg', '.txt'))
-        with open(text_filename, 'w') as f:
-            f.write(text)
-        print(f"Extracted text and saved to {text_filename}")
-    
+        # Check if the file is a PDF
+        if file_path.lower().endswith('.pdf'):
+            # Convert PDF pages to images
+            try:
+                images = convert_from_path(file_path)
+                all_text = ""
+                
+                # Iterate through each image
+                for i, image in enumerate(images):
+                    text = pytesseract.image_to_string(image)
+                    all_text += text + "\n"  # Append text from each page
+
+                # Save the extracted text to a .txt file
+                text_filename = os.path.join(output_taxid_folder, os.path.basename(file_path).replace('.pdf', '.txt'))
+                with open(text_filename, 'w') as f:
+                    f.write(all_text)
+                print(f"Extracted text from PDF and saved to {text_filename}")
+            
+            except Exception as e:
+                print(f"An error occurred while processing {file_path}: {e}")
+
+        # If the file is an image
+        else:
+            try:
+                img = Image.open(file_path)
+                text = pytesseract.image_to_string(img)
+
+                # Save the extracted text to a .txt file
+                text_filename = os.path.join(output_taxid_folder, os.path.basename(file_path).replace('.png', '.txt').replace('.jpg', '.txt').replace('.jpeg', '.txt'))
+                with open(text_filename, 'w') as f:
+                    f.write(text)
+                print(f"Extracted text from image and saved to {text_filename}")
+            
+            except Exception as e:
+                print(f"An error occurred while processing {file_path}: {e}")
+
     def extract_tables(self, pdf_path, output_taxid_folder):
         """
         Extract tables from a PDF using Camelot and save as an Excel file.
         """
         tables = camelot.read_pdf(pdf_path, pages='all')
         
-        # Save each table to an Excel file
         if tables:
             excel_filename = os.path.join(output_taxid_folder, os.path.basename(pdf_path).replace('.pdf', '.xlsx'))
             with pd.ExcelWriter(excel_filename, engine='openpyxl') as writer:
