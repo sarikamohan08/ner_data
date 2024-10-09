@@ -75,8 +75,11 @@ class FolderProcessor:
         """
         for i, table in enumerate(tables):
             excel_file_path = os.path.join(self.output_folder_path, str(tax_id), f"table_{i + 1}.xlsx")
-            table.to_excel(excel_file_path, index=False)
-            print(f"Saved table {i + 1} for TaxID {tax_id} to {excel_file_path}")
+            try:
+                table.to_excel(excel_file_path, index=False)
+                print(f"Saved table {i + 1} for TaxID {tax_id} to {excel_file_path}")
+            except OSError as e:
+                print(f"Error saving table {i + 1} for TaxID {tax_id} to {excel_file_path}: {e}")
 
     def read_subfolder_files(self, subfolder_path, tax_id):
         """
@@ -118,10 +121,12 @@ class FolderProcessor:
         # Save the content to a file within the TaxID folder
         output_file_path = os.path.join(tax_id_folder_path, f"{str(tax_id)}_content.txt")  # Name the file with the TaxID
         
-        with open(output_file_path, 'w', encoding='utf-8') as output_file:
-            output_file.write(content)
-        
-        print(f"Saved content for TaxID: {tax_id} in folder: {tax_id_folder_path}")
+        try:
+            with open(output_file_path, 'w', encoding='utf-8') as output_file:
+                output_file.write(content)
+            print(f"Saved content for TaxID: {tax_id} in folder: {tax_id_folder_path}")
+        except OSError as e:
+            print(f"Error saving content for TaxID {tax_id} to {output_file_path}: {e}")
 
     def process_folders(self):
         """
