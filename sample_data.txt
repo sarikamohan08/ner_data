@@ -3,6 +3,7 @@ import pandas as pd
 import pytesseract
 from PIL import Image
 import chardet
+import camelot
 
 class FolderProcessor:
     def __init__(self, excel_path, root_folder_path, output_folder_path):
@@ -57,6 +58,26 @@ class FolderProcessor:
             print(f"Error reading image file {file_path}: {e}")
             return ""
 
+    def extract_tables_from_pdf(self, pdf_path):
+        """
+        Extract tables from a PDF file and return as DataFrames.
+        """
+        try:
+            tables = camelot.read_pdf(pdf_path, pages='all')
+            return tables
+        except Exception as e:
+            print(f"Error extracting tables from {pdf_path}: {e}")
+            return []
+
+    def save_tables_as_excel(self, tables, tax_id):
+        """
+        Save extracted tables to Excel files in the TaxID folder.
+        """
+        for i, table in enumerate(tables):
+            excel_file_path = os.path.join(self.output_folder_path, str(tax_id), f"table_{i + 1}.xlsx")
+            table.to_excel(excel_file_path, index=False)
+            print(f"Saved table {i + 1} for TaxID {tax_id} to {excel_file_path}")
+
     def read_subfolder_files(self, subfolder_path):
         """
         Read all files in the given subfolder and return their combined content.
@@ -77,6 +98,11 @@ class FolderProcessor:
                     # If the file is a text file, read it
                     print(f"Processing text file: {file_name}")
                     subfolder_text_content += self.read_text_file(file_path) + "\n"
+                elif file_name.lower().endswith('.pdf'):
+                    # If the file is a PDF, extract tables
+                    print(f"Processing PDF file: {file_name}")
+                    tables = self.extract_tables_from_pdf(file_path)
+                    self.save_tables_as_excel(tables, str(tax_id))
 
         return subfolder_text_content
 
