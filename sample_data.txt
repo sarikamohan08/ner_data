@@ -82,6 +82,8 @@ class FolderProcessor:
             excel_file_path = os.path.join(tax_id_folder_path, f"table_{i + 1}.xlsx")
             # Simulating file save operation
             print(f"[SIMULATE SAVE] Table {i + 1} for TaxID {tax_id} would be saved to {excel_file_path}")
+            # Uncomment the line below to actually save the tables
+            # table.to_excel(excel_file_path)  # Uncomment to save the actual table
 
     def read_subfolder_files(self, subfolder_path, tax_id):
         """
