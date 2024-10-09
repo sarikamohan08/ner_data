@@ -1,156 +1,75 @@
 import os
 import pandas as pd
 import pytesseract
-from PIL import Image
-import chardet
-from pdf2image import convert_from_path
 import camelot
+from pdf2image import convert_from_path
 
-class FolderProcessor:
-    def __init__(self, excel_path, root_folder_path, output_folder_path):
-        """
-        Initialize the FolderProcessor with paths.
-        """
-        self.excel_path = excel_path
-        self.root_folder_path = root_folder_path
-        self.output_folder_path = output_folder_path
-        self.subfolders = self.load_subfolders()
+class PDFExtractor:
+    def __init__(self, input_path, output_path):
+        self.input_path = input_path
+        self.output_path = output_path
 
-    def load_subfolders(self):
-        """
-        Load the list of subfolders from the Excel file.
-        """
-        df = pd.read_excel(self.excel_path)
-        return df.iloc[:, 0].astype(str).tolist()  # Ensure subfolder names are cast to strings
+    def read_excel(self, excel_file):
+        """Read the subfolder list from an Excel file."""
+        return pd.read_excel(excel_file)['Subfolder'].tolist()
 
-    def detect_encoding(self, file_path):
-        """
-        Detect the encoding of a given text file.
-        """
-        with open(file_path, 'rb') as file:
-            rawdata = file.read()
-            result = chardet.detect(rawdata)
-            return result['encoding']
+    def extract_from_pdf(self, pdf_file, tax_id):
+        """Extract text and tables from the specified PDF file."""
+        # Create output folder for the Tax ID inside the main output path
+        output_folder = os.path.join(self.output_path, tax_id)
+        os.makedirs(output_folder, exist_ok=True)
 
-    def read_image_file(self, file_path):
-        """
-        Extract text from an image file using PyTesseract.
-        """
-        try:
-            # Open the image file
-            img = Image.open(file_path)
-            # Use PyTesseract to extract text
-            text = pytesseract.image_to_string(img)
-            return text
-        except Exception as e:
-            print(f"Error reading image file {file_path}: {e}")
-            return ""
+        # Extract text and tables
+        self.extract_text(pdf_file, output_folder)
+        self.extract_tables(pdf_file, output_folder)
 
-    def read_pdf_file(self, file_path):
-        """
-        Extract text from a PDF file using PyTesseract.
-        """
+    def extract_text(self, pdf_file, output_folder):
+        """Extract text from PDF using pytesseract and save it as a text file."""
+        # Convert PDF to images
+        images = convert_from_path(pdf_file)
         text = ""
-        try:
-            # Convert PDF to images
-            pages = convert_from_path(file_path)
-            for page in pages:
-                # Use PyTesseract to extract text from each page image
-                text += pytesseract.image_to_string(page) + "\n"
-        except Exception as e:
-            print(f"Error reading PDF file {file_path}: {e}")
-        return text
+        for image in images:
+            # Use pytesseract to extract text from the image
+            text += pytesseract.image_to_string(image) + "\n"
 
-    def extract_tables_from_pdf(self, file_path, tax_id):
-        """
-        Extract tables from a PDF file using Camelot and save to an Excel file.
-        """
-        try:
-            # Use Camelot to read tables
-            tables = camelot.read_pdf(file_path, pages='all')
-            if tables:
-                excel_file_path = os.path.join(self.output_folder_path, str(tax_id), f"{tax_id}_tables.xlsx")
-                tables.export(excel_file_path, f='excel')  # Save all tables to a single Excel file
-                print(f"Tables extracted and saved to {excel_file_path}")
-                return True  # Indicate that tables were found and saved
-            else:
-                print(f"No tables found in {file_path}.")
-                return False  # Indicate no tables found
-        except Exception as e:
-            print(f"Error extracting tables from {file_path}: {e}")
-            return False  # Indicate an error occurred
+        # Save text to file
+        text_filename = os.path.join(output_folder, os.path.basename(pdf_file).replace('.pdf', '.txt'))
+        with open(text_filename, 'w', encoding='utf-8') as f:
+            f.write(text)
 
-    def process_file(self, file_path, tax_id):
-        """
-        Process an individual file to extract text and tables.
-        """
-        print(f"Processing file: {file_path}")
-
-        # Create a directory for the TaxID if it doesn't exist
-        tax_id_folder_path = os.path.join(self.output_folder_path, str(tax_id))
-        if not os.path.exists(tax_id_folder_path):
-            os.makedirs(tax_id_folder_path)
-
-        # Step 1: Extract text using PyTesseract (for images or scanned PDFs)
-        text_content = ""
-        if file_path.lower().endswith(('.png', '.jpg', '.jpeg', '.tiff', '.bmp', '.gif', '.pdf')):
-            if file_path.lower().endswith('.pdf'):
-                # If the file is a PDF, read it for text extraction
-                text_content = self.read_pdf_file(file_path)
-                # Attempt to extract tables from the PDF
-                tables_found = self.extract_tables_from_pdf(file_path, tax_id)
-            else:
-                # If it's an image, extract text
-                text_content = self.read_image_file(file_path)
-
-            # Step 2: Save the extracted text to a .txt file
-            text_file_path = os.path.join(tax_id_folder_path, f"{tax_id}_content.txt")
-            with open(text_file_path, 'w', encoding='utf-8') as text_file:
-                text_file.write(text_content)
-            print(f"Saved text content to {text_file_path}")
-
-            # Step 3: If only text is found and no tables are extracted from PDF, do not create an Excel file
-            if not tables_found and file_path.lower().endswith('.pdf'):
-                print(f"No tables found for {file_path}. Only text file created.")
+    def extract_tables(self, pdf_file, output_folder):
+        """Extract tables from PDF using Camelot and save them to Excel."""
+        tables = camelot.read_pdf(pdf_file, pages='all')
+        if tables:
+            excel_filename = os.path.join(output_folder, os.path.basename(pdf_file).replace('.pdf', '.xlsx'))
+            tables.export(excel_filename, f='excel')
         else:
-            print(f"File format not supported: {file_path}")
+            print(f"No tables found in {pdf_file}")
 
-    def read_subfolder_files(self, subfolder_path, tax_id):
-        """
-        Read all files in the given subfolder and process them.
-        """
-        # Loop through each file in the subfolder
-        for file_name in os.listdir(subfolder_path):
-            file_path = os.path.join(subfolder_path, str(file_name))  # Ensure file names are strings
+    def process_subfolders(self, excel_file):
+        """Process each subfolder to extract PDFs based on Tax ID."""
+        subfolders = self.read_excel(excel_file)
+        for subfolder in subfolders:
+            folder_path = os.path.join(self.input_path, subfolder)
+            if os.path.exists(folder_path):
+                for filename in os.listdir(folder_path):
+                    if filename.endswith('.pdf'):
+                        pdf_file_path = os.path.join(folder_path, filename)
+                        # Assuming the Tax ID is part of the filename (like "TaxID_filename.pdf")
+                        tax_id = filename.split('_')[0]  # Extract Tax ID from filename
 
-            # Ensure it's a file and not a directory
-            if os.path.isfile(file_path):
-                self.process_file(file_path, tax_id)
-
-    def process_folders(self):
-        """
-        Process each subfolder: read its contents and save them.
-        """
-        for tax_id in self.subfolders:
-            subfolder_path = os.path.join(self.root_folder_path, str(tax_id))  # Ensure subfolder name is a string
-            
-            # Check if the subfolder exists
-            if os.path.exists(subfolder_path) and os.path.isdir(subfolder_path):
-                print(f"Processing subfolder: {tax_id}")
-                
-                # Step 1: Read and process all files in the subfolder
-                self.read_subfolder_files(subfolder_path, tax_id)
+                        print(f"Processing '{pdf_file_path}' for Tax ID: {tax_id}")
+                        self.extract_from_pdf(pdf_file_path, tax_id)
             else:
-                print(f"Subfolder {tax_id} does not exist at {subfolder_path}")
+                print(f"Subfolder '{folder_path}' does not exist.")
 
-# Example usage
 if __name__ == "__main__":
-    excel_path = "path_to_excel_file.xlsx"  # Update to your actual file path
-    root_folder_path = "path_to_root_folder"  # Update to your actual folder path
-    output_folder_path = "path_to_output_folder"  # Update to your desired output path
+    input_path = r"C:\path\to\your\subfolders"  # Path to the folder containing subfolders
+    output_path = r"C:\path\to\your\output\extraction"  # Main output path for extracted content
+    excel_file = r"C:\path\to\your\subfolders.xlsx"  # Excel file containing the subfolder list
 
-    # Create an instance of FolderProcessor
-    folder_processor = FolderProcessor(excel_path, root_folder_path, output_folder_path)
-    
-    # Start processing subfolders
-    folder_processor.process_folders()
+    # Ensure Tesseract is configured correctly
+    pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'  # Adjust path if necessary
+
+    extractor = PDFExtractor(input_path, output_path)
+    extractor.process_subfolders(excel_file)
