@@ -3,6 +3,8 @@ import pandas as pd
 import pytesseract
 from PIL import Image
 import chardet
+import fitz  # PyMuPDF
+import camelot
 
 class FolderProcessor:
     def __init__(self, excel_path, root_folder_path, output_folder_path):
@@ -30,19 +32,6 @@ class FolderProcessor:
             result = chardet.detect(rawdata)
             return result['encoding']
 
-    def read_text_file(self, file_path):
-        """
-        Read content from a text file with detected encoding.
-        """
-        encoding = self.detect_encoding(file_path)
-        print(f"Detected encoding for {file_path}: {encoding}")
-        try:
-            with open(file_path, 'r', encoding=encoding) as file:
-                return file.read()
-        except UnicodeDecodeError as e:
-            print(f"Error reading file {file_path}: {e}")
-            return ""
-
     def read_image_file(self, file_path):
         """
         Extract text from an image file using PyTesseract.
@@ -57,45 +46,76 @@ class FolderProcessor:
             print(f"Error reading image file {file_path}: {e}")
             return ""
 
-    def read_subfolder_files(self, subfolder_path):
+    def read_pdf_file(self, file_path):
         """
-        Read all files in the given subfolder and return their combined content.
+        Extract text from a PDF file using PyMuPDF.
         """
-        subfolder_text_content = ""
+        text = ""
+        try:
+            # Open the PDF file
+            doc = fitz.open(file_path)
+            # Extract text from each page
+            for page in doc:
+                text += page.get_text() + "\n"
+            doc.close()
+        except Exception as e:
+            print(f"Error reading PDF file {file_path}: {e}")
+        return text
 
+    def extract_tables_from_pdf(self, file_path, tax_id):
+        """
+        Extract tables from a PDF file using Camelot and save to an Excel file.
+        """
+        try:
+            # Use Camelot to read tables
+            tables = camelot.read_pdf(file_path, pages='all')
+            if tables:
+                excel_file_path = os.path.join(self.output_folder_path, str(tax_id), f"{tax_id}_tables.xlsx")
+                tables.export(excel_file_path, f='excel')  # Save all tables to a single Excel file
+                print(f"Tables extracted and saved to {excel_file_path}")
+            else:
+                print(f"No tables found in {file_path}.")
+        except Exception as e:
+            print(f"Error extracting tables from {file_path}: {e}")
+
+    def process_file(self, file_path, tax_id):
+        """
+        Process an individual file to extract text and tables.
+        """
+        print(f"Processing file: {file_path}")
+
+        # Create a directory for the TaxID if it doesn't exist
+        tax_id_folder_path = os.path.join(self.output_folder_path, str(tax_id))
+        if not os.path.exists(tax_id_folder_path):
+            os.makedirs(tax_id_folder_path)
+
+        # Step 1: Extract text using PyTesseract (for image or scanned PDFs)
+        if file_path.lower().endswith(('.png', '.jpg', '.jpeg', '.tiff', '.bmp', '.gif', '.pdf')):
+            if file_path.lower().endswith('.pdf'):
+                # If the file is a PDF, read it for text extraction and table extraction
+                text_content = self.read_pdf_file(file_path)
+                self.extract_tables_from_pdf(file_path, tax_id)
+            else:
+                # If it's an image, extract text
+                text_content = self.read_image_file(file_path)
+            
+            # Step 2: Save the extracted text to a .txt file
+            text_file_path = os.path.join(tax_id_folder_path, f"{tax_id}_content.txt")
+            with open(text_file_path, 'w', encoding='utf-8') as text_file:
+                text_file.write(text_content)
+            print(f"Saved text content to {text_file_path}")
+
+    def read_subfolder_files(self, subfolder_path, tax_id):
+        """
+        Read all files in the given subfolder and process them.
+        """
         # Loop through each file in the subfolder
         for file_name in os.listdir(subfolder_path):
             file_path = os.path.join(subfolder_path, str(file_name))  # Ensure file names are strings
 
             # Ensure it's a file and not a directory
             if os.path.isfile(file_path):
-                if file_name.lower().endswith(('.png', '.jpg', '.jpeg', '.tiff', '.bmp', '.gif')):
-                    # If the file is an image, read it using PyTesseract
-                    print(f"Processing image file: {file_name}")
-                    subfolder_text_content += self.read_image_file(file_path) + "\n"
-                elif file_name.lower().endswith(('.txt', '.csv', '.log')):
-                    # If the file is a text file, read it
-                    print(f"Processing text file: {file_name}")
-                    subfolder_text_content += self.read_text_file(file_path) + "\n"
-
-        return subfolder_text_content
-
-    def save_subfolder_content(self, tax_id, content):
-        """
-        Save the content to the output folder in a folder named after the TaxID.
-        """
-        # Create a directory for the TaxID if it doesn't exist
-        tax_id_folder_path = os.path.join(self.output_folder_path, str(tax_id))
-        if not os.path.exists(tax_id_folder_path):
-            os.makedirs(tax_id_folder_path)
-
-        # Save the content to a file within the TaxID folder
-        output_file_path = os.path.join(tax_id_folder_path, f"{str(tax_id)}_content.txt")  # Name the file with the TaxID
-        
-        with open(output_file_path, 'w', encoding='utf-8') as output_file:
-            output_file.write(content)
-        
-        print(f"Saved content for TaxID: {tax_id} in folder: {tax_id_folder_path}")
+                self.process_file(file_path, tax_id)
 
     def process_folders(self):
         """
@@ -108,11 +128,8 @@ class FolderProcessor:
             if os.path.exists(subfolder_path) and os.path.isdir(subfolder_path):
                 print(f"Processing subfolder: {tax_id}")
                 
-                # Step 1: Read the contents of all files in the subfolder
-                content = self.read_subfolder_files(subfolder_path)
-                
-                # Step 2: Save the combined content to the output folder
-                self.save_subfolder_content(tax_id, content)
+                # Step 1: Read and process all files in the subfolder
+                self.read_subfolder_files(subfolder_path, tax_id)
             else:
                 print(f"Subfolder {tax_id} does not exist at {subfolder_path}")
 
@@ -127,4 +144,3 @@ if __name__ == "__main__":
     
     # Start processing subfolders
     folder_processor.process_folders()
-
