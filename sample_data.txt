@@ -72,10 +72,13 @@ class FolderProcessor:
                 excel_file_path = os.path.join(self.output_folder_path, str(tax_id), f"{tax_id}_tables.xlsx")
                 tables.export(excel_file_path, f='excel')  # Save all tables to a single Excel file
                 print(f"Tables extracted and saved to {excel_file_path}")
+                return True  # Indicate that tables were found and saved
             else:
                 print(f"No tables found in {file_path}.")
+                return False  # Indicate no tables found
         except Exception as e:
             print(f"Error extracting tables from {file_path}: {e}")
+            return False  # Indicate an error occurred
 
     def process_file(self, file_path, tax_id):
         """
@@ -89,21 +92,28 @@ class FolderProcessor:
             os.makedirs(tax_id_folder_path)
 
         # Step 1: Extract text using PyTesseract (for images or scanned PDFs)
+        text_content = ""
         if file_path.lower().endswith(('.png', '.jpg', '.jpeg', '.tiff', '.bmp', '.gif', '.pdf')):
-            text_content = ""
             if file_path.lower().endswith('.pdf'):
-                # If the file is a PDF, read it for text extraction and table extraction
+                # If the file is a PDF, read it for text extraction
                 text_content = self.read_pdf_file(file_path)
-                self.extract_tables_from_pdf(file_path, tax_id)
+                # Attempt to extract tables from the PDF
+                tables_found = self.extract_tables_from_pdf(file_path, tax_id)
             else:
                 # If it's an image, extract text
                 text_content = self.read_image_file(file_path)
-            
+
             # Step 2: Save the extracted text to a .txt file
             text_file_path = os.path.join(tax_id_folder_path, f"{tax_id}_content.txt")
             with open(text_file_path, 'w', encoding='utf-8') as text_file:
                 text_file.write(text_content)
             print(f"Saved text content to {text_file_path}")
+
+            # Step 3: If only text is found and no tables are extracted from PDF, do not create an Excel file
+            if not tables_found and file_path.lower().endswith('.pdf'):
+                print(f"No tables found for {file_path}. Only text file created.")
+        else:
+            print(f"File format not supported: {file_path}")
 
     def read_subfolder_files(self, subfolder_path, tax_id):
         """
