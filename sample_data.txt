@@ -3,7 +3,6 @@ import pandas as pd
 import pytesseract
 from PIL import Image
 import chardet
-import camelot
 
 class FolderProcessor:
     def __init__(self, excel_path, root_folder_path, output_folder_path):
@@ -53,39 +52,12 @@ class FolderProcessor:
             img = Image.open(file_path)
             # Use PyTesseract to extract text
             text = pytesseract.image_to_string(img)
-            return text.strip()  # Remove leading/trailing whitespace
+            return text
         except Exception as e:
             print(f"Error reading image file {file_path}: {e}")
             return ""
 
-    def extract_tables_from_pdf(self, pdf_path):
-        """
-        Extract tables from a PDF file and return as DataFrames.
-        """
-        try:
-            tables = camelot.read_pdf(pdf_path, pages='all')
-            return tables
-        except Exception as e:
-            print(f"Error extracting tables from {pdf_path}: {e}")
-            return []
-
-    def save_tables_as_excel(self, tables, tax_id):
-        """
-        Simulate saving extracted tables to Excel files in the TaxID folder.
-        """
-        # Create the folder for TaxID if it doesn't exist
-        tax_id_folder_path = os.path.join(self.output_folder_path, str(tax_id))
-        if not os.path.exists(tax_id_folder_path):
-            os.makedirs(tax_id_folder_path)
-
-        for i, table in enumerate(tables):
-            excel_file_path = os.path.join(tax_id_folder_path, f"table_{i + 1}.xlsx")
-            # Simulating file save operation
-            print(f"[SIMULATE SAVE] Table {i + 1} for TaxID {tax_id} would be saved to {excel_file_path}")
-            # Uncomment the line below to actually save the tables
-            # table.to_excel(excel_file_path)  # Uncomment to save the actual table
-
-    def read_subfolder_files(self, subfolder_path, tax_id):
+    def read_subfolder_files(self, subfolder_path):
         """
         Read all files in the given subfolder and return their combined content.
         """
@@ -97,29 +69,16 @@ class FolderProcessor:
 
             # Ensure it's a file and not a directory
             if os.path.isfile(file_path):
-                print(f"Found file: {file_name}")  # Debug statement
                 if file_name.lower().endswith(('.png', '.jpg', '.jpeg', '.tiff', '.bmp', '.gif')):
                     # If the file is an image, read it using PyTesseract
                     print(f"Processing image file: {file_name}")
-                    extracted_text = self.read_image_file(file_path)
-                    subfolder_text_content += extracted_text + "\n"
+                    subfolder_text_content += self.read_image_file(file_path) + "\n"
                 elif file_name.lower().endswith(('.txt', '.csv', '.log')):
                     # If the file is a text file, read it
                     print(f"Processing text file: {file_name}")
-                    extracted_text = self.read_text_file(file_path)
-                    subfolder_text_content += extracted_text + "\n"
-                elif file_name.lower().endswith('.pdf'):
-                    # If the file is a PDF, extract tables
-                    print(f"Processing PDF file: {file_name}")
-                    tables = self.extract_tables_from_pdf(file_path)
-                    self.save_tables_as_excel(tables, tax_id)  # Pass tax_id here
-                else:
-                    print(f"Unsupported file type: {file_name}")  # Debug statement for unsupported files
+                    subfolder_text_content += self.read_text_file(file_path) + "\n"
 
-        if not subfolder_text_content.strip():  # Check if content is empty
-            print(f"No text content extracted from files in {subfolder_path} for TaxID {tax_id}.")
-        
-        return subfolder_text_content.strip()  # Strip leading/trailing whitespace
+        return subfolder_text_content
 
     def save_subfolder_content(self, tax_id, content):
         """
@@ -133,12 +92,10 @@ class FolderProcessor:
         # Save the content to a file within the TaxID folder
         output_file_path = os.path.join(tax_id_folder_path, f"{str(tax_id)}_content.txt")  # Name the file with the TaxID
         
-        try:
-            with open(output_file_path, 'w', encoding='utf-8') as output_file:
-                output_file.write(content)
-            print(f"Saved content for TaxID: {tax_id} in folder: {tax_id_folder_path}")
-        except OSError as e:
-            print(f"Error saving content for TaxID {tax_id} to {output_file_path}: {e}")
+        with open(output_file_path, 'w', encoding='utf-8') as output_file:
+            output_file.write(content)
+        
+        print(f"Saved content for TaxID: {tax_id} in folder: {tax_id_folder_path}")
 
     def process_folders(self):
         """
@@ -152,13 +109,10 @@ class FolderProcessor:
                 print(f"Processing subfolder: {tax_id}")
                 
                 # Step 1: Read the contents of all files in the subfolder
-                content = self.read_subfolder_files(subfolder_path, tax_id)  # Pass tax_id here
+                content = self.read_subfolder_files(subfolder_path)
                 
                 # Step 2: Save the combined content to the output folder
-                if content:  # Only save if there is content
-                    self.save_subfolder_content(tax_id, content)
-                else:
-                    print(f"No content to save for TaxID {tax_id}.")
+                self.save_subfolder_content(tax_id, content)
             else:
                 print(f"Subfolder {tax_id} does not exist at {subfolder_path}")
 
@@ -173,3 +127,4 @@ if __name__ == "__main__":
     
     # Start processing subfolders
     folder_processor.process_folders()
+
