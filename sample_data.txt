@@ -1,105 +1,113 @@
 import pandas as pd
 import re
 
-class AddressExtractor:
-    def __init__(self, excel_file):
-        self.excel_file = excel_file
-        self.data = self.read_excel_file()
-    
-    def read_excel_file(self):
+class ExcelDataExtractor:
+    def __init__(self, excel_path, service_address_keywords=None, notice_address_keywords=None, para_keywords=None, date_pattern=None):
+        self.excel_path = excel_path
+        
+        # Service and Notice address-related keywords
+        self.service_address_keywords = service_address_keywords or ['service address', 'service location', 'delivery address']
+        self.notice_address_keywords = notice_address_keywords or ['notice address', 'legal notice', 'notification address']
+
+        # Keywords for paragraphs and regex pattern for effective dates
+        self.para_keywords = para_keywords or ['paragraph', 'section', 'clause']
+        self.date_pattern = date_pattern or r'\b(?:Effective Date|effective date)\b\s*:\s*(\d{2}/\d{2}/\d{4}|\d{2}-\d{2}-\d{4})'
+
+    def load_excel(self):
         """
-        Load the Excel file and return the content as a DataFrame.
+        Load the Excel file into a DataFrame.
         """
         try:
-            df = pd.read_excel(self.excel_file)
-            print(f"Successfully loaded {self.excel_file}")
+            df = pd.read_excel(self.excel_path, sheet_name=None)  # Load all sheets
             return df
         except Exception as e:
-            print(f"An error occurred while loading the Excel file: {e}")
-            return None
+            print(f"Error loading Excel file: {e}")
+            return {}
 
-    def extract_addresses(self):
+    def contains_address_type(self, df, keywords):
         """
-        Extract service address, notice address, remit address, contract contact,
-        and contract information from the DataFrame based on keywords.
+        Check if any cell in a DataFrame contains specific address-related keywords.
         """
-        keywords = {
-            'service_address': r'service\s*address',
-            'notice_address': r'(notice\s*address|address\s*for\s*notice)',
-            'remit_address': r'remit\s*address',
-            'contract_contact': r'contract\s*contact',
-            'contract_information': r'(contract\s*information|contractor\s*information)'
-        }
+        for keyword in keywords:
+            if df.apply(lambda x: x.astype(str).str.contains(keyword, case=False, na=False).any()).any():
+                return True
+        return False
 
-        extracted_data = {
-            'filename': [],
-            'service_address': [],
-            'notice_address': [],
-            'remit_address': [],
-            'contract_contact': [],
-            'contract_information': []
-        }
-
-        for index, row in self.data.iterrows():
-            text_content = row['Content']  # Assuming the extracted text is in a column named 'Content'
-            filename = row['Filename']  # Assuming each row has a Filename column
-
-            # Initialize empty fields for each keyword
-            service_address = ""
-            notice_address = ""
-            remit_address = ""
-            contract_contact = ""
-            contract_information = ""
-
-            # Search for keywords in the content
-            for key, pattern in keywords.items():
-                match = re.search(pattern, text_content, re.IGNORECASE)
-                if match:
-                    # Extract the address or information by taking the surrounding text (e.g., the next few words after the keyword)
-                    extracted_value = self.extract_after_match(text_content, match)
-                    if key == 'service_address':
-                        service_address = extracted_value
-                    elif key == 'notice_address':
-                        notice_address = extracted_value
-                    elif key == 'remit_address':
-                        remit_address = extracted_value
-                    elif key == 'contract_contact':
-                        contract_contact = extracted_value
-                    elif key == 'contract_information':
-                        contract_information = extracted_value
-
-            # Append the extracted values to the respective lists
-            extracted_data['filename'].append(filename)
-            extracted_data['service_address'].append(service_address)
-            extracted_data['notice_address'].append(notice_address)
-            extracted_data['remit_address'].append(remit_address)
-            extracted_data['contract_contact'].append(contract_contact)
-            extracted_data['contract_information'].append(contract_information)
-
-        # Convert the extracted data to a DataFrame and return
-        extracted_df = pd.DataFrame(extracted_data)
-        return extracted_df
-
-    def extract_after_match(self, text, match, window=100):
+    def search_for_patterns(self, text):
         """
-        Extract the text following the match keyword, within a window of characters.
-        We can adjust the `window` parameter to control how many characters after
-        the keyword should be captured.
+        Search the extracted text for paragraph keywords and effective dates.
         """
-        start = match.end()  # Start extracting text after the match ends
-        end = min(start + window, len(text))  # Extract up to the specified window or end of the text
-        return text[start:end].strip()
+        # Search for paragraphs using the para_keywords
+        paragraphs = []
+        for keyword in self.para_keywords:
+            para_matches = re.findall(rf'\b{keyword}\b.*', text, flags=re.IGNORECASE)
+            paragraphs.extend(para_matches)
 
-# Example Usage:
-# Assuming the Excel file has a "Content" column that contains the extracted text, and "Filename" column.
-excel_file = 'extracted_data.xlsx'  # Path to the Excel file with extracted content
-address_extractor = AddressExtractor(excel_file)
+        # Search for effective dates using the date_pattern
+        effective_dates = re.findall(self.date_pattern, text)
 
-# Extract the addresses and information from the Excel file
-extracted_df = address_extractor.extract_addresses()
+        return paragraphs, effective_dates
 
-# Show the extracted DataFrame
-print(extracted_df)
+    def process_excel(self):
+        """
+        Process the Excel file, extracting relevant data.
+        """
+        all_data = []
 
-# Optionally, save the extracted addresses to a new Excel or CSV file
-extracted_df.to_excel('extracted_addresses.xlsx', index=False)
+        # Load the Excel data
+        sheets = self.load_excel()
+
+        # Iterate through all sheets
+        for sheet_name, df in sheets.items():
+            # Convert DataFrame to string to search for patterns
+            text = df.astype(str).agg(' '.join)
+
+            # Initialize lists to store address-related data
+            service_data = []
+            notice_data = []
+            
+            # Check for service address-related keywords and collect entire sheet if found
+            if self.contains_address_type(df, self.service_address_keywords):
+                service_data.append(df.to_string(index=False))  # Append the entire DataFrame as a string
+            
+            # Check for notice address-related keywords and collect entire sheet if found
+            if self.contains_address_type(df, self.notice_address_keywords):
+                notice_data.append(df.to_string(index=False))  # Append the entire DataFrame as a string
+
+            # Search for paragraphs and effective dates
+            paragraphs, effective_dates = self.search_for_patterns(text)
+
+            # Store extracted data
+            data = {
+                'sheet_name': sheet_name,
+                'service_addresses': '\n'.join(service_data) if service_data else '',
+                'notice_addresses': '\n'.join(notice_data) if notice_data else '',
+                'paragraphs': '\n'.join(paragraphs) if paragraphs else '',
+                'effective_dates': ', '.join(effective_dates) if effective_dates else ''
+            }
+            all_data.append(data)
+
+        # Convert all collected data to a DataFrame
+        result_df = pd.DataFrame(all_data)
+        return result_df
+
+# Usage
+if __name__ == "__main__":
+    excel_path = 'path_to_single_excel_file.xlsx'  # Path to the single Excel file you want to process
+
+    # Define optional regex patterns and keywords
+    para_keywords = ['paragraph', 'section', 'clause']
+    date_pattern = r'\b(?:Effective Date|effective date)\b\s*:\s*(\d{2}/\d{2}/\d{4}|\d{2}-\d{2}-\d{4})'
+
+    # Define specific address keywords
+    service_address_keywords = ['service address', 'service location', 'delivery address']
+    notice_address_keywords = ['notice address', 'legal notice', 'notification address']
+
+    # Create an instance of the extractor
+    extractor = ExcelDataExtractor(excel_path, service_address_keywords=service_address_keywords, notice_address_keywords=notice_address_keywords, para_keywords=para_keywords, date_pattern=date_pattern)
+
+    # Process the Excel file and get the results in a DataFrame
+    result_df = extractor.process_excel()
+
+    # Output the result
+    print(result_df)
