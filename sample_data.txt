@@ -3,8 +3,7 @@ import camelot
 import pandas as pd
 from openpyxl import Workbook
 import pytesseract
-from PIL import Image
-import fitz  # PyMuPDF for handling PDF pages and images
+from pdf2image import convert_from_path
 
 
 class PDFTableExtractor:
@@ -43,58 +42,21 @@ class PDFTableExtractor:
 
     def extract_text_from_pdf(self, pdf_path):
         """
-        Extract text from all pages in the PDF using PyMuPDF (fitz).
+        Extract text from a PDF using pytesseract on images of each page.
         """
         try:
-            doc = fitz.open(pdf_path)  # Open the PDF
-            full_text = ""
+            # Convert PDF to images
+            images = convert_from_path(pdf_path)
 
-            # Iterate through each page in the PDF
-            for page_num in range(len(doc)):
-                page = doc.load_page(page_num)
-                full_text += page.get_text("text")  # Extract the text from the page
+            full_text = ""
+            for i, image in enumerate(images):
+                # Use pytesseract to extract text from the image
+                text = pytesseract.image_to_string(image)
+                full_text += f"\n--- Page {i + 1} ---\n{text}"
 
             return full_text.strip()
         except Exception as e:
             print(f"Error extracting text from {os.path.basename(pdf_path)}: {e}")
-            return ""
-
-    def extract_images_from_pdf(self, pdf_path):
-        """
-        Extract images from the PDF using PyMuPDF (fitz) and apply OCR using pytesseract.
-        """
-        try:
-            doc = fitz.open(pdf_path)
-            text_from_images = ""
-            image_count = 0
-
-            for page_num in range(len(doc)):
-                page = doc.load_page(page_num)
-                image_list = page.get_images(full=True)
-
-                # Extract images from the page
-                for image_index, img in enumerate(image_list):
-                    image_count += 1
-                    xref = img[0]
-                    base_image = doc.extract_image(xref)
-                    image_bytes = base_image["image"]
-                    image_ext = base_image["ext"]
-                    image_filename = f"image_{page_num + 1}_{image_index + 1}.{image_ext}"
-
-                    with open(image_filename, "wb") as image_file:
-                        image_file.write(image_bytes)
-
-                    # Perform OCR on the extracted image
-                    image_text = pytesseract.image_to_string(Image.open(image_filename))
-                    text_from_images += f"\n--- Image {image_count} from Page {page_num + 1} ---\n"
-                    text_from_images += image_text
-
-                    # Clean up: remove the saved image file after processing
-                    os.remove(image_filename)
-
-            return text_from_images.strip()
-        except Exception as e:
-            print(f"Error extracting images from {os.path.basename(pdf_path)}: {e}")
             return ""
 
     def contains_keywords(self, df, keywords):
@@ -206,15 +168,10 @@ class PDFTableExtractor:
                     # Save tables to Excel in the specific subfolder
                     self.save_tables_to_excel(tables, filename, folder_name)
 
-                    # Extract text from PDF
+                    # Extract text from PDF images
                     pdf_text = self.extract_text_from_pdf(pdf_path)
                     if pdf_text:
                         print(f"Text extracted from {filename}:\n{pdf_text}")
-
-                    # Extract text from images in the PDF
-                    image_text = self.extract_images_from_pdf(pdf_path)
-                    if image_text:
-                        print(f"Text extracted from images in {filename}:\n{image_text}")
 
     def save_combined_address_data(self):
         """
@@ -238,8 +195,3 @@ class PDFTableExtractor:
 
         print("Saving combined address-related data...")
         self.save_combined_address_data()
-
-
-# Usage
-if __name__ == "__main__":
-    pdf_folder = 'path_to_pdf_folder'  # Folder containing your
