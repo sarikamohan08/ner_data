@@ -2,6 +2,7 @@ import os
 import pytesseract
 import pandas as pd
 import camelot
+import re
 from PIL import Image
 from pdf2image import convert_from_path
 
@@ -11,6 +12,7 @@ class TaxIDProcessor:
         self.input_dir = input_dir
         self.output_dir = output_dir
         self.taxids = self.load_taxids()
+        self.extracted_data = []  # To store extracted metadata
     
     def load_taxids(self):
         df = pd.read_excel(self.excel_file)
@@ -61,6 +63,9 @@ class TaxIDProcessor:
                 with open(text_filename, 'w') as f:
                     f.write(all_text)
                 print(f"Extracted text from PDF and saved to {text_filename}")
+                
+                # Extract effective date and title from the text
+                self.extract_metadata_from_text(text_filename, taxid=os.path.basename(file_path))
             
             except Exception as e:
                 print(f"An error occurred while processing {file_path}: {e}")
@@ -76,24 +81,53 @@ class TaxIDProcessor:
                 with open(text_filename, 'w') as f:
                     f.write(text)
                 print(f"Extracted text from image and saved to {text_filename}")
+                
+                # Extract effective date and title from the text
+                self.extract_metadata_from_text(text_filename, taxid=os.path.basename(file_path))
             
             except Exception as e:
                 print(f"An error occurred while processing {file_path}: {e}")
 
-    def extract_tables(self, pdf_path, output_taxid_folder):
+    def extract_metadata_from_text(self, text_filename, taxid):
         """
-        Extract tables from a PDF using Camelot and save as an Excel file.
+        Extract the Effective Date and Title from the text file using regex and store it in a DataFrame.
         """
-        tables = camelot.read_pdf(pdf_path, pages='all')
+        try:
+            with open(text_filename, 'r') as f:
+                text_content = f.read()
+            
+            # Regex patterns for Effective Date and Title
+            effective_date_pattern = r'(\d{1,2}/\d{1,2}/\d{4})|([A-Za-z]+\s\d{1,2},\s\d{4})|(\d{4}-\d{2}-\d{2})'
+            title_pattern = r'(Title:?\s*(.*))'  # You can customize this pattern based on the document structure
+            
+            # Search for Effective Date
+            effective_date_match = re.search(effective_date_pattern, text_content)
+            effective_date = effective_date_match.group(0) if effective_date_match else "N/A"
+            
+            # Search for Title
+            title_match = re.search(title_pattern, text_content, re.IGNORECASE)
+            title = title_match.group(2).strip() if title_match else text_content.splitlines()[0]  # First line fallback
+
+            # Add the extracted information to a list (for DataFrame)
+            self.extracted_data.append({
+                'taxid': taxid,
+                'title': title,
+                'effective_date': effective_date,
+                'source_text_file': os.path.basename(text_filename)
+            })
+            
+            print(f"Extracted metadata for {taxid}: Title='{title}', Effective Date='{effective_date}'")
         
-        if tables:
-            excel_filename = os.path.join(output_taxid_folder, os.path.basename(pdf_path).replace('.pdf', '.xlsx'))
-            with pd.ExcelWriter(excel_filename, engine='openpyxl') as writer:
-                for i, table in enumerate(tables):
-                    table.df.to_excel(writer, sheet_name=f'Table_{i+1}', index=False)
-            print(f"Extracted tables and saved to {excel_filename}")
-        else:
-            print(f"No tables found in {pdf_path}")
+        except Exception as e:
+            print(f"An error occurred while extracting metadata from {text_filename}: {e}")
+    
+    def save_extracted_data(self, output_file='extracted_data.csv'):
+        """
+        Save the extracted metadata to a CSV file.
+        """
+        df = pd.DataFrame(self.extracted_data)
+        df.to_csv(output_file, index=False)
+        print(f"Extracted data saved to {output_file}")
 
 # Example Usage:
 excel_file = 'taxid_list.xlsx'  # Path to the Excel file containing taxid
@@ -102,3 +136,6 @@ output_dir = 'output_folder'  # Output folder to store the results
 
 processor = TaxIDProcessor(excel_file, input_dir, output_dir)
 processor.process_taxids()
+
+# After processing, save the extracted metadata
+processor.save_extracted_data('extracted_metadata.csv')
