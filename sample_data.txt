@@ -1,5 +1,8 @@
 import os
 import pandas as pd
+import pytesseract
+from PIL import Image
+import chardet
 
 class FolderProcessor:
     def __init__(self, excel_path, root_folder_path, output_folder_path):
@@ -18,21 +21,63 @@ class FolderProcessor:
         df = pd.read_excel(self.excel_path)
         return df.iloc[:, 0].astype(str).tolist()  # Ensure subfolder names are cast to strings
 
+    def detect_encoding(self, file_path):
+        """
+        Detect the encoding of a given text file.
+        """
+        with open(file_path, 'rb') as file:
+            rawdata = file.read()
+            result = chardet.detect(rawdata)
+            return result['encoding']
+
+    def read_text_file(self, file_path):
+        """
+        Read content from a text file with detected encoding.
+        """
+        encoding = self.detect_encoding(file_path)
+        print(f"Detected encoding for {file_path}: {encoding}")
+        try:
+            with open(file_path, 'r', encoding=encoding) as file:
+                return file.read()
+        except UnicodeDecodeError as e:
+            print(f"Error reading file {file_path}: {e}")
+            return ""
+
+    def read_image_file(self, file_path):
+        """
+        Extract text from an image file using PyTesseract.
+        """
+        try:
+            # Open the image file
+            img = Image.open(file_path)
+            # Use PyTesseract to extract text
+            text = pytesseract.image_to_string(img)
+            return text
+        except Exception as e:
+            print(f"Error reading image file {file_path}: {e}")
+            return ""
+
     def read_subfolder_files(self, subfolder_path):
         """
-        Read all the files in the given subfolder and return their combined content.
+        Read all files in the given subfolder and return their combined content.
         """
         subfolder_text_content = ""
-        
+
         # Loop through each file in the subfolder
         for file_name in os.listdir(subfolder_path):
             file_path = os.path.join(subfolder_path, str(file_name))  # Ensure file names are strings
-            
+
             # Ensure it's a file and not a directory
             if os.path.isfile(file_path):
-                with open(file_path, 'r', encoding='utf-8') as file:
-                    subfolder_text_content += file.read() + "\n"  # Append file content
-            
+                if file_name.lower().endswith(('.png', '.jpg', '.jpeg', '.tiff', '.bmp', '.gif')):
+                    # If the file is an image, read it using PyTesseract
+                    print(f"Processing image file: {file_name}")
+                    subfolder_text_content += self.read_image_file(file_path) + "\n"
+                elif file_name.lower().endswith(('.txt', '.csv', '.log')):
+                    # If the file is a text file, read it
+                    print(f"Processing text file: {file_name}")
+                    subfolder_text_content += self.read_text_file(file_path) + "\n"
+
         return subfolder_text_content
 
     def save_subfolder_content(self, subfolder, content):
@@ -72,9 +117,9 @@ class FolderProcessor:
 
 # Example usage
 if __name__ == "__main__":
-    excel_path = "path_to_excel_file.xlsx"
-    root_folder_path = "path_to_root_folder"
-    output_folder_path = "path_to_output_folder"
+    excel_path = "path_to_excel_file.xlsx"  # Update to your actual file path
+    root_folder_path = "path_to_root_folder"  # Update to your actual folder path
+    output_folder_path = "path_to_output_folder"  # Update to your desired output path
 
     # Create an instance of FolderProcessor
     folder_processor = FolderProcessor(excel_path, root_folder_path, output_folder_path)
