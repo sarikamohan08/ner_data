@@ -1,3 +1,22 @@
+    def save_to_excel(self, result_file):
+        """
+        Save the extracted data to the specified result_file, appending new data after each file is processed.
+        """
+        df = pd.DataFrame(self.extracted_data)
+
+        # Check if the result file exists
+        if os.path.exists(result_file):
+            with pd.ExcelWriter(result_file, mode='a', engine='openpyxl', if_sheet_exists='overlay') as writer:
+                df.to_excel(writer, sheet_name='Results', index=False, header=False, startrow=writer.sheets['Results'].max_row)
+        else:
+            with pd.ExcelWriter(result_file, mode='w', engine='openpyxl') as writer:
+                df.to_excel(writer, sheet_name='Results', index=False)
+        
+        # Clear the extracted_data list after saving to avoid duplicate entries
+        self.extracted_data.clear()
+
+
+
 import pandas as pd
 import re
 
