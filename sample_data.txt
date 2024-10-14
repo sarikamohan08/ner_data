@@ -1,20 +1,21 @@
-    def save_to_excel(self, result_file):
+def process_files_by_taxid_in_name(self, taxid, result_file, output_taxid_folder):
         """
-        Save the extracted data to the specified result_file, appending new data after each file is processed.
+        Look for files in the input directory that contain the taxid in their filename
+        and process them.
         """
-        df = pd.DataFrame(self.extracted_data)
-
-        # Check if the result file exists
-        if os.path.exists(result_file):
-            with pd.ExcelWriter(result_file, mode='a', engine='openpyxl', if_sheet_exists='overlay') as writer:
-                df.to_excel(writer, sheet_name='Results', index=False, header=False, startrow=writer.sheets['Results'].max_row)
-        else:
-            with pd.ExcelWriter(result_file, mode='w', engine='openpyxl') as writer:
-                df.to_excel(writer, sheet_name='Results', index=False)
+        found_files = False
+        os.makedirs(output_taxid_folder, exist_ok=True)
         
-        # Clear the extracted_data list after saving to avoid duplicate entries
-        self.extracted_data.clear()
-
+        for root, dirs, files in os.walk(self.input_dir):
+            for file in files:
+                if str(taxid) in file:
+                    found_files = True
+                    file_path = os.path.join(root, file)
+                    print(f"Found file {file} containing taxid {taxid}. Processing...")
+                    self.extract_text(file_path, output_taxid_folder, file, result_file)
+        
+        if not found_files:
+            print(f"No files found with taxid {taxid} in the filename.")
 
 
 import pandas as pd
