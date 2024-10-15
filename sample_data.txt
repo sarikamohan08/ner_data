@@ -1,3 +1,24 @@
+
+ def process_files_by_taxid_in_name(self, taxid, result_file, output_taxid_folder):
+        """
+        Look for files in the input directory that contain the taxid in their filename
+        and process them.
+        """
+        found_files = False
+        os.makedirs(output_taxid_folder, exist_ok=True)
+        
+        for root, dirs, files in os.walk(self.input_dir):
+            for file in files:
+                if str(taxid) in file:
+                    found_files = True
+                    file_path = os.path.join(root, file)
+                    print(f"Found file {file} containing taxid {taxid}. Processing...")
+                    self.extract_text(file_path, output_taxid_folder, file, result_file)
+        
+        if not found_files:
+            print(f"No files found with taxid {taxid} in the filename.")
+
+
 def process_files_by_taxid_in_name(self, taxid, result_file, output_taxid_folder):
         """
         Look for files in the input directory that contain the taxid in their filename
