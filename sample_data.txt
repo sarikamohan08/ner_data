@@ -1,178 +1,115 @@
-
- def process_files_by_taxid_in_name(self, taxid, result_file, output_taxid_folder):
-        """
-        Look for files in the input directory that contain the taxid in their filename
-        and process them.
-        """
-        found_files = False
-        os.makedirs(output_taxid_folder, exist_ok=True)
-        
-        for root, dirs, files in os.walk(self.input_dir):
-            for file in files:
-                if str(taxid) in file:
-                    found_files = True
-                    file_path = os.path.join(root, file)
-                    print(f"Found file {file} containing taxid {taxid}. Processing...")
-                    self.extract_text(file_path, output_taxid_folder, file, result_file)
-        
-        if not found_files:
-            print(f"No files found with taxid {taxid} in the filename.")
-
-
-def process_files_by_taxid_in_name(self, taxid, result_file, output_taxid_folder):
-        """
-        Look for files in the input directory that contain the taxid in their filename
-        and process them.
-        """
-        found_files = False
-        os.makedirs(output_taxid_folder, exist_ok=True)
-        
-        for root, dirs, files in os.walk(self.input_dir):
-            for file in files:
-                if str(taxid) in file:
-                    found_files = True
-                    file_path = os.path.join(root, file)
-                    print(f"Found file {file} containing taxid {taxid}. Processing...")
-                    self.extract_text(file_path, output_taxid_folder, file, result_file)
-        
-        if not found_files:
-            print(f"No files found with taxid {taxid} in the filename.")
-
-
-import pandas as pd
+import os
 import re
+import pytesseract
+import camelot
+import pandas as pd
+from openpyxl import load_workbook
+from PyPDF2 import PdfReader
 
-class ExcelDataExtractor:
-    def __init__(self, excel_path, service_address_keywords=None, notice_address_keywords=None, para_keywords=None, date_pattern=None):
-        self.excel_path = excel_path
+class PDFProcessor:
+    def __init__(self, input_excel, base_dir, output_dir):
+        self.input_excel = input_excel  # Excel file with tax IDs
+        self.base_dir = base_dir  # Main folder containing subfolders
+        self.output_dir = output_dir  # Output folder for results
+        self.result_file = os.path.join(output_dir, "result.xlsx")  # Combined result file
+        self.taxid_df = pd.read_excel(input_excel)  # Load the tax ID Excel file
         
-        # Service and Notice address-related keywords
-        self.service_address_keywords = service_address_keywords or ['service address', 'service location', 'delivery address']
-        self.notice_address_keywords = notice_address_keywords or ['notice address', 'legal notice', 'notification address']
+        # Create output directory if it doesn't exist
+        os.makedirs(output_dir, exist_ok=True)
 
-        # Keywords for paragraphs and regex pattern for effective dates
-        self.para_keywords = para_keywords or ['paragraph', 'section', 'clause']
-        self.date_pattern = date_pattern or r'\b(?:Effective Date|effective date)\b\s*:\s*(\d{2}/\d{2}/\d{4}|\d{2}-\d{2}-\d{4})'
-
-    def load_excel(self):
-        """
-        Load the Excel file into a DataFrame.
-        """
-        try:
-            df = pd.read_excel(self.excel_path, sheet_name=None)  # Load all sheets
-            return df
-        except Exception as e:
-            print(f"Error loading Excel file: {e}")
-            return {}
-
-    def contains_address_type(self, df, keywords):
-        """
-        Check if any cell in a DataFrame contains specific address-related keywords.
-        """
-        for keyword in keywords:
-            if df.apply(lambda x: x.astype(str).str.contains(keyword, case=False, na=False).any()).any():
-                return True
-        return False
-
-    def search_for_patterns(self, text):
-        """
-        Search the extracted text for paragraph keywords and effective dates.
-        """
-        # Search for paragraphs using the para_keywords
-        paragraphs = []
-        for keyword in self.para_keywords:
-            para_matches = re.findall(rf'\b{keyword}\b.*', text, flags=re.IGNORECASE)
-            paragraphs.extend(para_matches)
-
-        # Search for effective dates using the date_pattern
-        effective_dates = re.findall(self.date_pattern, text)
-
-        return paragraphs, effective_dates
-
-    def process_excel(self):
-        """
-        Process the Excel file, extracting relevant data.
-        """
-        all_data = []
-
-        # Load the Excel data
-        sheets = self.load_excel()
-
-        # Iterate through all sheets
-        for sheet_name, df in sheets.items():
-            # Convert DataFrame to string to search for patterns
-            text = df.astype(str).agg(' '.join)
-
-            # Initialize lists to store address-related data
-            service_data = []
-            notice_data = []
+    def process(self):
+        for _, row in self.taxid_df.iterrows():
+            taxid = row['TaxID']  # Assuming 'TaxID' column in Excel
+            taxid_folder = os.path.join(self.base_dir, str(taxid))
             
-            # Check for service address-related keywords and collect entire sheet if found
-            if self.contains_address_type(df, self.service_address_keywords):
-                service_data.append(df.to_string(index=False))  # Append the entire DataFrame as a string
-            
-            # Check for notice address-related keywords and collect entire sheet if found
-            if self.contains_address_type(df, self.notice_address_keywords):
-                notice_data.append(df.to_string(index=False))  # Append the entire DataFrame as a string
+            if os.path.exists(taxid_folder) and os.path.isdir(taxid_folder):
+                self.process_taxid_folder(taxid, taxid_folder)
+                
+    def process_taxid_folder(self, taxid, folder):
+        # Find all PDFs in the folder
+        for filename in os.listdir(folder):
+            if filename.endswith('.pdf'):
+                pdf_path = os.path.join(folder, filename)
+                self.process_pdf(taxid, pdf_path)
 
-            # Search for paragraphs and effective dates
-            paragraphs, effective_dates = self.search_for_patterns(text)
+    def process_pdf(self, taxid, pdf_path):
+        # Output subfolder for this taxid
+        taxid_output_folder = os.path.join(self.output_dir, str(taxid))
+        os.makedirs(taxid_output_folder, exist_ok=True)
 
-            # Store extracted data
-            data = {
-                'sheet_name': sheet_name,
-                'service_addresses': '\n'.join(service_data) if service_data else '',
-                'notice_addresses': '\n'.join(notice_data) if notice_data else '',
-                'paragraphs': '\n'.join(paragraphs) if paragraphs else '',
-                'effective_dates': ', '.join(effective_dates) if effective_dates else ''
-            }
-            all_data.append(data)
+        # Extract content using pytesseract
+        text_output_path = os.path.join(taxid_output_folder, f"{os.path.basename(pdf_path)}.txt")
+        self.extract_text_from_pdf(pdf_path, text_output_path)
 
-        # Convert all collected data to a DataFrame
-        result_df = pd.DataFrame(all_data)
-        return result_df
-    
-    def append_to_result_file(self):
-        """
-        Append the extracted data after each file to the Excel result file.
-        """
+        # Extract tables using Camelot
+        table_output_path = os.path.join(taxid_output_folder, f"{os.path.basename(pdf_path)}.xlsx")
+        self.extract_tables_from_pdf(pdf_path, table_output_path)
+
+        # Extract title and date from both text and tables
+        title, date = self.extract_title_and_date(text_output_path)
+        self.append_to_result(taxid, os.path.basename(pdf_path), title, date, text_output_path, table_output_path)
+
+    def extract_text_from_pdf(self, pdf_path, text_output_path):
+        # Read PDF and extract text using PyTesseract and PyPDF2
+        reader = PdfReader(pdf_path)
+        full_text = ""
+        for page_num in range(len(reader.pages)):
+            page = reader.pages[page_num]
+            text = page.extract_text()
+            full_text += text
+
+        # Write the extracted text to a .txt file
+        with open(text_output_path, 'w') as f:
+            f.write(full_text)
+
+    def extract_tables_from_pdf(self, pdf_path, table_output_path):
+        # Extract tables using Camelot
+        tables = camelot.read_pdf(pdf_path, pages='all')
+        if tables:
+            tables.export(table_output_path, f='excel')
+
+    def extract_title_and_date(self, text_file):
+        # Extract title and date using regex
+        with open(text_file, 'r') as f:
+            text = f.read()
+
+        # Example regex to extract title and date (this should be customized)
+        title = re.search(r"(Title:\s*)([A-Za-z0-9\s]+)", text)
+        date = re.search(r"(Date:\s*)(\d{2}/\d{2}/\d{4})", text)
+
+        title = title.group(2) if title else "Unknown Title"
+        date = date.group(2) if date else "Unknown Date"
+
+        return title, date
+
+    def append_to_result(self, taxid, filename, title, date, text_output_path, table_output_path):
+        # Load or create result file
         if os.path.exists(self.result_file):
-            # Load existing Excel file
-            existing_df = pd.read_excel(self.result_file)
+            writer = pd.ExcelWriter(self.result_file, engine='openpyxl', mode='a')
+            book = load_workbook(self.result_file)
+            writer.book = book
         else:
-            # Create an empty DataFrame if the file doesn't exist
-            existing_df = pd.DataFrame()
+            writer = pd.ExcelWriter(self.result_file, engine='openpyxl')
 
-        # Convert the new extracted data to a DataFrame
-        new_df = pd.DataFrame(self.extracted_data)
+        # Create dataframe to store the result
+        df = pd.DataFrame({
+            'TaxID': [taxid],
+            'Filename': [filename],
+            'Title': [title],
+            'Date': [date],
+            'Text File': [text_output_path],
+            'Table File': [table_output_path]
+        })
 
-        # Append the new data to the existing DataFrame
-        updated_df = pd.concat([existing_df, new_df], ignore_index=True)
+        # Append to result.xlsx
+        df.to_excel(writer, sheet_name="Results", index=False, header=not os.path.exists(self.result_file))
+        writer.save()
 
-        # Save the updated DataFrame back to the Excel file
-        updated_df.to_excel(self.result_file, index=False)
-        print(f"Appended new data to {self.result_file}")
-
-        # Clear extracted data list after saving to avoid duplicates
-        self.extracted_data = []
-
-# Usage
+# Main execution
 if __name__ == "__main__":
-    excel_path = 'path_to_single_excel_file.xlsx'  # Path to the single Excel file you want to process
+    input_excel = 'tax_ids.xlsx'  # Path to input Excel with TaxIDs
+    base_dir = 'taxid_folders'  # Base directory with TaxID subfolders
+    output_dir = 'output'  # Output folder for processed files
 
-    # Define optional regex patterns and keywords
-    para_keywords = ['paragraph', 'section', 'clause']
-    date_pattern = r'\b(?:Effective Date|effective date)\b\s*:\s*(\d{2}/\d{2}/\d{4}|\d{2}-\d{2}-\d{4})'
-
-    # Define specific address keywords
-    service_address_keywords = ['service address', 'service location', 'delivery address']
-    notice_address_keywords = ['notice address', 'legal notice', 'notification address']
-
-    # Create an instance of the extractor
-    extractor = ExcelDataExtractor(excel_path, service_address_keywords=service_address_keywords, notice_address_keywords=notice_address_keywords, para_keywords=para_keywords, date_pattern=date_pattern)
-
-    # Process the Excel file and get the results in a DataFrame
-    result_df = extractor.process_excel()
-
-    # Output the result
-    print(result_df)
+    processor = PDFProcessor(input_excel, base_dir, output_dir)
+    processor.process()
