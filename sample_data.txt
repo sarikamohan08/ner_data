@@ -1,3 +1,21 @@
+def extract_tables_from_pdf(self, pdf_path, output_excel_path):
+    """Extract tables from the given PDF file and save it as .xlsx."""
+    try:
+        # Extract tables using Camelot
+        tables = camelot.read_pdf(pdf_path, pages='all')
+        if tables and len(tables) > 0:
+            # Export each table to Excel without 'encoding' argument
+            with pd.ExcelWriter(output_excel_path, engine='openpyxl') as writer:
+                for i, table in enumerate(tables):
+                    df = table.df
+                    df.to_excel(writer, sheet_name=f"Table_{i+1}", index=False)
+            print(f'Tables extracted and saved to {output_excel_path}')
+        else:
+            print(f'No tables found in {pdf_path}')
+    except Exception as e:
+        print(f"Error extracting tables from {pdf_path}: {e}")
+
+
 import os
 import pytesseract
 from PIL import Image
