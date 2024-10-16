@@ -1,115 +1,104 @@
 import os
-import re
 import pytesseract
+from PIL import Image
 import camelot
+from pdf2image import convert_from_path
 import pandas as pd
-from openpyxl import load_workbook
-from PyPDF2 import PdfReader
 
-class PDFProcessor:
-    def __init__(self, input_excel, base_dir, output_dir):
-        self.input_excel = input_excel  # Excel file with tax IDs
-        self.base_dir = base_dir  # Main folder containing subfolders
-        self.output_dir = output_dir  # Output folder for results
-        self.result_file = os.path.join(output_dir, "result.xlsx")  # Combined result file
-        self.taxid_df = pd.read_excel(input_excel)  # Load the tax ID Excel file
-        
-        # Create output directory if it doesn't exist
-        os.makedirs(output_dir, exist_ok=True)
+class TaxIDProcessor:
+    def __init__(self, input_dir, output_dir, taxid_excel_path, taxid_column):
+        self.input_dir = input_dir  # Directory where taxid folders or PDFs are stored
+        self.output_dir = output_dir  # Directory where output files (txt, xlsx) will be stored
+        self.taxid_excel_path = taxid_excel_path  # Excel file path with taxids
+        self.taxid_column = taxid_column  # Column in Excel file containing taxids
+        self.taxid_list = self._read_taxids_from_excel()  # Load the taxid list from Excel
 
-    def process(self):
-        for _, row in self.taxid_df.iterrows():
-            taxid = row['TaxID']  # Assuming 'TaxID' column in Excel
-            taxid_folder = os.path.join(self.base_dir, str(taxid))
+    def _read_taxids_from_excel(self):
+        """Read taxids from the provided Excel file"""
+        try:
+            df = pd.read_excel(self.taxid_excel_path)
+            taxid_list = df[self.taxid_column].dropna().astype(str).tolist()  # Ensure list of strings
+            return taxid_list
+        except Exception as e:
+            print(f"Error reading taxids from Excel: {e}")
+            return []
+
+    def _extract_text_from_pdf(self, pdf_path, output_txt_path):
+        """Extract text from a PDF file and save it as .txt"""
+        text_output = ''
+        try:
+            # Convert the PDF to images (one page at a time)
+            pages = convert_from_path(pdf_path)
+            for page in pages:
+                # Use pytesseract to extract text from image
+                text_output += pytesseract.image_to_string(page)
             
-            if os.path.exists(taxid_folder) and os.path.isdir(taxid_folder):
-                self.process_taxid_folder(taxid, taxid_folder)
-                
-    def process_taxid_folder(self, taxid, folder):
-        # Find all PDFs in the folder
-        for filename in os.listdir(folder):
-            if filename.endswith('.pdf'):
-                pdf_path = os.path.join(folder, filename)
-                self.process_pdf(taxid, pdf_path)
+            # Save extracted text to a .txt file
+            with open(output_txt_path, 'w') as f:
+                f.write(text_output)
+            print(f'Text extracted and saved to {output_txt_path}')
+        except Exception as e:
+            print(f"Error extracting text from {pdf_path}: {e}")
 
-    def process_pdf(self, taxid, pdf_path):
-        # Output subfolder for this taxid
-        taxid_output_folder = os.path.join(self.output_dir, str(taxid))
-        os.makedirs(taxid_output_folder, exist_ok=True)
+    def _extract_tables_from_pdf(self, pdf_path, output_excel_path):
+        """Extract tables from a PDF file and save it as .xlsx"""
+        try:
+            # Extract tables using Camelot
+            tables = camelot.read_pdf(pdf_path, pages='all')
+            if tables and len(tables) > 0:
+                tables.export(output_excel_path, f='excel')
+                print(f'Tables extracted and saved to {output_excel_path}')
+            else:
+                print(f'No tables found in {pdf_path}')
+        except Exception as e:
+            print(f"Error extracting tables from {pdf_path}: {e}")
 
-        # Extract content using pytesseract
-        text_output_path = os.path.join(taxid_output_folder, f"{os.path.basename(pdf_path)}.txt")
-        self.extract_text_from_pdf(pdf_path, text_output_path)
+    def process_taxid(self, taxid):
+        """Process a single taxid by checking for subfolders or PDFs"""
+        taxid_folder = os.path.join(self.input_dir, taxid)
+        output_taxid_folder = os.path.join(self.output_dir, taxid)
+        os.makedirs(output_taxid_folder, exist_ok=True)  # Create output folder for taxid
 
-        # Extract tables using Camelot
-        table_output_path = os.path.join(taxid_output_folder, f"{os.path.basename(pdf_path)}.xlsx")
-        self.extract_tables_from_pdf(pdf_path, table_output_path)
+        if os.path.isdir(taxid_folder):
+            # Process each PDF in the subfolder
+            for file in os.listdir(taxid_folder):
+                if file.endswith('.pdf'):
+                    pdf_path = os.path.join(taxid_folder, file)
+                    file_base_name = os.path.splitext(file)[0]
 
-        # Extract title and date from both text and tables
-        title, date = self.extract_title_and_date(text_output_path)
-        self.append_to_result(taxid, os.path.basename(pdf_path), title, date, text_output_path, table_output_path)
+                    output_txt_path = os.path.join(output_taxid_folder, f"{file_base_name}.txt")
+                    output_excel_path = os.path.join(output_taxid_folder, f"{file_base_name}.xlsx")
 
-    def extract_text_from_pdf(self, pdf_path, text_output_path):
-        # Read PDF and extract text using PyTesseract and PyPDF2
-        reader = PdfReader(pdf_path)
-        full_text = ""
-        for page_num in range(len(reader.pages)):
-            page = reader.pages[page_num]
-            text = page.extract_text()
-            full_text += text
-
-        # Write the extracted text to a .txt file
-        with open(text_output_path, 'w') as f:
-            f.write(full_text)
-
-    def extract_tables_from_pdf(self, pdf_path, table_output_path):
-        # Extract tables using Camelot
-        tables = camelot.read_pdf(pdf_path, pages='all')
-        if tables:
-            tables.export(table_output_path, f='excel')
-
-    def extract_title_and_date(self, text_file):
-        # Extract title and date using regex
-        with open(text_file, 'r') as f:
-            text = f.read()
-
-        # Example regex to extract title and date (this should be customized)
-        title = re.search(r"(Title:\s*)([A-Za-z0-9\s]+)", text)
-        date = re.search(r"(Date:\s*)(\d{2}/\d{2}/\d{4})", text)
-
-        title = title.group(2) if title else "Unknown Title"
-        date = date.group(2) if date else "Unknown Date"
-
-        return title, date
-
-    def append_to_result(self, taxid, filename, title, date, text_output_path, table_output_path):
-        # Load or create result file
-        if os.path.exists(self.result_file):
-            writer = pd.ExcelWriter(self.result_file, engine='openpyxl', mode='a')
-            book = load_workbook(self.result_file)
-            writer.book = book
+                    # Extract text and tables
+                    self._extract_text_from_pdf(pdf_path, output_txt_path)
+                    self._extract_tables_from_pdf(pdf_path, output_excel_path)
         else:
-            writer = pd.ExcelWriter(self.result_file, engine='openpyxl')
+            # Check for a PDF file with the same name as the taxid
+            pdf_path = os.path.join(self.input_dir, f"{taxid}.pdf")
+            if os.path.isfile(pdf_path):
+                output_txt_path = os.path.join(output_taxid_folder, f"{taxid}.txt")
+                output_excel_path = os.path.join(output_taxid_folder, f"{taxid}.xlsx")
 
-        # Create dataframe to store the result
-        df = pd.DataFrame({
-            'TaxID': [taxid],
-            'Filename': [filename],
-            'Title': [title],
-            'Date': [date],
-            'Text File': [text_output_path],
-            'Table File': [table_output_path]
-        })
+                # Extract text and tables
+                self._extract_text_from_pdf(pdf_path, output_txt_path)
+                self._extract_tables_from_pdf(pdf_path, output_excel_path)
+            else:
+                print(f"No subfolder or PDF found for taxid: {taxid}")
 
-        # Append to result.xlsx
-        df.to_excel(writer, sheet_name="Results", index=False, header=not os.path.exists(self.result_file))
-        writer.save()
+    def process_all_taxids(self):
+        """Process all taxids from the Excel sheet"""
+        for taxid in self.taxid_list:
+            self.process_taxid(taxid)
 
-# Main execution
+# Example usage
 if __name__ == "__main__":
-    input_excel = 'tax_ids.xlsx'  # Path to input Excel with TaxIDs
-    base_dir = 'taxid_folders'  # Base directory with TaxID subfolders
-    output_dir = 'output'  # Output folder for processed files
+    input_dir = 'input_directory'  # directory where taxid and PDF files are stored
+    output_dir = 'output_directory'  # directory to store extracted txt and xlsx files
+    taxid_excel_path = 'taxid_list.xlsx'  # Excel file with taxids
+    taxid_column = 'TaxID'  # Column in the Excel file that contains taxid values
 
-    processor = PDFProcessor(input_excel, base_dir, output_dir)
-    processor.process()
+    # Create a TaxIDProcessor object
+    processor = TaxIDProcessor(input_dir, output_dir, taxid_excel_path, taxid_column)
+
+    # Process all taxids listed in the Excel file
+    processor.process_all_taxids()
