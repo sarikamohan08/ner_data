@@ -16,6 +16,18 @@ def extract_tables_from_pdf(self, pdf_path, output_excel_path):
         print(f"Error extracting tables from {pdf_path}: {e}")
 
 
+  def append_to_excel(self, df):
+        """Append the DataFrame to the final result Excel file."""
+        if not os.path.exists(self.final_result_file):
+            # If the file does not exist, write it with headers
+            df.to_excel(self.final_result_file, index=False)
+        else:
+            # Append to existing file without headers
+            with pd.ExcelWriter(self.final_result_file, engine='openpyxl', mode='a', if_sheet_exists='overlay') as writer:
+                df.to_excel(writer, index=False, header=False, startrow=writer.sheets['Sheet1'].max_row)
+
+
+
 import os
 import pytesseract
 from PIL import Image
