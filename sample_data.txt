@@ -1,3 +1,69 @@
+def extract_tables_from_pdf(self, pdf_path, filename):
+    """Extract tables from the given PDF file, including service address and remit address."""
+    service_address_table = None
+    remit_address_table = None
+
+    try:
+        # Read tables from the PDF using Camelot
+        tables = camelot.read_pdf(pdf_path, pages='all')
+        if tables and len(tables) > 0:
+            output_excel_path = os.path.join(self.output_dir, f"{filename}.xlsx")
+            with pd.ExcelWriter(output_excel_path, engine='openpyxl') as writer:
+                for i, table in enumerate(tables):
+                    df = table.df
+                    df.to_excel(writer, sheet_name=f"Table_{i+1}", index=False)
+
+                    # Check if this table contains service or remit address keywords
+                    service_found = self.check_for_address_keywords(df, 'service')
+                    remit_found = self.check_for_address_keywords(df, 'remit')
+
+                    # If keywords are found, extract the entire table as a string
+                    if service_found and service_address_table is None:
+                        service_address_table = df.to_string()
+                    
+                    if remit_found and remit_address_table is None:
+                        remit_address_table = df.to_string()
+
+            print(f'Tables extracted and saved to {output_excel_path}')
+        else:
+            print(f'No tables found in {pdf_path}. Returning empty dataframe.')
+            # Return DataFrame with None values if no tables are found
+            return pd.DataFrame([{'Filename': filename, 'Service Address Table': None, 'Remit Address Table': None}])
+
+        # Return DataFrame with extracted tables
+        return pd.DataFrame([{
+            'Filename': filename,
+            'Service Address Table': service_address_table,
+            'Remit Address Table': remit_address_table
+        }])
+
+    except Exception as e:
+        print(f"Error extracting tables from {pdf_path}: {e}")
+        return pd.DataFrame([{'Filename': filename, 'Service Address Table': None, 'Remit Address Table': None}])
+
+def check_for_address_keywords(self, df, address_type):
+    """Check if the given DataFrame contains the specified address type ('service' or 'remit')."""
+    address_keywords = {
+        'service': ['service address'],
+        'remit': ['remit address']
+    }
+
+    keywords = address_keywords.get(address_type.lower(), [])
+    
+    try:
+        # Search the dataframe for rows containing the address keywords
+        for _, row in df.iterrows():
+            row_text = ' '.join(row.astype(str)).lower()  # Convert the row to a single lowercase string
+            for keyword in keywords:
+                if keyword in row_text:
+                    return True  # Return True if any keyword is found
+        return False
+    except Exception as e:
+        print(f"Error searching for {address_type} address keywords: {e}")
+        return False
+
+
+
 def extract_tables_from_pdf(self, pdf_path, output_excel_path):
     """Extract tables from the given PDF file and save it as .xlsx."""
     try:
