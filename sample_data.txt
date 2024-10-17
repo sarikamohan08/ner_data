@@ -1,3 +1,15 @@
+extractor = ExcelDataExtractor(
+                excel_path=output_excel_path,
+                service_address_keywords=service_address_keywords,
+                notice_address_keywords=notice_address_keywords,
+                para_keywords=para_keywords,
+                date_pattern=date_pattern
+            )
+            result_df = extractor.process_excel()
+
+            return result_df
+
+
 def extract_tables_from_pdf(self, pdf_path, filename):
     """Extract tables from the given PDF file, including the entire sheet if keywords are found."""
     service_address_table = None
