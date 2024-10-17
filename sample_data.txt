@@ -1,4 +1,49 @@
 def extract_tables_from_pdf(self, pdf_path, filename):
+    """Extract tables from the given PDF file, including the entire sheet if keywords are found."""
+    service_address_table = None
+    remit_address_table = None
+
+    try:
+        # Read all tables from the PDF using Camelot
+        tables = camelot.read_pdf(pdf_path, pages='all')
+
+        # Combine all extracted tables into a single DataFrame (representing the entire sheet)
+        if tables and len(tables) > 0:
+            combined_df = pd.concat([table.df for table in tables], ignore_index=True)
+
+            # Check for the presence of 'service address' and 'remit address' in the entire sheet
+            if self.check_for_address_keywords(combined_df, 'service'):
+                service_address_table = combined_df.to_string()
+            
+            if self.check_for_address_keywords(combined_df, 'remit'):
+                remit_address_table = combined_df.to_string()
+
+            # Save the entire table to Excel
+            output_excel_path = os.path.join(self.output_dir, f"{filename}.xlsx")
+            with pd.ExcelWriter(output_excel_path, engine='openpyxl') as writer:
+                combined_df.to_excel(writer, sheet_name="Full_Sheet", index=False)
+
+            print(f'Tables extracted and saved to {output_excel_path}')
+        else:
+            print(f'No tables found in {pdf_path}. Returning empty dataframe.')
+            # Return DataFrame with None values if no tables are found
+            return pd.DataFrame([{'Filename': filename, 'Service Address Table': None, 'Remit Address Table': None}])
+
+        # Return DataFrame with extracted tables (entire sheet)
+        return pd.DataFrame([{
+            'Filename': filename,
+            'Service Address Table': service_address_table,
+            'Remit Address Table': remit_address_table
+        }])
+
+    except Exception as e:
+        print(f"Error extracting tables from {pdf_path}: {e}")
+        return pd.DataFrame([{'Filename': filename, 'Service Address Table': None, 'Remit Address Table': None}])
+
+
+
+
+def extract_tables_from_pdf(self, pdf_path, filename):
     """Extract tables from the given PDF file, including service address and remit address."""
     service_address_table = None
     remit_address_table = None
