@@ -1,62 +1,43 @@
 import pandas as pd
 
-# Function to check if the keyword exists across fragmented cells
-def contains_keywords(sheet, notice_keyword, service_keyword):
-    # Flatten the sheet by concatenating values across rows and columns
-    sheet_flat = sheet.apply(lambda x: ' '.join(x.dropna().astype(str)), axis=1).str.lower()
-    
-    # Combine adjacent cell contents to handle fragmented text across rows or columns
-    sheet_flat_combined = ' '.join(sheet_flat)
-
-    # Check if notice or service address keywords are present
-    contains_notice = notice_keyword.lower() in sheet_flat_combined
-    contains_service = service_keyword.lower() in sheet_flat_combined
-    
-    return contains_notice, contains_service
-
-# Function to concatenate all content of a sheet into one string
-def sheet_to_single_cell(sheet):
-    # Flatten the sheet content into one large string
-    flattened_sheet = sheet.apply(lambda row: ' '.join(row.dropna().astype(str)), axis=1)
-    return ' '.join(flattened_sheet)
+# Function to search for addresses in the sheet content
+def extract_address(sheet, keyword):
+    address = ''
+    for i, row in sheet.iterrows():
+        row_str = ' '.join(row.dropna().astype(str)).strip().lower()
+        # If we find the keyword in a row
+        if keyword in row_str:
+            # Try to extract the next row(s) as the address (assuming the address comes after the keyword)
+            if i + 1 < len(sheet):
+                next_row = ' '.join(sheet.iloc[i+1].dropna().astype(str)).strip()
+                address = next_row
+                break
+    return address
 
 # Load the Excel file
-file_path = 'your_excel_file.xlsx'
+file_path = 'your_excel_file.xlsx'  # Replace with your file path
 xls = pd.ExcelFile(file_path)
 
 # Keywords for filtering
-notice_keyword = 'address for notice'
+notice_keyword = 'notice address'
 service_keyword = 'service address'
 
-# List to store the results
+# List to store results
 extracted_sheets = []
 
 # Loop through each sheet
 for sheet_name in xls.sheet_names:
     sheet_df = pd.read_excel(xls, sheet_name=sheet_name)
     
-    # Check if the sheet contains any of the keywords (even if fragmented)
-    contains_notice, contains_service = contains_keywords(sheet_df, notice_keyword, service_keyword)
+    # Extract notice address and service address
+    notice_address = extract_address(sheet_df, notice_keyword)
+    service_address = extract_address(sheet_df, service_keyword)
     
-    if contains_notice or contains_service:
-        # Convert the entire sheet content into a single cell (string)
-        sheet_content = sheet_to_single_cell(sheet_df)
-        
-        # Initialize notice and service addresses
-        notice_address = ""
-        service_address = ""
-        
-        # Extract notice and service addresses if they exist
-        if contains_notice:
-            notice_address = sheet_df[sheet_df.apply(lambda row: row.astype(str).str.contains('address for notice', case=False).any(), axis=1)].to_string(index=False)
-        
-        if contains_service:
-            service_address = sheet_df[sheet_df.apply(lambda row: row.astype(str).str.contains('service address', case=False).any(), axis=1)].to_string(index=False)
-
+    # Only store if there's a valid address
+    if notice_address or service_address:
         # Append the results
         extracted_sheets.append({
             'Sheet Name': sheet_name,
-            'Sheet Content': sheet_content,
             'Notice Address': notice_address,
             'Service Address': service_address
         })
@@ -66,8 +47,8 @@ if extracted_sheets:
     combined_df = pd.DataFrame(extracted_sheets)
     
     # Save the result to a new Excel file
-    output_path = 'extracted_sheets_with_addresses.xlsx'
+    output_path = 'extracted_addresses.xlsx'
     combined_df.to_excel(output_path, index=False)
-    print(f'Extracted sheets saved to {output_path}')
+    print(f'Extracted addresses saved to {output_path}')
 else:
-    print('No sheets contained the specified keywords.')
+    print('No addresses found in the sheets.')
