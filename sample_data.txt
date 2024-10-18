@@ -1,15 +1,15 @@
 import pandas as pd
 
 # Function to check if a sheet contains the keywords
-def extract_keywords(sheet, notice_keyword, service_keyword):
-    # Flatten the sheet content into a list of strings
+def contains_keywords(sheet, notice_keyword, service_keyword):
+    # Flatten the sheet to search across all rows and columns
     sheet_flat = sheet.apply(lambda x: ' '.join(x.dropna().astype(str)), axis=1).str.lower()
-
-    # Extract notice address and service address if present
-    notice_address = ' '.join(sheet_flat[sheet_flat.str.contains(notice_keyword, case=False)])
-    service_address = ' '.join(sheet_flat[sheet_flat.str.contains(service_keyword, case=False)])
-
-    return notice_address, service_address
+    
+    # Check for presence of any keyword
+    contains_notice = sheet_flat.str.contains(notice_keyword, case=False).any()
+    contains_service = sheet_flat.str.contains(service_keyword, case=False).any()
+    
+    return contains_notice, contains_service
 
 # Function to concatenate all content of a sheet into one string
 def sheet_to_single_cell(sheet):
@@ -32,13 +32,28 @@ extracted_sheets = []
 for sheet_name in xls.sheet_names:
     sheet_df = pd.read_excel(xls, sheet_name=sheet_name)
     
-    # Extract notice address and service address separately
-    notice_address, service_address = extract_keywords(sheet_df, notice_keyword, service_keyword)
+    # Check if the sheet contains any of the keywords
+    contains_notice, contains_service = contains_keywords(sheet_df, notice_keyword, service_keyword)
     
-    # If either keyword is found, add the sheet data to the list
-    if notice_address or service_address:
+    if contains_notice or contains_service:
+        # Convert the entire sheet content into a single cell (string)
+        sheet_content = sheet_to_single_cell(sheet_df)
+        
+        # Initialize notice and service addresses
+        notice_address = ""
+        service_address = ""
+        
+        # Extract notice and service addresses if they exist
+        if contains_notice:
+            notice_address = sheet_df[sheet_df.apply(lambda row: row.astype(str).str.contains(notice_keyword, case=False).any(), axis=1)].to_string(index=False)
+        
+        if contains_service:
+            service_address = sheet_df[sheet_df.apply(lambda row: row.astype(str).str.contains(service_keyword, case=False).any(), axis=1)].to_string(index=False)
+
+        # Append the results
         extracted_sheets.append({
             'Sheet Name': sheet_name,
+            'Sheet Content': sheet_content,
             'Notice Address': notice_address,
             'Service Address': service_address
         })
@@ -48,7 +63,7 @@ if extracted_sheets:
     combined_df = pd.DataFrame(extracted_sheets)
     
     # Save the result to a new Excel file
-    output_path = 'extracted_notice_service_address.xlsx'
+    output_path = 'extracted_sheets_with_addresses.xlsx'
     combined_df.to_excel(output_path, index=False)
     print(f'Extracted sheets saved to {output_path}')
 else:
