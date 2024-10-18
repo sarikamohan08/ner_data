@@ -22,15 +22,13 @@ class ExcelDataExtractor:
             print(f"Error loading Excel file: {e}")
             return {}
 
-    def contains_address_type(self, df, keywords):
+    def extract_addresses(self, df, keywords):
         """
-        Check if any cell in a DataFrame contains specific address-related keywords.
+        Extract rows from a DataFrame that contain specific address-related keywords.
         """
-        for keyword in keywords:
-            # Search across all cells and return True if any cell contains the keyword
-            if df.apply(lambda x: x.astype(str).str.contains(keyword, case=False, na=False).any()).any():
-                return True
-        return False
+        # Use str.contains to search for rows with the keywords in any column
+        address_rows = df.apply(lambda row: row.astype(str).str.contains('|'.join(keywords), case=False, na=False).any(), axis=1)
+        return df[address_rows]  # Return only rows where keywords were found
 
     def process_excel(self):
         """
@@ -44,22 +42,20 @@ class ExcelDataExtractor:
         # Iterate through all sheets
         for sheet_name, df in sheets.items():
             # Initialize lists to store address-related data
-            service_data = []
-            notice_data = []
+            service_data = pd.DataFrame()
+            notice_data = pd.DataFrame()
             
-            # Check for service address-related keywords and collect entire sheet if found
-            if self.contains_address_type(df, self.service_address_keywords):
-                service_data.append(df.to_string(index=False))  # Append the entire DataFrame as a string
+            # Extract rows that contain service address-related keywords
+            service_data = self.extract_addresses(df, self.service_address_keywords)
             
-            # Check for notice address-related keywords and collect entire sheet if found
-            if self.contains_address_type(df, self.notice_address_keywords):
-                notice_data.append(df.to_string(index=False))  # Append the entire DataFrame as a string
+            # Extract rows that contain notice address-related keywords
+            notice_data = self.extract_addresses(df, self.notice_address_keywords)
 
             # Store extracted data in a structured dictionary
             data = {
                 'sheet_name': sheet_name,
-                'service_addresses': '\n'.join(service_data) if service_data else '',
-                'notice_addresses': '\n'.join(notice_data) if notice_data else ''
+                'service_addresses': service_data.to_string(index=False) if not service_data.empty else '',
+                'notice_addresses': notice_data.to_string(index=False) if not notice_data.empty else ''
             }
             all_data.append(data)
 
