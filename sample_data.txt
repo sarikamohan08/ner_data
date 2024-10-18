@@ -1,257 +1,89 @@
-extractor = ExcelDataExtractor(
-                excel_path=output_excel_path,
-                service_address_keywords=service_address_keywords,
-                notice_address_keywords=notice_address_keywords,
-                para_keywords=para_keywords,
-                date_pattern=date_pattern
-            )
-            result_df = extractor.process_excel()
-
-            return result_df
-
-
-def extract_tables_from_pdf(self, pdf_path, filename):
-    """Extract tables from the given PDF file, including the entire sheet if keywords are found."""
-    service_address_table = None
-    remit_address_table = None
-
-    try:
-        # Read all tables from the PDF using Camelot
-        tables = camelot.read_pdf(pdf_path, pages='all')
-
-        # Combine all extracted tables into a single DataFrame (representing the entire sheet)
-        if tables and len(tables) > 0:
-            combined_df = pd.concat([table.df for table in tables], ignore_index=True)
-
-            # Check for the presence of 'service address' and 'remit address' in the entire sheet
-            if self.check_for_address_keywords(combined_df, 'service'):
-                service_address_table = combined_df.to_string()
-            
-            if self.check_for_address_keywords(combined_df, 'remit'):
-                remit_address_table = combined_df.to_string()
-
-            # Save the entire table to Excel
-            output_excel_path = os.path.join(self.output_dir, f"{filename}.xlsx")
-            with pd.ExcelWriter(output_excel_path, engine='openpyxl') as writer:
-                combined_df.to_excel(writer, sheet_name="Full_Sheet", index=False)
-
-            print(f'Tables extracted and saved to {output_excel_path}')
-        else:
-            print(f'No tables found in {pdf_path}. Returning empty dataframe.')
-            # Return DataFrame with None values if no tables are found
-            return pd.DataFrame([{'Filename': filename, 'Service Address Table': None, 'Remit Address Table': None}])
-
-        # Return DataFrame with extracted tables (entire sheet)
-        return pd.DataFrame([{
-            'Filename': filename,
-            'Service Address Table': service_address_table,
-            'Remit Address Table': remit_address_table
-        }])
-
-    except Exception as e:
-        print(f"Error extracting tables from {pdf_path}: {e}")
-        return pd.DataFrame([{'Filename': filename, 'Service Address Table': None, 'Remit Address Table': None}])
-
-
-
-
-def extract_tables_from_pdf(self, pdf_path, filename):
-    """Extract tables from the given PDF file, including service address and remit address."""
-    service_address_table = None
-    remit_address_table = None
-
-    try:
-        # Read tables from the PDF using Camelot
-        tables = camelot.read_pdf(pdf_path, pages='all')
-        if tables and len(tables) > 0:
-            output_excel_path = os.path.join(self.output_dir, f"{filename}.xlsx")
-            with pd.ExcelWriter(output_excel_path, engine='openpyxl') as writer:
-                for i, table in enumerate(tables):
-                    df = table.df
-                    df.to_excel(writer, sheet_name=f"Table_{i+1}", index=False)
-
-                    # Check if this table contains service or remit address keywords
-                    service_found = self.check_for_address_keywords(df, 'service')
-                    remit_found = self.check_for_address_keywords(df, 'remit')
-
-                    # If keywords are found, extract the entire table as a string
-                    if service_found and service_address_table is None:
-                        service_address_table = df.to_string()
-                    
-                    if remit_found and remit_address_table is None:
-                        remit_address_table = df.to_string()
-
-            print(f'Tables extracted and saved to {output_excel_path}')
-        else:
-            print(f'No tables found in {pdf_path}. Returning empty dataframe.')
-            # Return DataFrame with None values if no tables are found
-            return pd.DataFrame([{'Filename': filename, 'Service Address Table': None, 'Remit Address Table': None}])
-
-        # Return DataFrame with extracted tables
-        return pd.DataFrame([{
-            'Filename': filename,
-            'Service Address Table': service_address_table,
-            'Remit Address Table': remit_address_table
-        }])
-
-    except Exception as e:
-        print(f"Error extracting tables from {pdf_path}: {e}")
-        return pd.DataFrame([{'Filename': filename, 'Service Address Table': None, 'Remit Address Table': None}])
-
-def check_for_address_keywords(self, df, address_type):
-    """Check if the given DataFrame contains the specified address type ('service' or 'remit')."""
-    address_keywords = {
-        'service': ['service address'],
-        'remit': ['remit address']
-    }
-
-    keywords = address_keywords.get(address_type.lower(), [])
-    
-    try:
-        # Search the dataframe for rows containing the address keywords
-        for _, row in df.iterrows():
-            row_text = ' '.join(row.astype(str)).lower()  # Convert the row to a single lowercase string
-            for keyword in keywords:
-                if keyword in row_text:
-                    return True  # Return True if any keyword is found
-        return False
-    except Exception as e:
-        print(f"Error searching for {address_type} address keywords: {e}")
-        return False
-
-
-
-def extract_tables_from_pdf(self, pdf_path, output_excel_path):
-    """Extract tables from the given PDF file and save it as .xlsx."""
-    try:
-        # Extract tables using Camelot
-        tables = camelot.read_pdf(pdf_path, pages='all')
-        if tables and len(tables) > 0:
-            # Export each table to Excel without 'encoding' argument
-            with pd.ExcelWriter(output_excel_path, engine='openpyxl') as writer:
-                for i, table in enumerate(tables):
-                    df = table.df
-                    df.to_excel(writer, sheet_name=f"Table_{i+1}", index=False)
-            print(f'Tables extracted and saved to {output_excel_path}')
-        else:
-            print(f'No tables found in {pdf_path}')
-    except Exception as e:
-        print(f"Error extracting tables from {pdf_path}: {e}")
-
-
-  def append_to_excel(self, df):
-        """Append the DataFrame to the final result Excel file."""
-        if not os.path.exists(self.final_result_file):
-            # If the file does not exist, write it with headers
-            df.to_excel(self.final_result_file, index=False)
-        else:
-            # Append to existing file without headers
-            with pd.ExcelWriter(self.final_result_file, engine='openpyxl', mode='a', if_sheet_exists='overlay') as writer:
-                df.to_excel(writer, index=False, header=False, startrow=writer.sheets['Sheet1'].max_row)
-
-
-
-import os
-import pytesseract
-from PIL import Image
-import camelot
-from pdf2image import convert_from_path
 import pandas as pd
+import re
 
-class TaxIDProcessor:
-    def __init__(self, input_dir, output_dir, taxid_excel_path, taxid_column):
-        self.input_dir = input_dir  # Directory where taxid folders or PDFs are stored
-        self.output_dir = output_dir  # Directory where output files (txt, xlsx) will be stored
-        self.taxid_excel_path = taxid_excel_path  # Excel file path with taxids
-        self.taxid_column = taxid_column  # Column in Excel file containing taxids
-        self.taxid_list = self._read_taxids_from_excel()  # Load the taxid list from Excel
+class ExcelDataExtractor:
+    def __init__(self, excel_path, service_address_keywords=None, notice_address_keywords=None):
+        """
+        Initialize the ExcelDataExtractor class with the Excel file path and keywords.
+        """
+        self.excel_path = excel_path
+        
+        # Service and Notice address-related keywords
+        self.service_address_keywords = service_address_keywords or ['service address', 'service location', 'delivery address']
+        self.notice_address_keywords = notice_address_keywords or ['notice address', 'legal notice', 'notification address']
 
-    def _read_taxids_from_excel(self):
-        """Read taxids from the provided Excel file"""
+    def load_excel(self):
+        """
+        Load the Excel file into a dictionary of DataFrames (one for each sheet).
+        """
         try:
-            df = pd.read_excel(self.taxid_excel_path)
-            taxid_list = df[self.taxid_column].dropna().astype(str).tolist()  # Ensure list of strings
-            return taxid_list
+            df = pd.read_excel(self.excel_path, sheet_name=None)  # Load all sheets
+            return df
         except Exception as e:
-            print(f"Error reading taxids from Excel: {e}")
-            return []
+            print(f"Error loading Excel file: {e}")
+            return {}
 
-    def _extract_text_from_pdf(self, pdf_path, output_txt_path):
-        """Extract text from a PDF file and save it as .txt"""
-        text_output = ''
-        try:
-            # Convert the PDF to images (one page at a time)
-            pages = convert_from_path(pdf_path)
-            for page in pages:
-                # Use pytesseract to extract text from image
-                text_output += pytesseract.image_to_string(page)
+    def contains_address_type(self, df, keywords):
+        """
+        Check if any cell in a DataFrame contains specific address-related keywords.
+        """
+        for keyword in keywords:
+            # Search across all cells and return True if any cell contains the keyword
+            if df.apply(lambda x: x.astype(str).str.contains(keyword, case=False, na=False).any()).any():
+                return True
+        return False
+
+    def process_excel(self):
+        """
+        Process the Excel file, extracting relevant data for service and notice addresses.
+        """
+        all_data = []
+
+        # Load the Excel data (dictionary of sheet names and DataFrames)
+        sheets = self.load_excel()
+
+        # Iterate through all sheets
+        for sheet_name, df in sheets.items():
+            # Convert the DataFrame to a flat string representation
+            text = df.astype(str).agg(' '.join).str.cat(sep=' ')  # Convert all content to string
+
+            # Initialize lists to store address-related data
+            service_data = []
+            notice_data = []
             
-            # Save extracted text to a .txt file
-            with open(output_txt_path, 'w') as f:
-                f.write(text_output)
-            print(f'Text extracted and saved to {output_txt_path}')
-        except Exception as e:
-            print(f"Error extracting text from {pdf_path}: {e}")
+            # Check for service address-related keywords and collect entire sheet if found
+            if self.contains_address_type(df, self.service_address_keywords):
+                service_data.append(df.to_string(index=False))  # Append the entire DataFrame as a string
+            
+            # Check for notice address-related keywords and collect entire sheet if found
+            if self.contains_address_type(df, self.notice_address_keywords):
+                notice_data.append(df.to_string(index=False))  # Append the entire DataFrame as a string
 
-    def _extract_tables_from_pdf(self, pdf_path, output_excel_path):
-        """Extract tables from a PDF file and save it as .xlsx"""
-        try:
-            # Extract tables using Camelot
-            tables = camelot.read_pdf(pdf_path, pages='all')
-            if tables and len(tables) > 0:
-                tables.export(output_excel_path, f='excel')
-                print(f'Tables extracted and saved to {output_excel_path}')
-            else:
-                print(f'No tables found in {pdf_path}')
-        except Exception as e:
-            print(f"Error extracting tables from {pdf_path}: {e}")
+            # Store extracted data in a structured dictionary
+            data = {
+                'sheet_name': sheet_name,
+                'service_addresses': '\n'.join(service_data) if service_data else '',
+                'notice_addresses': '\n'.join(notice_data) if notice_data else ''
+            }
+            all_data.append(data)
 
-    def process_taxid(self, taxid):
-        """Process a single taxid by checking for subfolders or PDFs"""
-        taxid_folder = os.path.join(self.input_dir, taxid)
-        output_taxid_folder = os.path.join(self.output_dir, taxid)
-        os.makedirs(output_taxid_folder, exist_ok=True)  # Create output folder for taxid
+        # Convert all collected data to a DataFrame for easier viewing and analysis
+        result_df = pd.DataFrame(all_data)
+        return result_df
 
-        if os.path.isdir(taxid_folder):
-            # Process each PDF in the subfolder
-            for file in os.listdir(taxid_folder):
-                if file.endswith('.pdf'):
-                    pdf_path = os.path.join(taxid_folder, file)
-                    file_base_name = os.path.splitext(file)[0]
-
-                    output_txt_path = os.path.join(output_taxid_folder, f"{file_base_name}.txt")
-                    output_excel_path = os.path.join(output_taxid_folder, f"{file_base_name}.xlsx")
-
-                    # Extract text and tables
-                    self._extract_text_from_pdf(pdf_path, output_txt_path)
-                    self._extract_tables_from_pdf(pdf_path, output_excel_path)
-        else:
-            # Check for a PDF file with the same name as the taxid
-            pdf_path = os.path.join(self.input_dir, f"{taxid}.pdf")
-            if os.path.isfile(pdf_path):
-                output_txt_path = os.path.join(output_taxid_folder, f"{taxid}.txt")
-                output_excel_path = os.path.join(output_taxid_folder, f"{taxid}.xlsx")
-
-                # Extract text and tables
-                self._extract_text_from_pdf(pdf_path, output_txt_path)
-                self._extract_tables_from_pdf(pdf_path, output_excel_path)
-            else:
-                print(f"No subfolder or PDF found for taxid: {taxid}")
-
-    def process_all_taxids(self):
-        """Process all taxids from the Excel sheet"""
-        for taxid in self.taxid_list:
-            self.process_taxid(taxid)
-
-# Example usage
+# Usage
 if __name__ == "__main__":
-    input_dir = 'input_directory'  # directory where taxid and PDF files are stored
-    output_dir = 'output_directory'  # directory to store extracted txt and xlsx files
-    taxid_excel_path = 'taxid_list.xlsx'  # Excel file with taxids
-    taxid_column = 'TaxID'  # Column in the Excel file that contains taxid values
+    excel_path = 'path_to_single_excel_file.xlsx'  # Path to the Excel file you want to process
 
-    # Create a TaxIDProcessor object
-    processor = TaxIDProcessor(input_dir, output_dir, taxid_excel_path, taxid_column)
+    # Define specific address keywords
+    service_address_keywords = ['service address', 'service location', 'delivery address']
+    notice_address_keywords = ['notice address', 'legal notice', 'notification address']
 
-    # Process all taxids listed in the Excel file
-    processor.process_all_taxids()
+    # Create an instance of the extractor
+    extractor = ExcelDataExtractor(excel_path, service_address_keywords=service_address_keywords, notice_address_keywords=notice_address_keywords)
+
+    # Process the Excel file and get the results in a DataFrame
+    result_df = extractor.process_excel()
+
+    # Output the result
+    print(result_df)
