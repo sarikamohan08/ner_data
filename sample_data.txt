@@ -1,92 +1,44 @@
 import pandas as pd
 
-class ExcelDataExtractor:
-    def __init__(self, excel_path, service_address_keywords=None, notice_address_keywords=None):
-        """
-        Initialize with the path to the Excel file and optional address keywords.
-        """
-        self.excel_path = excel_path
-        
-        # Service and Notice address-related keywords
-        self.service_address_keywords = service_address_keywords or ['service address', 'service location', 'delivery address']
-        self.notice_address_keywords = notice_address_keywords or ['notice address', 'legal notice', 'notification address']
+# Function to check if a sheet contains the keywords
+def contains_keywords(sheet, notice_keyword, service_keyword):
+    # Flatten the sheet to search across all rows and columns
+    sheet_flat = sheet.apply(lambda x: ' '.join(x.dropna().astype(str)), axis=1).str.lower()
+    
+    # Check for presence of any keyword
+    contains_notice = sheet_flat.str.contains(notice_keyword, case=False).any()
+    contains_service = sheet_flat.str.contains(service_keyword, case=False).any()
+    
+    return contains_notice or contains_service
 
-    def load_excel(self):
-        """
-        Load the Excel file into a dictionary of DataFrames (one for each sheet).
-        """
-        try:
-            df = pd.read_excel(self.excel_path, sheet_name=None)  # Load all sheets
-            return df
-        except Exception as e:
-            print(f"Error loading Excel file: {e}")
-            return {}
+# Load the Excel file
+file_path = 'your_excel_file.xlsx'
+xls = pd.ExcelFile(file_path)
 
-    def extract_addresses(self, df, keywords):
-        """
-        Extract rows from a DataFrame that contain specific address-related keywords.
-        """
-        # Use str.contains to search for rows with the keywords in any column
-        address_rows = df.apply(lambda row: row.astype(str).str.contains('|'.join(keywords), case=False, na=False).any(), axis=1)
-        return df[address_rows]  # Return only rows where keywords were found
+# Keywords for filtering
+notice_keyword = 'address for notice'
+service_keyword = 'service address'
 
-    def process_excel(self):
-        """
-        Process the Excel file, extracting relevant data.
-        """
-        all_data = []
+# DataFrame to store results
+extracted_sheets = []
 
-        # Load the Excel data (dictionary of sheet names and DataFrames)
-        sheets = self.load_excel()
+# Loop through each sheet
+for sheet_name in xls.sheet_names:
+    sheet_df = pd.read_excel(xls, sheet_name=sheet_name)
+    
+    # Check if sheet contains any of the keywords
+    if contains_keywords(sheet_df, notice_keyword, service_keyword):
+        # Append the sheet with an additional column indicating sheet name
+        sheet_df['Sheet Name'] = sheet_name
+        extracted_sheets.append(sheet_df)
 
-        # Iterate through all sheets
-        for sheet_name, df in sheets.items():
-            # Initialize lists to store address-related data
-            service_data = pd.DataFrame()
-            notice_data = pd.DataFrame()
-            
-            # Extract rows that contain service address-related keywords
-            service_data = self.extract_addresses(df, self.service_address_keywords)
-            
-            # Extract rows that contain notice address-related keywords
-            notice_data = self.extract_addresses(df, self.notice_address_keywords)
-
-            # Store extracted data in a structured dictionary
-            data = {
-                'sheet_name': sheet_name,
-                'service_addresses': service_data.to_string(index=False) if not service_data.empty else '',
-                'notice_addresses': notice_data.to_string(index=False) if not notice_data.empty else ''
-            }
-            all_data.append(data)
-
-        # Convert all collected data to a DataFrame for easier viewing and analysis
-        result_df = pd.DataFrame(all_data)
-        return result_df
-
-    def save_to_excel(self, result_df, output_path):
-        """
-        Save the result DataFrame to an Excel file.
-        """
-        try:
-            result_df.to_excel(output_path, index=False)  # Save DataFrame to Excel without index
-            print(f"Result successfully saved to {output_path}")
-        except Exception as e:
-            print(f"Error saving Excel file: {e}")
-
-# Usage
-if __name__ == "__main__":
-    excel_path = 'path_to_single_excel_file.xlsx'  # Path to the Excel file you want to process
-    output_path = 'extracted_addresses.xlsx'  # Path to save the result
-
-    # Define specific address keywords
-    service_address_keywords = ['service address', 'service location', 'delivery address']
-    notice_address_keywords = ['notice address', 'legal notice', 'notification address']
-
-    # Create an instance of the extractor
-    extractor = ExcelDataExtractor(excel_path, service_address_keywords=service_address_keywords, notice_address_keywords=notice_address_keywords)
-
-    # Process the Excel file and get the results in a DataFrame
-    result_df = extractor.process_excel()
-
+# Combine all extracted sheets
+if extracted_sheets:
+    combined_df = pd.concat(extracted_sheets, ignore_index=True)
+    
     # Save the result to a new Excel file
-    extractor.save_to_excel(result_df, output_path)
+    output_path = 'extracted_sheets.xlsx'
+    combined_df.to_excel(output_path, index=False)
+    print(f'Extracted sheets saved to {output_path}')
+else:
+    print('No sheets contained the specified keywords.')
