@@ -8,11 +8,11 @@ class ExcelTableExtractor:
 
         # Define the keywords for different address/contact information types
         self.address_keywords = address_keywords or ['address', 'location', 'street', 'city', 'state', 'zip', 'postal']
-        self.service_address_keyword = 'service address'
-        self.remit_address_keyword = 'remit address'
-        self.notice_address_keyword = 'notice address'
-        self.contract_contact_keyword = 'contract contact information'
-        self.contact_information_keyword = 'contact information'
+        self.service_address_keyword = ['service address']  # List can have multiple keywords if needed
+        self.remit_address_keyword = ['remit address']  # You can expand this with multiple keywords as well
+        self.notice_address_keyword = ['notice address']
+        self.contract_contact_keywords = ['contract contact information', 'contractor contact', 'contract contact']  # Multiple keywords
+        self.contact_information_keywords = ['contact information', 'phone', 'email']
 
         # Storage for extracted data
         self.extracted_data_combined = []
@@ -22,6 +22,7 @@ class ExcelTableExtractor:
         Check if any cell in a DataFrame contains any of the specified keywords.
         """
         for keyword in keywords:
+            # Check each keyword separately and return True if any match is found
             if df.apply(lambda x: x.astype(str).str.contains(keyword, case=False, na=False).any()).any():
                 return True
         return False
@@ -44,19 +45,19 @@ class ExcelTableExtractor:
             address_data['address'] = df.to_string(index=False)
 
         # Check for specific address/contact categories
-        if self.contains_keywords(df, [self.service_address_keyword]):
+        if self.contains_keywords(df, self.service_address_keyword):
             address_data['service_address'] = df.to_string(index=False)
 
-        if self.contains_keywords(df, [self.remit_address_keyword]):
+        if self.contains_keywords(df, self.remit_address_keyword):
             address_data['remit_address'] = df.to_string(index=False)
 
-        if self.contains_keywords(df, [self.notice_address_keyword]):
+        if self.contains_keywords(df, self.notice_address_keyword):
             address_data['notice_address'] = df.to_string(index=False)
 
-        if self.contains_keywords(df, [self.contract_contact_keyword]):
+        if self.contains_keywords(df, self.contract_contact_keywords):
             address_data['contract_contact'] = df.to_string(index=False)
 
-        if self.contains_keywords(df, [self.contact_information_keyword]):
+        if self.contains_keywords(df, self.contact_information_keywords):
             address_data['contact_information'] = df.to_string(index=False)
 
         return address_data
