@@ -1,15 +1,15 @@
 import pandas as pd
 
 # Function to check if a sheet contains the keywords
-def contains_keywords(sheet, notice_keyword, service_keyword):
-    # Flatten the sheet to search across all rows and columns
+def extract_keywords(sheet, notice_keyword, service_keyword):
+    # Flatten the sheet content into a list of strings
     sheet_flat = sheet.apply(lambda x: ' '.join(x.dropna().astype(str)), axis=1).str.lower()
-    
-    # Check for presence of any keyword
-    contains_notice = sheet_flat.str.contains(notice_keyword, case=False).any()
-    contains_service = sheet_flat.str.contains(service_keyword, case=False).any()
-    
-    return contains_notice or contains_service
+
+    # Extract notice address and service address if present
+    notice_address = ' '.join(sheet_flat[sheet_flat.str.contains(notice_keyword, case=False)])
+    service_address = ' '.join(sheet_flat[sheet_flat.str.contains(service_keyword, case=False)])
+
+    return notice_address, service_address
 
 # Function to concatenate all content of a sheet into one string
 def sheet_to_single_cell(sheet):
@@ -32,15 +32,15 @@ extracted_sheets = []
 for sheet_name in xls.sheet_names:
     sheet_df = pd.read_excel(xls, sheet_name=sheet_name)
     
-    # Check if the sheet contains any of the keywords
-    if contains_keywords(sheet_df, notice_keyword, service_keyword):
-        # Convert the entire sheet content into a single cell (string)
-        sheet_content = sheet_to_single_cell(sheet_df)
-        
-        # Append the sheet content and name to the results
+    # Extract notice address and service address separately
+    notice_address, service_address = extract_keywords(sheet_df, notice_keyword, service_keyword)
+    
+    # If either keyword is found, add the sheet data to the list
+    if notice_address or service_address:
         extracted_sheets.append({
             'Sheet Name': sheet_name,
-            'Sheet Content': sheet_content
+            'Notice Address': notice_address,
+            'Service Address': service_address
         })
 
 # Convert the results to a DataFrame
@@ -48,7 +48,7 @@ if extracted_sheets:
     combined_df = pd.DataFrame(extracted_sheets)
     
     # Save the result to a new Excel file
-    output_path = 'extracted_sheets_single_cell.xlsx'
+    output_path = 'extracted_notice_service_address.xlsx'
     combined_df.to_excel(output_path, index=False)
     print(f'Extracted sheets saved to {output_path}')
 else:
