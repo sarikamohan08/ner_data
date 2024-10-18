@@ -11,6 +11,12 @@ def contains_keywords(sheet, notice_keyword, service_keyword):
     
     return contains_notice or contains_service
 
+# Function to concatenate all content of a sheet into one string
+def sheet_to_single_cell(sheet):
+    # Flatten the sheet content into one large string
+    flattened_sheet = sheet.apply(lambda row: ' '.join(row.dropna().astype(str)), axis=1)
+    return ' '.join(flattened_sheet)
+
 # Load the Excel file
 file_path = 'your_excel_file.xlsx'
 xls = pd.ExcelFile(file_path)
@@ -19,25 +25,30 @@ xls = pd.ExcelFile(file_path)
 notice_keyword = 'address for notice'
 service_keyword = 'service address'
 
-# DataFrame to store results
+# List to store the results
 extracted_sheets = []
 
 # Loop through each sheet
 for sheet_name in xls.sheet_names:
     sheet_df = pd.read_excel(xls, sheet_name=sheet_name)
     
-    # Check if sheet contains any of the keywords
+    # Check if the sheet contains any of the keywords
     if contains_keywords(sheet_df, notice_keyword, service_keyword):
-        # Append the sheet with an additional column indicating sheet name
-        sheet_df['Sheet Name'] = sheet_name
-        extracted_sheets.append(sheet_df)
+        # Convert the entire sheet content into a single cell (string)
+        sheet_content = sheet_to_single_cell(sheet_df)
+        
+        # Append the sheet content and name to the results
+        extracted_sheets.append({
+            'Sheet Name': sheet_name,
+            'Sheet Content': sheet_content
+        })
 
-# Combine all extracted sheets
+# Convert the results to a DataFrame
 if extracted_sheets:
-    combined_df = pd.concat(extracted_sheets, ignore_index=True)
+    combined_df = pd.DataFrame(extracted_sheets)
     
     # Save the result to a new Excel file
-    output_path = 'extracted_sheets.xlsx'
+    output_path = 'extracted_sheets_single_cell.xlsx'
     combined_df.to_excel(output_path, index=False)
     print(f'Extracted sheets saved to {output_path}')
 else:
