@@ -1,10 +1,9 @@
 import pandas as pd
-import re
 
 class ExcelDataExtractor:
     def __init__(self, excel_path, service_address_keywords=None, notice_address_keywords=None):
         """
-        Initialize the ExcelDataExtractor class with the Excel file path and keywords.
+        Initialize with the path to the Excel file and optional address keywords.
         """
         self.excel_path = excel_path
         
@@ -35,7 +34,7 @@ class ExcelDataExtractor:
 
     def process_excel(self):
         """
-        Process the Excel file, extracting relevant data for service and notice addresses.
+        Process the Excel file, extracting relevant data.
         """
         all_data = []
 
@@ -44,9 +43,6 @@ class ExcelDataExtractor:
 
         # Iterate through all sheets
         for sheet_name, df in sheets.items():
-            # Convert the DataFrame to a flat string representation
-            text = df.astype(str).agg(' '.join).str.cat(sep=' ')  # Convert all content to string
-
             # Initialize lists to store address-related data
             service_data = []
             notice_data = []
@@ -71,9 +67,20 @@ class ExcelDataExtractor:
         result_df = pd.DataFrame(all_data)
         return result_df
 
+    def save_to_excel(self, result_df, output_path):
+        """
+        Save the result DataFrame to an Excel file.
+        """
+        try:
+            result_df.to_excel(output_path, index=False)  # Save DataFrame to Excel without index
+            print(f"Result successfully saved to {output_path}")
+        except Exception as e:
+            print(f"Error saving Excel file: {e}")
+
 # Usage
 if __name__ == "__main__":
     excel_path = 'path_to_single_excel_file.xlsx'  # Path to the Excel file you want to process
+    output_path = 'extracted_addresses.xlsx'  # Path to save the result
 
     # Define specific address keywords
     service_address_keywords = ['service address', 'service location', 'delivery address']
@@ -85,5 +92,5 @@ if __name__ == "__main__":
     # Process the Excel file and get the results in a DataFrame
     result_df = extractor.process_excel()
 
-    # Output the result
-    print(result_df)
+    # Save the result to a new Excel file
+    extractor.save_to_excel(result_df, output_path)
