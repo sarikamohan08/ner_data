@@ -1,54 +1,128 @@
 import pandas as pd
+from openpyxl import load_workbook
 
-# Function to search for addresses in the sheet content
-def extract_address(sheet, keyword):
-    address = ''
-    for i, row in sheet.iterrows():
-        row_str = ' '.join(row.dropna().astype(str)).strip().lower()
-        # If we find the keyword in a row
-        if keyword in row_str:
-            # Try to extract the next row(s) as the address (assuming the address comes after the keyword)
-            if i + 1 < len(sheet):
-                next_row = ' '.join(sheet.iloc[i+1].dropna().astype(str)).strip()
-                address = next_row
-                break
-    return address
+class ExcelTableExtractor:
+    def __init__(self, excel_file, output_excel, address_keywords=None):
+        self.excel_file = excel_file
+        self.output_excel = output_excel
 
-# Load the Excel file
-file_path = 'your_excel_file.xlsx'  # Replace with your file path
-xls = pd.ExcelFile(file_path)
+        # Define the keywords for different address/contact information types
+        self.address_keywords = address_keywords or ['address', 'location', 'street', 'city', 'state', 'zip', 'postal']
+        self.service_address_keyword = 'service address'
+        self.remit_address_keyword = 'remit address'
+        self.notice_address_keyword = 'notice address'
+        self.contract_contact_keyword = 'contract contact information'
+        self.contact_information_keyword = 'contact information'
 
-# Keywords for filtering
-notice_keyword = 'notice address'
-service_keyword = 'service address'
+        # Storage for extracted data
+        self.extracted_data_combined = []
 
-# List to store results
-extracted_sheets = []
+    def contains_keywords(self, df, keywords):
+        """
+        Check if any cell in a DataFrame contains any of the specified keywords.
+        """
+        for keyword in keywords:
+            if df.apply(lambda x: x.astype(str).str.contains(keyword, case=False, na=False).any()).any():
+                return True
+        return False
 
-# Loop through each sheet
-for sheet_name in xls.sheet_names:
-    sheet_df = pd.read_excel(xls, sheet_name=sheet_name)
-    
-    # Extract notice address and service address
-    notice_address = extract_address(sheet_df, notice_keyword)
-    service_address = extract_address(sheet_df, service_keyword)
-    
-    # Only store if there's a valid address
-    if notice_address or service_address:
-        # Append the results
-        extracted_sheets.append({
-            'Sheet Name': sheet_name,
-            'Notice Address': notice_address,
-            'Service Address': service_address
-        })
+    def extract_address_data(self, df):
+        """
+        Extract data related to the specific address categories from a DataFrame.
+        """
+        address_data = {
+            'address': '', 
+            'service_address': '', 
+            'remit_address': '', 
+            'notice_address': '', 
+            'contract_contact': '', 
+            'contact_information': ''
+        }
 
-# Convert the results to a DataFrame
-if extracted_sheets:
-    combined_df = pd.DataFrame(extracted_sheets)
-    
-    # Save the result to a new Excel file
-    output_path = 'extracted_addresses.xlsx'
-    combined_df.to_excel(output_path, index=False)
-    print(f'Extracted addresses saved to {output_path}')
-else:
-    print('No addresses found in the sheets.')
+        # Check for general address-related keywords
+        if self.contains_keywords(df, self.address_keywords):
+            address_data['address'] = df.to_string(index=False)
+
+        # Check for specific address/contact categories
+        if self.contains_keywords(df, [self.service_address_keyword]):
+            address_data['service_address'] = df.to_string(index=False)
+
+        if self.contains_keywords(df, [self.remit_address_keyword]):
+            address_data['remit_address'] = df.to_string(index=False)
+
+        if self.contains_keywords(df, [self.notice_address_keyword]):
+            address_data['notice_address'] = df.to_string(index=False)
+
+        if self.contains_keywords(df, [self.contract_contact_keyword]):
+            address_data['contract_contact'] = df.to_string(index=False)
+
+        if self.contains_keywords(df, [self.contact_information_keyword]):
+            address_data['contact_information'] = df.to_string(index=False)
+
+        return address_data
+
+    def process_excel_file(self):
+        """
+        Process the single Excel file to extract address-related data from its tables.
+        """
+        extracted_file_data = {
+            'File Name': self.excel_file, 
+            'address': '', 
+            'service_address': '', 
+            'remit_address': '', 
+            'notice_address': '', 
+            'contract_contact': '', 
+            'contact_information': ''
+        }
+
+        # Load the workbook and read all sheets
+        workbook = load_workbook(self.excel_file)
+        for sheet_name in workbook.sheetnames:
+            df = pd.read_excel(self.excel_file, sheet_name=sheet_name)
+
+            if df.empty:
+                print(f"Sheet {sheet_name} is empty. Skipping...")
+                continue
+
+            # Extract and classify address-related data
+            extracted_data = self.extract_address_data(df)
+
+            # Update the extracted_file_data dictionary with the address data from this table
+            for key in extracted_data:
+                if extracted_data[key]:  # If we have data for this category, concatenate it
+                    extracted_file_data[key] += f"Sheet {sheet_name}:\n{extracted_data[key]}\n\n"
+
+        # Append the extracted file data to the combined list
+        self.extracted_data_combined.append(extracted_file_data)
+
+    def save_combined_address_data(self):
+        """
+        Save all extracted address-related data into a single Excel file with separate columns for each category.
+        """
+        if self.extracted_data_combined:
+            output_df = pd.DataFrame(self.extracted_data_combined)
+
+            # Save the combined data to a single Excel file
+            output_df.to_excel(self.output_excel, index=False)
+            print(f"All address-related data saved to {self.output_excel}.")
+        else:
+            print("No address-related data found.")
+
+    def run(self):
+        """
+        Main function to process the single Excel file and save the extracted data into a new Excel file.
+        """
+        print("Processing the Excel file...")
+        self.process_excel_file()
+
+        print("Saving combined address-related data...")
+        self.save_combined_address_data()
+
+
+# Usage
+if __name__ == "__main__":
+    excel_file = 'path_to_your_excel_file.xlsx'  # Path to the single Excel file
+    output_excel = 'combined_address_data.xlsx'  # Single output file for all address-related data
+
+    extractor = ExcelTableExtractor(excel_file, output_excel)
+    extractor.run()
