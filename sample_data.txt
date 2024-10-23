@@ -1,3 +1,6 @@
+pattern = r'(?i)(.*?(term of this agreement shall commence on|this agreement will commence on|the effective date of this amendment is).*?)'
+
+
 import pandas as pd
 from openpyxl import load_workbook
 
