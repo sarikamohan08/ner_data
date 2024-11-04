@@ -1,22 +1,26 @@
-import camelot
-import pandas as pd
+import pytesseract
+from pdf2image import convert_from_path
 
-# Path to your PDF file
-pdf_path = 'your_file.pdf'
+# Define paths
+pdf_path = 'your_pdf_file.pdf'
+output_txt_path = 'output_text.txt'
 
-# Extract tables from the PDF
-tables = camelot.read_pdf(pdf_path, pages='all')
+# Convert PDF pages to images
+images = convert_from_path(pdf_path)
 
-# Create a new Excel writer object
-excel_path = 'extracted_tables.xlsx'
-with pd.ExcelWriter(excel_path, engine='openpyxl') as writer:
-    # Loop through each table
-    for i, table in enumerate(tables):
-        # Convert the table to a pandas DataFrame
-        df = table.df
-        
-        # Save the DataFrame to a different sheet in the Excel file
-        sheet_name = f'Table_{i+1}'
-        df.to_excel(writer, sheet_name=sheet_name, index=False)
+# Initialize a string to collect the extracted text
+all_text = ""
 
-print(f"Tables extracted and saved to {excel_path}")
+# Loop over each image (page)
+for page_num, image in enumerate(images, start=1):
+    # Use pytesseract to extract text from each image
+    page_text = pytesseract.image_to_string(image)
+    
+    # Append the text for this page to the main text string
+    all_text += f"--- Page {page_num} ---\n{page_text}\n\n"
+
+# Save all the extracted text to a txt file
+with open(output_txt_path, 'w', encoding='utf-8') as file:
+    file.write(all_text)
+
+print(f"Text extracted and saved to {output_txt_path}")
