@@ -1,21 +1,42 @@
-import pdfplumber
 import pandas as pd
+import re
 
-# Define the path to the PDF
-pdf_path = 'your_pdf_file.pdf'
-output_txt_path = 'output_tables.txt'
+def extract_tables_from_markdown(md_content):
+    """
+    Extract tables from markdown content using regex.
+    """
+    table_pattern = re.compile(r'((?:\|.+\|\n)+)')
+    tables = table_pattern.findall(md_content)
+    return tables
 
-# Open the PDF
-with pdfplumber.open(pdf_path) as pdf:
-    with open(output_txt_path, "w") as f:
-        # Loop through each page
-        for i, page in enumerate(pdf.pages):
-            # Extract tables on each page
-            tables = page.extract_tables()
+def parse_table(table_text):
+    """
+    Convert markdown table text into a pandas DataFrame.
+    """
+    # Split the table by line and separate headers
+    lines = table_text.strip().split('\n')
+    headers = [h.strip() for h in lines[0].split('|') if h.strip()]
+    rows = []
 
-            # Write each table to the output file
-            for j, table in enumerate(tables):
-                f.write(f"--- Page {i + 1} Table {j + 1} ---\n")
-                df = pd.DataFrame(table)  # Convert the table to a DataFrame for easier manipulation
-                f.write(df.to_string(index=False, header=False))  # Write table without index/header
-                f.write("\n\n")
+    # Parse each row
+    for row in lines[2:]:  # Skip header separator line
+        row_data = [cell.strip() for cell in row.split('|') if cell.strip()]
+        rows.append(row_data)
+    
+    return pd.DataFrame(rows, columns=headers)
+
+def markdown_tables_to_excel(md_file_path, output_excel_path):
+    """
+    Read markdown file, extract tables, and save them to an Excel file.
+    """
+    with open(md_file_path, 'r', encoding='utf-8') as f:
+        md_content = f.read()
+    
+    tables = extract_tables_from_markdown(md_content)
+    with pd.ExcelWriter(output_excel_path, engine='openpyxl') as writer:
+        for i, table in enumerate(tables):
+            df = parse_table(table)
+            df.to_excel(writer, sheet_name=f'Table_{i+1}', index=False)
+
+# Example usage
+markdown_tables_to_excel("your_markdown_file.md", "output_excel_file.xlsx")
