@@ -1,24 +1,24 @@
-from llama_index import GPTSimpleVectorIndex
-from pymupdf4llm import Document
+from llama_index import Document, SimpleDirectoryReader, SimpleVectorIndex
+from pymupdf4llm import Document as PDFDocument
 
 def extract_text_from_pdf(pdf_path):
     """
     Extracts text from the PDF and returns it as a list of strings, one per page.
     """
-    doc = Document(pdf_path)
+    doc = PDFDocument(pdf_path)
     pages_text = [page.get_text() for page in doc]
     doc.close()
     return pages_text
 
 def index_pdf_content(pages_text):
     """
-    Takes a list of page texts and indexes them using LlamaIndex.
+    Takes a list of page texts and indexes them locally using SimpleVectorIndex.
     """
-    # Convert each page of text into a document format that LlamaIndex can process
-    documents = [ {"text": page_text, "metadata": {"page": i}} for i, page_text in enumerate(pages_text)]
+    # Convert each page of text into a Document structure for indexing
+    documents = [Document(text=page_text, metadata={"page": i}) for i, page_text in enumerate(pages_text)]
     
-    # Initialize the index
-    index = GPTSimpleVectorIndex.from_documents(documents)
+    # Initialize the SimpleVectorIndex to index locally without an API key
+    index = SimpleVectorIndex(documents)
     return index
 
 def query_pdf_index(index, query_text):
