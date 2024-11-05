@@ -1,35 +1,22 @@
-import fitz  # PyMuPDF
+import pandas as pd
+from llama_index import (
+    Document,
+    VectorStoreIndex,  # Use this or another relevant class based on your LlamaIndex version
+)
 
-def extract_text_from_pdf(pdf_path):
-    """
-    Extracts text from the PDF and returns it as a list of strings, one per page.
-    """
-    pages_text = []
-    with fitz.open(pdf_path) as doc:
-        for page in doc:
-            pages_text.append(page.get_text())
-    return pages_text
+# Load the Excel file
+file_path = 'output.xlsx'
+data = pd.read_excel(file_path, sheet_name=None)  # Load all sheets
 
-def query_pdf_content(pages_text, query_text):
-    """
-    Simple keyword search in the extracted text. You can improve this logic as needed.
-    """
-    results = []
-    for i, page_text in enumerate(pages_text):
-        if query_text.lower() in page_text.lower():
-            results.append(f"Found on page {i + 1}: {page_text}")
-    return results
+# Process the first sheet
+sheet_data = data[list(data.keys())[0]]  # Get the first sheet's DataFrame
 
-# Define the path to your PDF file
-pdf_path = "your_pdf_file.pdf"
+# Convert DataFrame to a list of Document objects
+documents = [Document(text=str(row)) for row in sheet_data.values]
 
-# Step 1: Extract the PDF content
-pages_text = extract_text_from_pdf(pdf_path)
+# Create an index from the documents
+index = VectorStoreIndex(documents)  # Adjust class name based on your version
 
-# Step 2: Query the PDF content
-query_text = "Explain the main concept of chapter 2"  # Sample query
-response = query_pdf_content(pages_text, query_text)
-
-# Print the query response
-for res in response:
-    print(res)
+# Perform a query
+response = index.query("What information are you looking for?")  # Customize your query
+print(response)
