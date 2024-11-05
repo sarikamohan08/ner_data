@@ -1,42 +1,45 @@
-import pandas as pd
-import re
+from llama_index import GPTSimpleVectorIndex
+from pymupdf4llm import Document
 
-def extract_tables_from_markdown(md_content):
+def extract_text_from_pdf(pdf_path):
     """
-    Extract tables from markdown content using regex.
+    Extracts text from the PDF and returns it as a list of strings, one per page.
     """
-    table_pattern = re.compile(r'((?:\|.+\|\n)+)')
-    tables = table_pattern.findall(md_content)
-    return tables
+    doc = Document(pdf_path)
+    pages_text = [page.get_text() for page in doc]
+    doc.close()
+    return pages_text
 
-def parse_table(table_text):
+def index_pdf_content(pages_text):
     """
-    Convert markdown table text into a pandas DataFrame.
+    Takes a list of page texts and indexes them using LlamaIndex.
     """
-    # Split the table by line and separate headers
-    lines = table_text.strip().split('\n')
-    headers = [h.strip() for h in lines[0].split('|') if h.strip()]
-    rows = []
-
-    # Parse each row
-    for row in lines[2:]:  # Skip header separator line
-        row_data = [cell.strip() for cell in row.split('|') if cell.strip()]
-        rows.append(row_data)
+    # Convert each page of text into a document format that LlamaIndex can process
+    documents = [ {"text": page_text, "metadata": {"page": i}} for i, page_text in enumerate(pages_text)]
     
-    return pd.DataFrame(rows, columns=headers)
+    # Initialize the index
+    index = GPTSimpleVectorIndex.from_documents(documents)
+    return index
 
-def markdown_tables_to_excel(md_file_path, output_excel_path):
+def query_pdf_index(index, query_text):
     """
-    Read markdown file, extract tables, and save them to an Excel file.
+    Queries the indexed PDF content for the specified query text.
     """
-    with open(md_file_path, 'r', encoding='utf-8') as f:
-        md_content = f.read()
-    
-    tables = extract_tables_from_markdown(md_content)
-    with pd.ExcelWriter(output_excel_path, engine='openpyxl') as writer:
-        for i, table in enumerate(tables):
-            df = parse_table(table)
-            df.to_excel(writer, sheet_name=f'Table_{i+1}', index=False)
+    response = index.query(query_text)
+    return response
 
-# Example usage
-markdown_tables_to_excel("your_markdown_file.md", "output_excel_file.xlsx")
+# Define the path to your PDF file
+pdf_path = "your_pdf_file.pdf"
+
+# Step 1: Extract the PDF content
+pages_text = extract_text_from_pdf(pdf_path)
+
+# Step 2: Index the PDF content
+index = index_pdf_content(pages_text)
+
+# Step 3: Query the indexed content
+query_text = "Explain the main concept of chapter 2"  # Sample query
+response = query_pdf_index(index, query_text)
+
+# Print the query response
+print("Query Response:", response)
