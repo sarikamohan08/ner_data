@@ -1,4 +1,4 @@
-from llama_index import Document, SimpleDirectoryReader, SimpleVectorIndex
+from llama_index import SimpleNodeParser, SimpleVectorIndex
 from pymupdf4llm import Document as PDFDocument
 
 def extract_text_from_pdf(pdf_path):
@@ -14,11 +14,14 @@ def index_pdf_content(pages_text):
     """
     Takes a list of page texts and indexes them locally using SimpleVectorIndex.
     """
-    # Convert each page of text into a Document structure for indexing
-    documents = [Document(text=page_text, metadata={"page": i}) for i, page_text in enumerate(pages_text)]
+    # Initialize SimpleNodeParser to create nodes from each page's text
+    parser = SimpleNodeParser()
     
-    # Initialize the SimpleVectorIndex to index locally without an API key
-    index = SimpleVectorIndex(documents)
+    # Create nodes from each page's text
+    nodes = [parser.create_node(page_text, metadata={"page": i}) for i, page_text in enumerate(pages_text)]
+    
+    # Initialize the SimpleVectorIndex to index the nodes locally without an API key
+    index = SimpleVectorIndex(nodes)
     return index
 
 def query_pdf_index(index, query_text):
