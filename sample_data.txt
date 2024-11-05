@@ -1,22 +1,53 @@
 import pandas as pd
-from llama_index import (
-    Document,
-    VectorStoreIndex,  # Use this or another relevant class based on your LlamaIndex version
-)
+import re
 
-# Load the Excel file
-file_path = 'output.xlsx'
-data = pd.read_excel(file_path, sheet_name=None)  # Load all sheets
+def extract_tables_from_markdown(md_content):
+    """
+    Extract tables from markdown content using regex.
+    """
+    # Regex pattern to match markdown tables with multiple lines
+    table_pattern = re.compile(r'((?:\|.*\|\n)+)')
+    tables = table_pattern.findall(md_content)
+    return tables
 
-# Process the first sheet
-sheet_data = data[list(data.keys())[0]]  # Get the first sheet's DataFrame
+def parse_table(table_text):
+    """
+    Convert markdown table text into a pandas DataFrame with empty cells handled.
+    """
+    # Split the table by lines and process headers and rows
+    lines = table_text.strip().split('\n')
+    headers = [h.strip() for h in lines[0].split('|') if h.strip()]
+    rows = []
 
-# Convert DataFrame to a list of Document objects
-documents = [Document(text=str(row)) for row in sheet_data.values]
+    # Parse each row and treat empty spaces between pipes as empty cells
+    for row in lines[2:]:  # Skip the header separator line
+        row_data = [cell.strip() if cell.strip() else "" for cell in row.split('|')]
+        
+        # Remove any leading or trailing empty elements (from empty splits at start/end of line)
+        row_data = row_data[1:-1] if row.startswith('|') and row.endswith('|') else row_data
 
-# Create an index from the documents
-index = VectorStoreIndex(documents)  # Adjust class name based on your version
+        # Ensure row has the same number of columns as headers
+        if len(row_data) < len(headers):
+            row_data += [""] * (len(headers) - len(row_data))
+        elif len(row_data) > len(headers):
+            row_data = row_data[:len(headers)]
+        
+        rows.append(row_data)
 
-# Perform a query
-response = index.query("What information are you looking for?")  # Customize your query
-print(response)
+    return pd.DataFrame(rows, columns=headers)
+
+def markdown_tables_to_excel(md_file_path, output_excel_path):
+    """
+    Read markdown file, extract tables, and save them to an Excel file.
+    """
+    with open(md_file_path, 'r', encoding='utf-8') as f:
+        md_content = f.read()
+    
+    tables = extract_tables_from_markdown(md_content)
+    with pd.ExcelWriter(output_excel_path, engine='openpyxl') as writer:
+        for i, table in enumerate(tables):
+            df = parse_table(table)
+            df.to_excel(writer, sheet_name=f'Table_{i+1}', index=False)
+
+# Example usage
+markdown_tables_to_excel("your_markdown_file.md", "output_excel_file.xlsx")
