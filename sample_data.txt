@@ -1,28 +1,24 @@
-from pymupdf4llm import Document as PDFDocument
-from pymupdf4llm import Query
+import fitz  # PyMuPDF
 
 def extract_text_from_pdf(pdf_path):
     """
     Extracts text from the PDF and returns it as a list of strings, one per page.
     """
-    doc = PDFDocument(pdf_path)
-    pages_text = [page.get_text() for page in doc]
-    doc.close()
+    pages_text = []
+    with fitz.open(pdf_path) as doc:
+        for page in doc:
+            pages_text.append(page.get_text())
     return pages_text
 
 def query_pdf_content(pages_text, query_text):
     """
-    Queries the PDF content using the provided query text.
+    Simple keyword search in the extracted text. You can improve this logic as needed.
     """
-    # Combine all pages' text into a single string for querying
-    full_text = "\n".join(pages_text)
-    
-    # Create a Query object
-    query = Query(text=query_text)
-    
-    # Perform the query on the full text
-    response = query.run(full_text)
-    return response
+    results = []
+    for i, page_text in enumerate(pages_text):
+        if query_text.lower() in page_text.lower():
+            results.append(f"Found on page {i + 1}: {page_text}")
+    return results
 
 # Define the path to your PDF file
 pdf_path = "your_pdf_file.pdf"
@@ -35,4 +31,5 @@ query_text = "Explain the main concept of chapter 2"  # Sample query
 response = query_pdf_content(pages_text, query_text)
 
 # Print the query response
-print("Query Response:", response)
+for res in response:
+    print(res)
