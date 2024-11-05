@@ -1,27 +1,28 @@
-from llama_index import SimpleNodeParser, SimpleVectorIndex
-from pymupdf4llm import Document as PDFDocument
+from llama_index import VectorStoreIndex, SimpleDocument, ServiceContext
+from pymupdf import fitz  # Make sure to install PyMuPDF as `pymupdf`
 
 def extract_text_from_pdf(pdf_path):
     """
     Extracts text from the PDF and returns it as a list of strings, one per page.
     """
-    doc = PDFDocument(pdf_path)
-    pages_text = [page.get_text() for page in doc]
-    doc.close()
+    pages_text = []
+    with fitz.open(pdf_path) as doc:
+        for page in doc:
+            pages_text.append(page.get_text())
     return pages_text
 
 def index_pdf_content(pages_text):
     """
-    Takes a list of page texts and indexes them locally using SimpleVectorIndex.
+    Takes a list of page texts and indexes them locally using VectorStoreIndex.
     """
-    # Initialize SimpleNodeParser to create nodes from each page's text
-    parser = SimpleNodeParser()
+    # Convert each page of text into SimpleDocument format
+    documents = [SimpleDocument(text=page_text, metadata={"page": i}) for i, page_text in enumerate(pages_text)]
     
-    # Create nodes from each page's text
-    nodes = [parser.create_node(page_text, metadata={"page": i}) for i, page_text in enumerate(pages_text)]
-    
-    # Initialize the SimpleVectorIndex to index the nodes locally without an API key
-    index = SimpleVectorIndex(nodes)
+    # Create a ServiceContext for indexing
+    service_context = ServiceContext.from_defaults()
+
+    # Initialize the VectorStoreIndex to index the documents locally
+    index = VectorStoreIndex(documents, service_context=service_context)
     return index
 
 def query_pdf_index(index, query_text):
@@ -35,14 +36,3 @@ def query_pdf_index(index, query_text):
 pdf_path = "your_pdf_file.pdf"
 
 # Step 1: Extract the PDF content
-pages_text = extract_text_from_pdf(pdf_path)
-
-# Step 2: Index the PDF content
-index = index_pdf_content(pages_text)
-
-# Step 3: Query the indexed content
-query_text = "Explain the main concept of chapter 2"  # Sample query
-response = query_pdf_index(index, query_text)
-
-# Print the query response
-print("Query Response:", response)
