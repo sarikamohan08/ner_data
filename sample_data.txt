@@ -1,8 +1,9 @@
 import pandas as pd
+import re
 
 # Load the Excel file and read all sheets into a dictionary of DataFrames
 excel_file = "your_file.xlsx"
-sheets_dict = pd.read_excel(excel_file, sheet_name=None, header=None)  # Load without headers
+sheets_dict = pd.read_excel(excel_file, sheet_name=None, header=None)
 
 # Initialize a list to collect reshaped data from all sheets
 all_reshaped_data = []
@@ -14,44 +15,50 @@ def find_header_row(df, keyword='coding/def'):
             return i
     return None
 
+# Define a function to split `coding/def` into Ms-DRG and Rev Code
+def split_coding_def(coding_def):
+    ms_drg_parts = []
+    rev_code_parts = []
+    for part in coding_def.split(','):
+        part = part.strip()
+        if part.startswith("RC") and re.match(r"RC\d+", part):  # If part starts with "RC" and followed by digits
+            rev_code_parts.append(part)
+        else:
+            ms_drg_parts.append(part)
+    return ', '.join(ms_drg_parts), ', '.join(rev_code_parts)
+
 # Loop through each sheet's DataFrame in the dictionary
 for sheet_name, df in sheets_dict.items():
-    # Find the header row in the current sheet
     header_row = find_header_row(df)
     
     if header_row is not None:
-        # Reload the sheet using the found header row
         df = pd.read_excel(excel_file, sheet_name=sheet_name, header=header_row)
-        
-        # Filter out rows where "coding/def" is empty or null
         df_filtered = df[df['coding/def'].notnull() & (df['coding/def'] != '')]
         
-        # Identify dynamic provider columns by selecting all columns after the "coding/def" column
-        start_column = df.columns.get_loc("coding/def") + 1  # Get index after "coding/def"
-        provider_columns = df.columns[start_column:]  # All columns after "coding/def"
+        start_column = df.columns.get_loc("coding/def") + 1
+        provider_columns = df.columns[start_column:]
         
-        # Process each row in the filtered DataFrame
         for index, row in df_filtered.iterrows():
-            # Extract service description, ms-DRG, rev code, ICD9/ICD10, and notes
             service_description = row['Service description']
-            ms_drg = row['Ms-DRG']
-            rev_code = row['Rev code']
+            ms_drg = row['Ms-DRG'] if pd.notnull(row['Ms-DRG']) else ''
+            rev_code = row['Rev Code'] if pd.notnull(row['Rev Code']) else ''
             icd_codes = row['ICD9,ICD10']
-            notes = row.get('Notes', '')  # Get 'Notes' if it exists, otherwise default to an empty string
-            
-            # Separate coding definitions if multiple values are present
+            notes = row.get('Notes', '')
+
             coding_defs = row['coding/def'].split(',') if pd.notnull(row['coding/def']) else ['']
             
-            # Loop through each dynamically identified provider column and create rows for each
+            ms_drg_split, rev_code_split = split_coding_def(row['coding/def'])
+            
             for provider in provider_columns:
-                provider_name = provider  # Use the column name as the provider name
+                provider_name = provider
+                
                 for coding_def in coding_defs:
                     all_reshaped_data.append({
-                        'Sheet Name': sheet_name,  # Add sheet name for reference
+                        'Sheet Name': sheet_name,
                         'Provider': provider_name,
                         'Service Description': service_description,
-                        'Ms-DRG': ms_drg,
-                        'Rev Code': rev_code,
+                        'Ms-DRG': ms_drg_split or ms_drg,  # Use split Ms-DRG or existing Ms-DRG if no split
+                        'Rev Code': rev_code_split or rev_code,  # Use split Rev Code or existing Rev Code if no split
                         'ICD9,ICD10': icd_codes,
                         'Coding/Def': coding_def.strip(),
                         'Notes': notes
@@ -64,4 +71,4 @@ reshaped_df = pd.DataFrame(all_reshaped_data)
 print(reshaped_df)
 
 # Optionally, save the reshaped data to a new Excel file
-reshaped_df.to_excel("reshaped_output_combined.xlsx", index=False)
+reshaped_df.to_excel("reshaped_output_split.xlsx", index=False)
