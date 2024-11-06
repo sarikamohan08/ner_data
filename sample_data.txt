@@ -2,46 +2,60 @@ import pandas as pd
 
 # Load the Excel file and read all sheets into a dictionary of DataFrames
 excel_file = "your_file.xlsx"
-sheets_dict = pd.read_excel(excel_file, sheet_name=None)  # `sheet_name=None` loads all sheets
+sheets_dict = pd.read_excel(excel_file, sheet_name=None, header=None)  # Load without headers
 
 # Initialize a list to collect reshaped data from all sheets
 all_reshaped_data = []
 
+# Define a helper function to find the header row
+def find_header_row(df, keyword='coding/def'):
+    for i, row in df.iterrows():
+        if keyword in row.values:
+            return i
+    return None
+
 # Loop through each sheet's DataFrame in the dictionary
 for sheet_name, df in sheets_dict.items():
-    # Filter out rows where "coding/def" is empty or null
-    df_filtered = df[df['coding/def'].notnull() & (df['coding/def'] != '')]
+    # Find the header row in the current sheet
+    header_row = find_header_row(df)
     
-    # Identify dynamic provider columns by selecting all columns after the "coding/def" column
-    start_column = df.columns.get_loc("coding/def") + 1  # Get index after "coding/def"
-    provider_columns = df.columns[start_column:]  # All columns after "coding/def"
-    
-    # Process each row in the filtered DataFrame
-    for index, row in df_filtered.iterrows():
-        # Extract service description, ms-DRG, rev code, ICD9/ICD10, and notes
-        service_description = row['Service description']
-        ms_drg = row['Ms-DRG']
-        rev_code = row['Rev code']
-        icd_codes = row['ICD9,ICD10']
-        notes = row.get('Notes', '')  # Get 'Notes' if it exists, otherwise default to an empty string
+    if header_row is not None:
+        # Reload the sheet using the found header row
+        df = pd.read_excel(excel_file, sheet_name=sheet_name, header=header_row)
         
-        # Separate coding definitions if multiple values are present
-        coding_defs = row['coding/def'].split(',') if pd.notnull(row['coding/def']) else ['']
+        # Filter out rows where "coding/def" is empty or null
+        df_filtered = df[df['coding/def'].notnull() & (df['coding/def'] != '')]
         
-        # Loop through each dynamically identified provider column and create rows for each
-        for provider in provider_columns:
-            provider_name = provider  # Use the column name as the provider name
-            for coding_def in coding_defs:
-                all_reshaped_data.append({
-                    'Sheet Name': sheet_name,  # Add sheet name for reference
-                    'Provider': provider_name,
-                    'Service Description': service_description,
-                    'Ms-DRG': ms_drg,
-                    'Rev Code': rev_code,
-                    'ICD9,ICD10': icd_codes,
-                    'Coding/Def': coding_def.strip(),
-                    'Notes': notes
-                })
+        # Identify dynamic provider columns by selecting all columns after the "coding/def" column
+        start_column = df.columns.get_loc("coding/def") + 1  # Get index after "coding/def"
+        provider_columns = df.columns[start_column:]  # All columns after "coding/def"
+        
+        # Process each row in the filtered DataFrame
+        for index, row in df_filtered.iterrows():
+            # Extract service description, ms-DRG, rev code, ICD9/ICD10, and notes
+            service_description = row['Service description']
+            ms_drg = row['Ms-DRG']
+            rev_code = row['Rev code']
+            icd_codes = row['ICD9,ICD10']
+            notes = row.get('Notes', '')  # Get 'Notes' if it exists, otherwise default to an empty string
+            
+            # Separate coding definitions if multiple values are present
+            coding_defs = row['coding/def'].split(',') if pd.notnull(row['coding/def']) else ['']
+            
+            # Loop through each dynamically identified provider column and create rows for each
+            for provider in provider_columns:
+                provider_name = provider  # Use the column name as the provider name
+                for coding_def in coding_defs:
+                    all_reshaped_data.append({
+                        'Sheet Name': sheet_name,  # Add sheet name for reference
+                        'Provider': provider_name,
+                        'Service Description': service_description,
+                        'Ms-DRG': ms_drg,
+                        'Rev Code': rev_code,
+                        'ICD9,ICD10': icd_codes,
+                        'Coding/Def': coding_def.strip(),
+                        'Notes': notes
+                    })
 
 # Convert the reshaped data to a single DataFrame
 reshaped_df = pd.DataFrame(all_reshaped_data)
