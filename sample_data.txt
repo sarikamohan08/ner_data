@@ -1,53 +1,53 @@
 import pandas as pd
-import re
 
-def extract_tables_from_markdown(md_content):
-    """
-    Extract tables from markdown content using regex.
-    """
-    # Regex pattern to match markdown tables with multiple lines
-    table_pattern = re.compile(r'((?:\|.*\|\n)+)')
-    tables = table_pattern.findall(md_content)
-    return tables
+# Load the Excel file and read all sheets into a dictionary of DataFrames
+excel_file = "your_file.xlsx"
+sheets_dict = pd.read_excel(excel_file, sheet_name=None)  # `sheet_name=None` loads all sheets
 
-def parse_table(table_text):
-    """
-    Convert markdown table text into a pandas DataFrame with empty cells handled.
-    """
-    # Split the table by lines and process headers and rows
-    lines = table_text.strip().split('\n')
-    headers = [h.strip() for h in lines[0].split('|') if h.strip()]
-    rows = []
+# Initialize a list to collect reshaped data from all sheets
+all_reshaped_data = []
 
-    # Parse each row and treat empty spaces between pipes as empty cells
-    for row in lines[2:]:  # Skip the header separator line
-        row_data = [cell.strip() if cell.strip() else "" for cell in row.split('|')]
-        
-        # Remove any leading or trailing empty elements (from empty splits at start/end of line)
-        row_data = row_data[1:-1] if row.startswith('|') and row.endswith('|') else row_data
-
-        # Ensure row has the same number of columns as headers
-        if len(row_data) < len(headers):
-            row_data += [""] * (len(headers) - len(row_data))
-        elif len(row_data) > len(headers):
-            row_data = row_data[:len(headers)]
-        
-        rows.append(row_data)
-
-    return pd.DataFrame(rows, columns=headers)
-
-def markdown_tables_to_excel(md_file_path, output_excel_path):
-    """
-    Read markdown file, extract tables, and save them to an Excel file.
-    """
-    with open(md_file_path, 'r', encoding='utf-8') as f:
-        md_content = f.read()
+# Loop through each sheet's DataFrame in the dictionary
+for sheet_name, df in sheets_dict.items():
+    # Filter out rows where "coding/def" is empty or null
+    df_filtered = df[df['coding/def'].notnull() & (df['coding/def'] != '')]
     
-    tables = extract_tables_from_markdown(md_content)
-    with pd.ExcelWriter(output_excel_path, engine='openpyxl') as writer:
-        for i, table in enumerate(tables):
-            df = parse_table(table)
-            df.to_excel(writer, sheet_name=f'Table_{i+1}', index=False)
+    # Identify dynamic provider columns by selecting all columns after the "coding/def" column
+    start_column = df.columns.get_loc("coding/def") + 1  # Get index after "coding/def"
+    provider_columns = df.columns[start_column:]  # All columns after "coding/def"
+    
+    # Process each row in the filtered DataFrame
+    for index, row in df_filtered.iterrows():
+        # Extract service description, ms-DRG, rev code, ICD9/ICD10, and notes
+        service_description = row['Service description']
+        ms_drg = row['Ms-DRG']
+        rev_code = row['Rev code']
+        icd_codes = row['ICD9,ICD10']
+        notes = row.get('Notes', '')  # Get 'Notes' if it exists, otherwise default to an empty string
+        
+        # Separate coding definitions if multiple values are present
+        coding_defs = row['coding/def'].split(',') if pd.notnull(row['coding/def']) else ['']
+        
+        # Loop through each dynamically identified provider column and create rows for each
+        for provider in provider_columns:
+            provider_name = provider  # Use the column name as the provider name
+            for coding_def in coding_defs:
+                all_reshaped_data.append({
+                    'Sheet Name': sheet_name,  # Add sheet name for reference
+                    'Provider': provider_name,
+                    'Service Description': service_description,
+                    'Ms-DRG': ms_drg,
+                    'Rev Code': rev_code,
+                    'ICD9,ICD10': icd_codes,
+                    'Coding/Def': coding_def.strip(),
+                    'Notes': notes
+                })
 
-# Example usage
-markdown_tables_to_excel("your_markdown_file.md", "output_excel_file.xlsx")
+# Convert the reshaped data to a single DataFrame
+reshaped_df = pd.DataFrame(all_reshaped_data)
+
+# Display the new DataFrame
+print(reshaped_df)
+
+# Optionally, save the reshaped data to a new Excel file
+reshaped_df.to_excel("reshaped_output_combined.xlsx", index=False)
