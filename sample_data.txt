@@ -1,48 +1,124 @@
 import pandas as pd
+import re
 
-# Read the Excel file into a DataFrame
-df = pd.read_excel('your_file.xlsx')
+# Load the Excel file and read all sheets into a dictionary of DataFrames
+excel_file = "your_file.xlsx"
+sheets_dict = pd.read_excel(excel_file, sheet_name=None, header=None)
 
-# Dynamically identify hospital columns based on column names
-# We'll assume the hospital columns are those that are not 'Description', 'Service Description', 'MS-DRG', 'Rev Code', 'Coding/Def'
-hospital_columns = [col for col in df.columns if col not in ['Description', 'Service Description', 'MS-DRG', 'Rev Code', 'Coding/Def']]
+# Initialize a list to collect reshaped data from all sheets
+all_reshaped_data = []
 
-# Create an empty list to store the processed rows
-processed_data = []
+# Define a helper function to find the header row
+def find_header_row(df, keyword='coding/def'):
+    for i, row in df.iterrows():
+        if keyword.lower() in [str(cell).lower() for cell in row.values]:  # Check case-insensitively
+            return i
+    return None
 
-# Iterate over each row in the DataFrame
-for index, row in df.iterrows():
-    # Extract the dynamic service description (it can be any text in the 'Service Description' column)
-    service_description = row['Service Description']
+# Define a function to split `coding/def` into Ms-DRG and Rev Code
+def split_coding_def(coding_def):
+    ms_drg_parts = []
+    rev_code_parts = []
+    for part in coding_def.split(','):
+        part = part.strip()
+        if part.startswith("RC") and re.match(r"RC\d+", part):  # If part starts with "RC" and followed by digits
+            rev_code_parts.append(part)
+        else:
+            ms_drg_parts.append(part)
+    return ', '.join(ms_drg_parts), ', '.join(rev_code_parts)
+
+# Loop through each sheet's DataFrame in the dictionary
+for sheet_name, df in sheets_dict.items():
+    print(f"Processing sheet: {sheet_name}")
+
+    # Find the header row in the current sheet
+    header_row = find_header_row(df)
+    if header_row is None:
+        print(f"Warning: Header row with 'coding/def' not found in sheet '{sheet_name}'")
+        continue
     
-    # For each hospital, process the data if there is a value in the hospital column
-    for hospital in hospital_columns:
-        if pd.notna(row[hospital]):  # Check if the hospital column has a value
-            # Check if both MS-DRG and Rev Code are present
-            if pd.notna(row['MS-DRG']) and pd.notna(row['Rev Code']):
-                # If both are present, split the row into two entries
-                # First entry with MS-DRG marked and Rev Code empty
-                processed_data.append([
-                    hospital, row['Description'], service_description,
-                    row['MS-DRG'], '', row['Coding/Def']
-                ])
-                # Second entry with Rev Code marked and MS-DRG empty
-                processed_data.append([
-                    hospital, row['Description'], service_description,
-                    '', row['Rev Code'], row['Coding/Def']
-                ])
-            else:
-                # Otherwise, just append the original row with the hospital
-                processed_data.append([
-                    hospital, row['Description'], service_description,
-                    row['MS-DRG'], row['Rev Code'], row['Coding/Def']
-                ])
+    # Reload the sheet with the correct header row
+    df = pd.read_excel(excel_file, sheet_name=sheet_name, header=header_row)
+    
+    # Check if 'coding/def' column exists after reloading
+    if 'coding/def' not in df.columns:
+        print(f"Warning: 'coding/def' column not found after reloading sheet '{sheet_name}'")
+        continue
+    
+    # Filter out rows where "coding/def" is empty or null
+    df_filtered = df[df['coding/def'].notnull() & (df['coding/def'] != '')]
+    print(f"Rows after filtering in sheet '{sheet_name}': {len(df_filtered)}")
+    
+    # If no rows are left after filtering, skip this sheet
+    if df_filtered.empty:
+        print(f"No data left after filtering in sheet '{sheet_name}'")
+        continue
 
-# Create a new DataFrame with the processed data
-processed_df = pd.DataFrame(processed_data, columns=['Provider', 'Description', 'Service Description', 'MS-DRG', 'Rev Code', 'Coding/Def'])
+    # Identify dynamic provider columns by selecting all columns after the "coding/def" column
+    start_column = df.columns.get_loc("coding/def") + 1
+    provider_columns = df.columns[start_column:]
+    print(f"Provider columns identified in sheet '{sheet_name}': {provider_columns}")
 
-# Output the processed DataFrame to a new Excel file or display it
-processed_df.to_excel('processed_file.xlsx', index=False)
+    # Process each row in the filtered DataFrame
+    for index, row in df_filtered.iterrows():
+        service_description = row['Service description']
+        ms_drg = row['Ms-DRG'] if pd.notnull(row['Ms-DRG']) else ''
+        rev_code = row['Rev Code'] if pd.notnull(row['Rev Code']) else ''
+        icd_codes = row['ICD9,ICD10']
+        notes = row.get('Notes', '')
+        
+        # Split `coding/def` into Ms-DRG and Rev Code parts
+        ms_drg_split, rev_code_split = split_coding_def(row['coding/def'])
+        
+        # If both Ms-DRG and Rev Code are present, we need to create two rows
+        if ms_drg_split and rev_code_split:
+            for provider in provider_columns:
+                provider_name = provider
+                # First row: Keep Ms-DRG, leave Rev Code empty
+                all_reshaped_data.append({
+                    'Sheet Name': sheet_name,
+                    'Provider': provider_name,
+                    'Service Description': service_description,
+                    'Ms-DRG': ms_drg_split,
+                    'Rev Code': '',
+                    'ICD9,ICD10': icd_codes,
+                    'Coding/Def': row['coding/def'].strip(),
+                    'Notes': notes
+                })
+                # Second row: Keep Rev Code, leave Ms-DRG empty
+                all_reshaped_data.append({
+                    'Sheet Name': sheet_name,
+                    'Provider': provider_name,
+                    'Service Description': service_description,
+                    'Ms-DRG': '',
+                    'Rev Code': rev_code_split,
+                    'ICD9,ICD10': icd_codes,
+                    'Coding/Def': row['coding/def'].strip(),
+                    'Notes': notes
+                })
+        else:
+            # If only one of Ms-DRG or Rev Code is available, create the row as usual
+            for provider in provider_columns:
+                provider_name = provider
+                all_reshaped_data.append({
+                    'Sheet Name': sheet_name,
+                    'Provider': provider_name,
+                    'Service Description': service_description,
+                    'Ms-DRG': ms_drg_split or ms_drg,
+                    'Rev Code': rev_code_split or rev_code,
+                    'ICD9,ICD10': icd_codes,
+                    'Coding/Def': row['coding/def'].strip(),
+                    'Notes': notes
+                })
 
-# Optionally, display the first few rows to check the output
-print(processed_df.head())
+# Convert the reshaped data to a single DataFrame
+reshaped_df = pd.DataFrame(all_reshaped_data)
+
+# Display the new DataFrame
+print(reshaped_df)
+
+# Optionally, save the reshaped data to a new Excel file if the DataFrame is not empty
+if not reshaped_df.empty:
+    reshaped_df.to_excel("reshaped_output_split.xlsx", index=False)
+else:
+    print("No data to save after processing all sheets.")
