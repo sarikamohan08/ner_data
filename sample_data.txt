@@ -2,7 +2,7 @@ import pandas as pd
 import re
 
 # Load the Excel file and read all sheets into a dictionary of DataFrames
-excel_file = "your_file.xlsx"  # Provide your file path here
+excel_file = "your_file.xlsx"
 sheets_dict = pd.read_excel(excel_file, sheet_name=None, header=None)  # Load without headers
 
 # Initialize a list to collect reshaped data from all sheets
@@ -33,12 +33,12 @@ for sheet_name, df in sheets_dict.items():
         
         # Process each row in the filtered DataFrame
         for index, row in df_filtered.iterrows():
-            # Extract service description, ms-DRG, rev code, ICD9/ICD10, CPT, and notes
+            # Extract service description, ms-DRG, rev code, ICD9/ICD10, and notes
             service_description = row['Service description']
             ms_drg = row['Ms-DRG']
             rev_code = row['Rev code']
             icd_codes = row['ICD9,ICD10']
-            cpt_code = row['CPT']  # Add CPT code extraction
+            cpt = row.get('CPT', '')  # Get 'CPT' if it exists, otherwise default to an empty string
             notes = row.get('Notes', '')  # Get 'Notes' if it exists, otherwise default to an empty string
             
             # Separate coding definitions if multiple values are present
@@ -67,8 +67,8 @@ for sheet_name, df in sheets_dict.items():
                             'Service Description': service_description,
                             'Ms-DRG': 'X',  # Place "X" in Ms-DRG column
                             'Rev Code': '',  # Leave Rev Code blank
-                            'CPT': cpt_code,  # Include CPT code
                             'ICD9,ICD10': icd_codes,
+                            'CPT': cpt if pd.notnull(cpt) else '',  # Include CPT if it exists
                             'Coding/Def': coding_def.strip(),
                             'Notes': notes,
                             'Amount Rate': amount_rate,
@@ -81,8 +81,8 @@ for sheet_name, df in sheets_dict.items():
                             'Service Description': service_description,
                             'Ms-DRG': '',  # Leave Ms-DRG blank
                             'Rev Code': 'X',  # Place "X" in Rev Code column
-                            'CPT': cpt_code,  # Include CPT code
                             'ICD9,ICD10': icd_codes,
+                            'CPT': cpt if pd.notnull(cpt) else '',  # Include CPT if it exists
                             'Coding/Def': coding_def.strip(),
                             'Notes': notes,
                             'Amount Rate': amount_rate,
@@ -94,10 +94,10 @@ for sheet_name, df in sheets_dict.items():
                             'Sheet Name': sheet_name,  # Add sheet name for reference
                             'Provider': provider_name,
                             'Service Description': service_description,
-                            'Ms-DRG': ms_drg if pd.notnull(ms_drg) else '',
-                            'Rev Code': rev_code if pd.notnull(rev_code) else '',
-                            'CPT': cpt_code,  # Include CPT code
+                            'Ms-DRG': 'X' if pd.notnull(ms_drg) else '',
+                            'Rev Code': 'X' if pd.notnull(rev_code) else '',
                             'ICD9,ICD10': icd_codes,
+                            'CPT': 'X' if pd.notnull(cpt) else '',
                             'Coding/Def': coding_def.strip(),
                             'Notes': notes,
                             'Amount Rate': amount_rate,
@@ -111,4 +111,4 @@ reshaped_df = pd.DataFrame(all_reshaped_data)
 print(reshaped_df)
 
 # Optionally, save the reshaped data to a new Excel file
-reshaped_df.to_excel("reshaped_output_with_cpt_and_amounts.xlsx", index=False)
+reshaped_df.to_excel("reshaped_output_with_amounts.xlsx", index=False)
