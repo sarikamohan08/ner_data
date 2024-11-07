@@ -50,6 +50,7 @@ for sheet_name, df in sheets_dict.items():
                     if pd.notnull(ms_drg) and pd.notnull(rev_code):
                         # Row with Ms-DRG
                         all_reshaped_data.append({
+                            'Sheet Name': sheet_name,  # Add sheet name for reference
                             'Provider': provider_name,
                             'Service Description': service_description,
                             'Ms-DRG': 'X',  # Place "X" in Ms-DRG column
@@ -60,6 +61,7 @@ for sheet_name, df in sheets_dict.items():
                         })
                         # Row with Rev Code
                         all_reshaped_data.append({
+                            'Sheet Name': sheet_name,  # Add sheet name for reference
                             'Provider': provider_name,
                             'Service Description': service_description,
                             'Ms-DRG': '',  # Leave Ms-DRG blank
@@ -71,6 +73,7 @@ for sheet_name, df in sheets_dict.items():
                     else:
                         # Single row if only one of Ms-DRG or Rev Code is present
                         all_reshaped_data.append({
+                            'Sheet Name': sheet_name,  # Add sheet name for reference
                             'Provider': provider_name,
                             'Service Description': service_description,
                             'Ms-DRG': ms_drg if pd.notnull(ms_drg) else '',
