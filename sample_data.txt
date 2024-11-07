@@ -2,7 +2,7 @@ import pandas as pd
 import re
 
 # Load the Excel file and read all sheets into a dictionary of DataFrames
-excel_file = "your_file.xlsx"
+excel_file = "your_file.xlsx"  # Provide your file path here
 sheets_dict = pd.read_excel(excel_file, sheet_name=None, header=None)  # Load without headers
 
 # Initialize a list to collect reshaped data from all sheets
@@ -33,11 +33,12 @@ for sheet_name, df in sheets_dict.items():
         
         # Process each row in the filtered DataFrame
         for index, row in df_filtered.iterrows():
-            # Extract service description, ms-DRG, rev code, ICD9/ICD10, and notes
+            # Extract service description, ms-DRG, rev code, ICD9/ICD10, CPT, and notes
             service_description = row['Service description']
             ms_drg = row['Ms-DRG']
             rev_code = row['Rev code']
             icd_codes = row['ICD9,ICD10']
+            cpt_code = row['CPT']  # Add CPT code extraction
             notes = row.get('Notes', '')  # Get 'Notes' if it exists, otherwise default to an empty string
             
             # Separate coding definitions if multiple values are present
@@ -56,70 +57,52 @@ for sheet_name, df in sheets_dict.items():
                 amount_rate = amount_rate.group(1) if amount_rate else ''
                 amount = amount.group(0) if amount else ''
                 
-                # Process Ms-DRG and Rev Code if both are present
-                if pd.notnull(ms_drg) and pd.notnull(rev_code):
-                    # Create row for Ms-DRG with "X" indicator
-                    all_reshaped_data.append({
-                        'Sheet Name': sheet_name,
-                        'Provider': provider_name,
-                        'Service Description': service_description,
-                        'Ms-DRG': 'X',
-                        'Rev Code': '',
-                        'CPT': '',
-                        'ICD9,ICD10': icd_codes,
-                        'Coding/Def': coding_defs[0].strip(),
-                        'Notes': notes,
-                        'Amount Rate': amount_rate,
-                        'Amount': amount
-                    })
-                    # Create row for Rev Code with "X" indicator
-                    all_reshaped_data.append({
-                        'Sheet Name': sheet_name,
-                        'Provider': provider_name,
-                        'Service Description': service_description,
-                        'Ms-DRG': '',
-                        'Rev Code': 'X',
-                        'CPT': '',
-                        'ICD9,ICD10': icd_codes,
-                        'Coding/Def': coding_defs[0].strip(),
-                        'Notes': notes,
-                        'Amount Rate': amount_rate,
-                        'Amount': amount
-                    })
-                else:
-                    # Single row if only one of Ms-DRG or Rev Code is present
-                    all_reshaped_data.append({
-                        'Sheet Name': sheet_name,
-                        'Provider': provider_name,
-                        'Service Description': service_description,
-                        'Ms-DRG': ms_drg if pd.notnull(ms_drg) else '',
-                        'Rev Code': rev_code if pd.notnull(rev_code) else '',
-                        'CPT': '',
-                        'ICD9,ICD10': icd_codes,
-                        'Coding/Def': coding_defs[0].strip(),
-                        'Notes': notes,
-                        'Amount Rate': amount_rate,
-                        'Amount': amount
-                    })
-
-                # Add CPT code row if present in the coding definition
                 for coding_def in coding_defs:
-                    if 'CPT' in coding_def:
-                        cpt_codes = re.findall(r'CPT (\d+-\d+)', coding_def)
-                        for cpt in cpt_codes:
-                            all_reshaped_data.append({
-                                'Sheet Name': sheet_name,
-                                'Provider': provider_name,
-                                'Service Description': service_description,
-                                'Ms-DRG': '',
-                                'Rev Code': '',
-                                'CPT': cpt,
-                                'ICD9,ICD10': icd_codes,
-                                'Coding/Def': coding_def.strip(),
-                                'Notes': notes,
-                                'Amount Rate': amount_rate,
-                                'Amount': amount
-                            })
+                    # If both Ms-DRG and Rev Code are present, create two rows
+                    if pd.notnull(ms_drg) and pd.notnull(rev_code):
+                        # Row with Ms-DRG
+                        all_reshaped_data.append({
+                            'Sheet Name': sheet_name,  # Add sheet name for reference
+                            'Provider': provider_name,
+                            'Service Description': service_description,
+                            'Ms-DRG': 'X',  # Place "X" in Ms-DRG column
+                            'Rev Code': '',  # Leave Rev Code blank
+                            'CPT': cpt_code,  # Include CPT code
+                            'ICD9,ICD10': icd_codes,
+                            'Coding/Def': coding_def.strip(),
+                            'Notes': notes,
+                            'Amount Rate': amount_rate,
+                            'Amount': amount
+                        })
+                        # Row with Rev Code
+                        all_reshaped_data.append({
+                            'Sheet Name': sheet_name,  # Add sheet name for reference
+                            'Provider': provider_name,
+                            'Service Description': service_description,
+                            'Ms-DRG': '',  # Leave Ms-DRG blank
+                            'Rev Code': 'X',  # Place "X" in Rev Code column
+                            'CPT': cpt_code,  # Include CPT code
+                            'ICD9,ICD10': icd_codes,
+                            'Coding/Def': coding_def.strip(),
+                            'Notes': notes,
+                            'Amount Rate': amount_rate,
+                            'Amount': amount
+                        })
+                    else:
+                        # Single row if only one of Ms-DRG or Rev Code is present
+                        all_reshaped_data.append({
+                            'Sheet Name': sheet_name,  # Add sheet name for reference
+                            'Provider': provider_name,
+                            'Service Description': service_description,
+                            'Ms-DRG': ms_drg if pd.notnull(ms_drg) else '',
+                            'Rev Code': rev_code if pd.notnull(rev_code) else '',
+                            'CPT': cpt_code,  # Include CPT code
+                            'ICD9,ICD10': icd_codes,
+                            'Coding/Def': coding_def.strip(),
+                            'Notes': notes,
+                            'Amount Rate': amount_rate,
+                            'Amount': amount
+                        })
 
 # Convert the reshaped data to a single DataFrame
 reshaped_df = pd.DataFrame(all_reshaped_data)
