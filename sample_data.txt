@@ -70,18 +70,46 @@ for sheet_name, df in sheets_dict.items():
         # Split `coding/def` into Ms-DRG and Rev Code parts
         ms_drg_split, rev_code_split = split_coding_def(row['coding/def'])
         
-        for provider in provider_columns:
-            provider_name = provider
-            all_reshaped_data.append({
-                'Sheet Name': sheet_name,
-                'Provider': provider_name,
-                'Service Description': service_description,
-                'Ms-DRG': ms_drg_split or ms_drg,
-                'Rev Code': rev_code_split or rev_code,
-                'ICD9,ICD10': icd_codes,
-                'Coding/Def': row['coding/def'].strip(),
-                'Notes': notes
-            })
+        # If both Ms-DRG and Rev Code are present, we need to create two rows
+        if ms_drg_split and rev_code_split:
+            for provider in provider_columns:
+                provider_name = provider
+                # First row: Keep Ms-DRG, leave Rev Code empty
+                all_reshaped_data.append({
+                    'Sheet Name': sheet_name,
+                    'Provider': provider_name,
+                    'Service Description': service_description,
+                    'Ms-DRG': ms_drg_split,
+                    'Rev Code': '',
+                    'ICD9,ICD10': icd_codes,
+                    'Coding/Def': row['coding/def'].strip(),
+                    'Notes': notes
+                })
+                # Second row: Keep Rev Code, leave Ms-DRG empty
+                all_reshaped_data.append({
+                    'Sheet Name': sheet_name,
+                    'Provider': provider_name,
+                    'Service Description': service_description,
+                    'Ms-DRG': '',
+                    'Rev Code': rev_code_split,
+                    'ICD9,ICD10': icd_codes,
+                    'Coding/Def': row['coding/def'].strip(),
+                    'Notes': notes
+                })
+        else:
+            # If only one of Ms-DRG or Rev Code is available, create the row as usual
+            for provider in provider_columns:
+                provider_name = provider
+                all_reshaped_data.append({
+                    'Sheet Name': sheet_name,
+                    'Provider': provider_name,
+                    'Service Description': service_description,
+                    'Ms-DRG': ms_drg_split or ms_drg,
+                    'Rev Code': rev_code_split or rev_code,
+                    'ICD9,ICD10': icd_codes,
+                    'Coding/Def': row['coding/def'].strip(),
+                    'Notes': notes
+                })
 
 # Convert the reshaped data to a single DataFrame
 reshaped_df = pd.DataFrame(all_reshaped_data)
