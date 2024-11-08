@@ -33,89 +33,67 @@ for sheet_name, df in sheets_dict.items():
         
         # Process each row in the filtered DataFrame
         for index, row in df_filtered.iterrows():
-            # Extract service description, ms-DRG, rev code, ICD9/ICD10, and CPT values
+            # Extract service description, ms-DRG, rev code, ICD9/ICD10, CPT, and coding definitions
             service_description = row['Service description']
-            ms_drg_codes = row['Ms-DRG'].split(',') if pd.notnull(row['Ms-DRG']) else []
-            rev_code_values = row['Rev code'].split(',') if pd.notnull(row['Rev code']) else []
+            ms_drg = row['Ms-DRG']
+            rev_code = row['Rev code']
             icd_codes = row['ICD9,ICD10']
-            cpt_values = row['CPT'].split(',') if 'CPT' in df.columns and pd.notnull(row['CPT']) else []
+            cpt_code = row.get('CPT', '')
             
             # Separate coding definitions if multiple values are present
-            coding_defs = row['coding/def'].split(',') if pd.notnull(row['coding/def']) else ['']
+            coding_defs = re.split(r'\s*,\s*', str(row['coding/def'])) if pd.notnull(row['coding/def']) else ['']
             
-            # Loop through each provider column to create rows for each combination
+            # Loop through each dynamically identified provider column and create rows for each
             for provider in provider_columns:
-                provider_name = provider
-                provider_value = row[provider]  # The cell value for this provider
+                provider_name = provider  # Use the column name as the provider name
+                provider_value = row[provider]  # Value in the provider's cell
                 
                 # Extract percentages and dollar amounts using regex
                 amount_rate = re.search(r'(\d+%)', str(provider_value))
                 amount = re.search(r'\$([\d,]+)', str(provider_value))
                 
-                # If matched, extract text; if not, default to an empty string
+                # Store the matched values or default to empty if not found
                 amount_rate = amount_rate.group(1) if amount_rate else ''
                 amount = amount.group(0) if amount else ''
                 
-                # For Ms-DRG, Rev Code, and CPT values, split into individual rows
                 for coding_def in coding_defs:
-                    coding_def = coding_def.strip()  # Clean up extra whitespace
-                    
-                    # Process each MS-DRG code individually
-                    for ms_drg in ms_drg_codes:
+                    # Check for Ms-DRG, Rev Code, and CPT, create rows for each condition
+                    if pd.notnull(ms_drg):
                         all_reshaped_data.append({
-                            'Sheet Name': sheet_name,
+                            'Sheet Name': sheet_name, 
                             'Provider': provider_name,
                             'Service Description': service_description,
                             'Ms-DRG': 'X',
                             'Rev Code': '',
-                            'ICD9,ICD10': '',
+                            'ICD9,ICD10': icd_codes,
                             'CPT': '',
-                            'Coding/Def': ms_drg.strip(),
+                            'Coding/Def': coding_def.strip(),
                             'Amount Rate': amount_rate,
                             'Amount': amount
                         })
-                    
-                    # Process each Rev Code individually
-                    for rev_code in rev_code_values:
+                    if pd.notnull(rev_code):
                         all_reshaped_data.append({
-                            'Sheet Name': sheet_name,
+                            'Sheet Name': sheet_name,  
                             'Provider': provider_name,
                             'Service Description': service_description,
                             'Ms-DRG': '',
                             'Rev Code': 'X',
-                            'ICD9,ICD10': '',
+                            'ICD9,ICD10': icd_codes,
                             'CPT': '',
-                            'Coding/Def': rev_code.strip(),
+                            'Coding/Def': coding_def.strip(),
                             'Amount Rate': amount_rate,
                             'Amount': amount
                         })
-                    
-                    # Process each CPT code individually
-                    for cpt in cpt_values:
+                    if pd.notnull(cpt_code):
                         all_reshaped_data.append({
-                            'Sheet Name': sheet_name,
-                            'Provider': provider_name,
-                            'Service Description': service_description,
-                            'Ms-DRG': '',
-                            'Rev Code': '',
-                            'ICD9,ICD10': '',
-                            'CPT': 'X',
-                            'Coding/Def': cpt.strip(),
-                            'Amount Rate': amount_rate,
-                            'Amount': amount
-                        })
-                    
-                    # If Ms-DRG, Rev Code, and CPT are empty, only add ICD9,ICD10 and Coding/Def if relevant
-                    if not ms_drg_codes and not rev_code_values and not cpt_values:
-                        all_reshaped_data.append({
-                            'Sheet Name': sheet_name,
+                            'Sheet Name': sheet_name,  
                             'Provider': provider_name,
                             'Service Description': service_description,
                             'Ms-DRG': '',
                             'Rev Code': '',
                             'ICD9,ICD10': icd_codes,
-                            'CPT': '',
-                            'Coding/Def': coding_def,
+                            'CPT': 'X',
+                            'Coding/Def': coding_def.strip(),
                             'Amount Rate': amount_rate,
                             'Amount': amount
                         })
