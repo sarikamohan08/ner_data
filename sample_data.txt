@@ -1,85 +1,111 @@
 import pandas as pd
+import re
 
-def transform_data(input_file, output_file):
-    # Read the input Excel file into a DataFrame
-    df = pd.read_excel(input_file)
+# Load the Excel file and read all sheets into a dictionary of DataFrames
+excel_file = "your_file.xlsx"
+sheets_dict = pd.read_excel(excel_file, sheet_name=None, header=None)  # Load without headers
+
+# Initialize a list to collect reshaped data from all sheets
+all_reshaped_data = []
+
+# Define a helper function to find the header row
+def find_header_row(df, keyword='coding/def'):
+    for i, row in df.iterrows():
+        if keyword in row.values:
+            return i
+    return None
+
+# Loop through each sheet's DataFrame in the dictionary
+for sheet_name, df in sheets_dict.items():
+    # Find the header row in the current sheet
+    header_row = find_header_row(df)
     
-    # Identify the columns dynamically
-    known_columns = ["Line", "Service description", "Ms-DRG", "Rev code", "ICD9,ICD10", "CPT", "coding/def"]
-    hospital_columns = [col for col in df.columns if col not in known_columns]
-    
-    # Initialize a list to hold output rows
-    output = []
-    
-    # Iterate over each row in the DataFrame
-    for _, row in df.iterrows():
-        # Extract service description, Ms-DRG, Rev code, etc., from the known columns
-        service_description = row.get("Service description", "")
-        ms_drg = row.get("Ms-DRG", "")
-        rev_code = row.get("Rev code", "")
-        icd_code = row.get("ICD9,ICD10", "")
-        cpt = row.get("CPT", "")
-        coding_def = str(row.get("coding/def", "")).split(",")  # Split codes if present
+    if header_row is not None:
+        # Reload the sheet using the found header row
+        df = pd.read_excel(excel_file, sheet_name=sheet_name, header=header_row)
         
-        # For each hospital, create rows for `coding_def`, `Rev code`, and `CPT` codes
-        for hospital_col in hospital_columns:
-            provider = hospital_col.strip()  # Get the provider name dynamically from the column
-            rate_or_amount = row[hospital_col]
+        # Filter out rows where "coding/def" is empty or null
+        df_filtered = df[df['coding/def'].notnull() & (df['coding/def'] != '')]
+        
+        # Identify dynamic provider columns by selecting all columns after the "coding/def" column
+        start_column = df.columns.get_loc("coding/def") + 1  # Get index after "coding/def"
+        provider_columns = df.columns[start_column:]  # All columns after "coding/def"
+        
+        # Process each row in the filtered DataFrame
+        for index, row in df_filtered.iterrows():
+            # Extract service description, ms-DRG, rev code, ICD9/ICD10, and notes
+            service_description = row.get('Service description', '')
+            ms_drg = 'X' if pd.notnull(row.get('Ms-DRG')) else ''
+            rev_code = 'X' if pd.notnull(row.get('Rev code')) else ''
+            icd_codes = row.get('ICD9,ICD10', '')
+            notes = row.get('Notes', '')  # Optional notes column
             
-            # Expand `coding_def` codes for the current provider
-            for code in coding_def:
-                output.append({
-                    "Sheet Name": "Sheet1",
-                    "Provider": provider,
-                    "Service Description": service_description,
-                    "Ms-DRG": "X" if ms_drg else "",
-                    "Rev Code": "",
-                    "ICD9,ICD10": "",
-                    "CPT": "",
-                    "Coding/Def": code.strip(),
-                    "Amount Rate": rate_or_amount if isinstance(rate_or_amount, str) and '%' in rate_or_amount else "",
-                    "Amount": "" if isinstance(rate_or_amount, str) and '%' in rate_or_amount else rate_or_amount
-                })
+            # Separate coding definitions if multiple values are present
+            coding_defs = str(row['coding/def']).split(',') if pd.notnull(row['coding/def']) else ['']
             
-            # Expand `Rev Code` codes if present for the current provider
-            for rev in str(rev_code).split(","):
-                if rev.strip():  # Skip empty values
-                    output.append({
-                        "Sheet Name": "Sheet1",
-                        "Provider": provider,
-                        "Service Description": service_description,
-                        "Ms-DRG": "",
-                        "Rev Code": "X",
-                        "ICD9,ICD10": "",
-                        "CPT": "",
-                        "Coding/Def": rev.strip(),
-                        "Amount Rate": rate_or_amount if isinstance(rate_or_amount, str) and '%' in rate_or_amount else "",
-                        "Amount": "" if isinstance(rate_or_amount, str) and '%' in rate_or_amount else rate_or_amount
-                    })
-            
-            # Expand `CPT` codes if present for the current provider
-            for cpt_code in str(cpt).split(","):
-                if cpt_code.strip():  # Skip empty values
-                    output.append({
-                        "Sheet Name": "Sheet1",
-                        "Provider": provider,
-                        "Service Description": service_description,
-                        "Ms-DRG": "",
-                        "Rev Code": "",
-                        "ICD9,ICD10": "",
-                        "CPT": "X",
-                        "Coding/Def": "CPT " + cpt_code.strip(),
-                        "Amount Rate": rate_or_amount if isinstance(rate_or_amount, str) and '%' in rate_or_amount else "",
-                        "Amount": "" if isinstance(rate_or_amount, str) and '%' in rate_or_amount else rate_or_amount
-                    })
-    
-    # Create a DataFrame from the output list
-    output_df = pd.DataFrame(output)
-    
-    # Save the transformed data to a new Excel file
-    output_df.to_excel(output_file, index=False)
+            # Loop through each dynamically identified provider column and create rows for each
+            for provider in provider_columns:
+                provider_name = provider  # Use the column name as the provider name
+                provider_value = row[provider]  # Value in the provider's cell
+                
+                # Extract percentages and dollar amounts using regex
+                amount_rate_match = re.search(r'(\d+%)', str(provider_value))
+                amount_match = re.search(r'\$?([\d,]+(?:\.\d{2})?)', str(provider_value))
+                
+                # Store the matched values or default to empty if not found
+                amount_rate = amount_rate_match.group(1) if amount_rate_match else ''
+                amount = amount_match.group(0) if amount_match and not amount_rate else ''
+                
+                for coding_def in coding_defs:
+                    # Create a row with Ms-DRG if applicable, then another with Rev Code
+                    if ms_drg and rev_code:
+                        # Row for Ms-DRG
+                        all_reshaped_data.append({
+                            'Sheet Name': sheet_name,  # Add sheet name for reference
+                            'Provider': provider_name,
+                            'Service Description': service_description,
+                            'Ms-DRG': ms_drg,
+                            'Rev Code': '',
+                            'ICD9,ICD10': icd_codes,
+                            'Coding/Def': coding_def.strip(),
+                            'Notes': notes,
+                            'Amount Rate': amount_rate,
+                            'Amount': amount
+                        })
+                        # Row for Rev Code
+                        all_reshaped_data.append({
+                            'Sheet Name': sheet_name,  # Add sheet name for reference
+                            'Provider': provider_name,
+                            'Service Description': service_description,
+                            'Ms-DRG': '',
+                            'Rev Code': rev_code,
+                            'ICD9,ICD10': icd_codes,
+                            'Coding/Def': coding_def.strip(),
+                            'Notes': notes,
+                            'Amount Rate': amount_rate,
+                            'Amount': amount
+                        })
+                    else:
+                        # Single row if only one of Ms-DRG or Rev Code is present
+                        all_reshaped_data.append({
+                            'Sheet Name': sheet_name,  # Add sheet name for reference
+                            'Provider': provider_name,
+                            'Service Description': service_description,
+                            'Ms-DRG': ms_drg,
+                            'Rev Code': rev_code,
+                            'ICD9,ICD10': icd_codes,
+                            'Coding/Def': coding_def.strip(),
+                            'Notes': notes,
+                            'Amount Rate': amount_rate,
+                            'Amount': amount
+                        })
 
-# Example usage
-input_file = 'input_data.xlsx'  # The path to the input Excel file
-output_file = 'transformed_output.xlsx'  # The path to save the transformed output
-transform_data(input_file, output_file)
+# Convert the reshaped data to a single DataFrame
+reshaped_df = pd.DataFrame(all_reshaped_data)
+
+# Display the new DataFrame
+print(reshaped_df)
+
+# Optionally, save the reshaped data to a new Excel file
+reshaped_df.to_excel("reshaped_output_with_amounts.xlsx", index=False)
+
