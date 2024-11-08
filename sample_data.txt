@@ -1,101 +1,85 @@
 import pandas as pd
-import re
 
-# Load the Excel file and read all sheets into a dictionary of DataFrames
-excel_file = "your_file.xlsx"  # Replace with the actual file name
-sheets_dict = pd.read_excel(excel_file, sheet_name=None, header=None)  # Load without headers
-
-# Initialize a list to collect reshaped data from all sheets
-all_reshaped_data = []
-
-# Define a helper function to find the header row
-def find_header_row(df, keyword='coding/def'):
-    for i, row in df.iterrows():
-        if keyword in row.values:
-            return i
-    return None
-
-# Function to split the codes based on indicators
-def split_codes(coding_def):
-    codes = []
-    if 'AND' in coding_def:
-        for part in coding_def.split('AND'):
-            part = part.strip()
-            if "RC" in part:
-                codes.append(('Rev Code', part))
-            elif "CPT" in part:
-                codes.append(('CPT', part))
-            else:
-                codes.append(('Ms-DRG', part))
-    else:
-        if "RC" in coding_def:
-            codes.append(('Rev Code', coding_def))
-        elif "CPT" in coding_def:
-            codes.append(('CPT', coding_def))
-        else:
-            codes.append(('Ms-DRG', coding_def))
-    return codes
-
-# Loop through each sheet's DataFrame in the dictionary
-for sheet_name, df in sheets_dict.items():
-    # Find the header row in the current sheet
-    header_row = find_header_row(df)
+def transform_data(input_file, output_file):
+    # Read the input Excel file into a DataFrame
+    df = pd.read_excel(input_file)
     
-    if header_row is not None:
-        # Reload the sheet using the found header row
-        df = pd.read_excel(excel_file, sheet_name=sheet_name, header=header_row)
+    # Identify the columns dynamically
+    known_columns = ["Line", "Service description", "Ms-DRG", "Rev code", "ICD9,ICD10", "CPT", "coding/def"]
+    hospital_columns = [col for col in df.columns if col not in known_columns]
+    
+    # Initialize a list to hold output rows
+    output = []
+    
+    # Iterate over each row in the DataFrame
+    for _, row in df.iterrows():
+        # Extract service description, Ms-DRG, Rev code, etc., from the known columns
+        service_description = row.get("Service description", "")
+        ms_drg = row.get("Ms-DRG", "")
+        rev_code = row.get("Rev code", "")
+        icd_code = row.get("ICD9,ICD10", "")
+        cpt = row.get("CPT", "")
+        coding_def = str(row.get("coding/def", "")).split(",")  # Split codes if present
         
-        # Filter out rows where "coding/def" is empty or null
-        df_filtered = df[df['coding/def'].notnull() & (df['coding/def'] != '')]
-        
-        # Identify provider columns dynamically by selecting all columns after the "coding/def" column
-        start_column = df.columns.get_loc("coding/def") + 1
-        provider_columns = df.columns[start_column:]
-        
-        # Process each row in the filtered DataFrame
-        for index, row in df_filtered.iterrows():
-            service_description = row['Service description']
-            ms_drg = row['Ms-DRG']
-            rev_code = row['Rev Code']
-            icd_codes = row['ICD9,ICD10']
-            cpt = row['CPT'] if 'CPT' in row else ''  # Optional CPT column
-            coding_defs = row['coding/def'].split(',') if pd.notnull(row['coding/def']) else ['']
+        # For each hospital, create rows for `coding_def`, `Rev code`, and `CPT` codes
+        for hospital_col in hospital_columns:
+            provider = hospital_col.strip()  # Get the provider name dynamically from the column
+            rate_or_amount = row[hospital_col]
             
-            for provider in provider_columns:
-                provider_name = provider
-                provider_value = row[provider]
-                
-                # Extract percentage rates and dollar amounts using regex
-                amount_rate = re.search(r'(\d+%)', str(provider_value))
-                amount = re.search(r'\$([\d,]+)', str(provider_value))
-                amount_rate = amount_rate.group(1) if amount_rate else ''
-                amount = amount.group(0) if amount else ''
-                
-                # Process each coding definition separately
-                for coding_def in coding_defs:
-                    split_coding_defs = split_codes(coding_def)
-                    
-                    for code_type, code_value in split_coding_defs:
-                        # Build the row dictionary based on the code type
-                        row_data = {
-                            'Sheet Name': sheet_name,
-                            'Provider': provider_name,
-                            'Service Description': service_description,
-                            'Ms-DRG': 'X' if code_type == 'Ms-DRG' else '',
-                            'Rev Code': 'X' if code_type == 'Rev Code' else '',
-                            'ICD9,ICD10': icd_codes,
-                            'CPT': 'X' if code_type == 'CPT' else '',
-                            'Coding/Def': code_value.strip(),
-                            'Amount Rate': amount_rate,
-                            'Amount': amount
-                        }
-                        all_reshaped_data.append(row_data)
+            # Expand `coding_def` codes for the current provider
+            for code in coding_def:
+                output.append({
+                    "Sheet Name": "Sheet1",
+                    "Provider": provider,
+                    "Service Description": service_description,
+                    "Ms-DRG": "X" if ms_drg else "",
+                    "Rev Code": "",
+                    "ICD9,ICD10": "",
+                    "CPT": "",
+                    "Coding/Def": code.strip(),
+                    "Amount Rate": rate_or_amount if isinstance(rate_or_amount, str) and '%' in rate_or_amount else "",
+                    "Amount": "" if isinstance(rate_or_amount, str) and '%' in rate_or_amount else rate_or_amount
+                })
+            
+            # Expand `Rev Code` codes if present for the current provider
+            for rev in str(rev_code).split(","):
+                if rev.strip():  # Skip empty values
+                    output.append({
+                        "Sheet Name": "Sheet1",
+                        "Provider": provider,
+                        "Service Description": service_description,
+                        "Ms-DRG": "",
+                        "Rev Code": "X",
+                        "ICD9,ICD10": "",
+                        "CPT": "",
+                        "Coding/Def": rev.strip(),
+                        "Amount Rate": rate_or_amount if isinstance(rate_or_amount, str) and '%' in rate_or_amount else "",
+                        "Amount": "" if isinstance(rate_or_amount, str) and '%' in rate_or_amount else rate_or_amount
+                    })
+            
+            # Expand `CPT` codes if present for the current provider
+            for cpt_code in str(cpt).split(","):
+                if cpt_code.strip():  # Skip empty values
+                    output.append({
+                        "Sheet Name": "Sheet1",
+                        "Provider": provider,
+                        "Service Description": service_description,
+                        "Ms-DRG": "",
+                        "Rev Code": "",
+                        "ICD9,ICD10": "",
+                        "CPT": "X",
+                        "Coding/Def": "CPT " + cpt_code.strip(),
+                        "Amount Rate": rate_or_amount if isinstance(rate_or_amount, str) and '%' in rate_or_amount else "",
+                        "Amount": "" if isinstance(rate_or_amount, str) and '%' in rate_or_amount else rate_or_amount
+                    })
+    
+    # Create a DataFrame from the output list
+    output_df = pd.DataFrame(output)
+    
+    # Save the transformed data to a new Excel file
+    output_df.to_excel(output_file, index=False)
 
-# Convert the reshaped data to a DataFrame
-reshaped_df = pd.DataFrame(all_reshaped_data)
-
-# Display the DataFrame
-print(reshaped_df)
-
-# Optionally, save the reshaped data to a new Excel file
-reshaped_df.to_excel("reshaped_output_with_split_codes.xlsx", index=False)
+# Example usage
+input_file = 'input_data.xlsx'  # The path to the input Excel file
+output_file = 'transformed_output.xlsx'  # The path to save the transformed output
+transform_data(input_file, output_file)
