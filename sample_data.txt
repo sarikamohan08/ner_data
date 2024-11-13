@@ -1,80 +1,80 @@
+import os
 import pandas as pd
+import re
+from datetime import datetime
 
-def process_data(file_path):
-    # Load all sheets in the Excel file
-    all_sheets = pd.read_excel(file_path, sheet_name=None)
-    
-    # Prepare an empty list to hold the processed rows
-    output_rows = []
+# Set the root folder location where files will be searched
+root_folder = '/path/to/root_folder'
 
-    # Iterate over each sheet
-    for sheet_name, sheet_data in all_sheets.items():
-        # Get the list of provider names (all columns except the first 8 columns)
-        hospital_columns = [col for col in sheet_data.columns if col not in ["Service description", "descri[tion", "Ms-DRG", "Rev code", "ICD9,ICD10", "CPT", "coding/def"]]
+# Function to extract text from the file at a given path
+def extract_text_from_file(file_path):
+    # For simplicity, this function just reads the text directly.
+    # Adjust this function depending on the actual format of your text files.
+    with open(file_path, 'r', encoding='utf-8') as file:
+        text = file.read()
+    return text
 
-        # Iterate over each row in the sheet
-        for _, row in sheet_data.iterrows():
-            service_description = row["Service description"]
-            ms_drg = row["Ms-DRG"]
-            rev_code = row["Rev code"]
-            cpt = row["CPT"]
-            coding_def = row["coding/def"]
+# Function to extract the date from text using regex
+def extract_date_from_text(text):
+    # Example regex for dates in formats like "2023-11-12" or "12/11/2023"
+    date_regex = r'(\d{4}-\d{2}-\d{2})|(\d{2}/\d{2}/\d{4})'
+    match = re.search(date_regex, text)
+    if match:
+        date_str = match.group()
+        try:
+            # Normalize date to a standard format (e.g., YYYY-MM-DD)
+            date_obj = datetime.strptime(date_str, '%Y-%m-%d') if '-' in date_str else datetime.strptime(date_str, '%d/%m/%Y')
+            return date_obj.strftime('%Y-%m-%d')
+        except ValueError:
+            pass
+    return None
+
+# Main function to process Excel files and extract data
+def process_excel_file(input_filename, output_folder, output_prefix):
+    # Load the Excel file into a DataFrame
+    df = pd.read_excel(input_filename)
+
+    # Initialize list to collect processed data
+    processed_data = []
+
+    for index, row in df.iterrows():
+        file_path = os.path.join(root_folder, row['filepath'])
+
+        if os.path.exists(file_path):
+            text = extract_text_from_file(file_path)
+            extracted_date = extract_date_from_text(text)
             
-            # For each hospital, extract rate and amount if present
-            for hospital in hospital_columns:
-                amount_rate = row[hospital]
-                
-                # Split coding definitions by 'AND' and commas, then process each part
-                if pd.notna(coding_def):
-                    codes = coding_def.replace(" AND ", ",").split(",")
-                    for code in codes:
-                        code = code.strip()  # Clean up whitespace around each code
-                        
-                        # Determine the category of each code
-                        if code.startswith("RC"):
-                            rev_code_flag = "X"
-                            ms_drg_flag, cpt_flag = "", ""
-                        elif code.startswith("CPT"):
-                            cpt_flag = "X"
-                            ms_drg_flag, rev_code_flag = "", ""
-                        else:
-                            ms_drg_flag = "X"
-                            rev_code_flag, cpt_flag = "", ""
-                        
-                        # Add processed row to output list
-                        output_rows.append({
-                            "Sheet Name": sheet_name,
-                            "Provider": hospital,
-                            "Service Description": service_description,
-                            "Ms-DRG": ms_drg_flag,
-                            "Rev Code": rev_code_flag,
-                            "ICD9,ICD10": "",
-                            "CPT": cpt_flag,
-                            "Coding/Def": code,
-                            "Amount Rate": amount_rate if "%" in str(amount_rate) else "",
-                            "Amount": amount_rate if "$" in str(amount_rate) else ""
-                        })
-                else:
-                    # Handle rows with no "coding/def" entries but with rate/amount
-                    output_rows.append({
-                        "Sheet Name": sheet_name,
-                        "Provider": hospital,
-                        "Service Description": service_description,
-                        "Ms-DRG": ms_drg,
-                        "Rev Code": rev_code,
-                        "ICD9,ICD10": "",
-                        "CPT": cpt,
-                        "Coding/Def": "",
-                        "Amount Rate": amount_rate if "%" in str(amount_rate) else "",
-                        "Amount": amount_rate if "$" in str(amount_rate) else ""
-                    })
+            # Append processed data
+            processed_data.append({
+                'id': row['id'],
+                'date': row['date'],
+                'filepath': row['filepath'],
+                'extracted_date': extracted_date
+            })
+        else:
+            print(f"File not found: {file_path}")
 
-    # Convert the output list to a DataFrame
-    output_df = pd.DataFrame(output_rows)
+    # Convert processed data to DataFrame
+    output_df = pd.DataFrame(processed_data)
     
-    return output_df
+    # Get current date for output filename
+    current_date = datetime.now().strftime('%Y-%m-%d')
+    
+    # Save output to a new Excel file
+    output_filename = os.path.join(output_folder, f'{output_prefix}_{current_date}.xlsx')
+    output_df.to_excel(output_filename, index=False)
+    print(f'Saved file: {output_filename}')
 
-# Use the function to process data from an Excel file and save it as a new sheet in a new file
-file_path = 'input_file.xlsx'  # Replace with your input file path
-output_df = process_data(file_path)
-output_df.to_excel("formatted_output.xlsx", index=False)  # Save the formatted data to an Excel file
+# Set paths for input files and output folders
+input_file_rts = 'excel_rts.xlsx'
+input_file_reply = 'excel_reply.xlsx'
+output_folder_rts = '/path/to/save/try_rts'
+output_folder_reply = '/path/to/save/try_reply'
+
+# Ensure output folders exist
+os.makedirs(output_folder_rts, exist_ok=True)
+os.makedirs(output_folder_reply, exist_ok=True)
+
+# Process both files
+process_excel_file(input_file_rts, output_folder_rts, 'try_rts')
+process_excel_file(input_file_reply, output_folder_reply, 'try_reply')
