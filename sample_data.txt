@@ -33,16 +33,15 @@ for sheet_name, df in sheets_dict.items():
         
         # Process each row in the filtered DataFrame
         for index, row in df_filtered.iterrows():
-            # Extract service description, ms-DRG, rev code, ICD9/ICD10, CPT, and notes
-            service_description = row['Service description']
-            ms_drg_codes = str(row['Ms-DRG']).split(',') if pd.notnull(row['Ms-DRG']) else []
-            rev_codes = str(row['Rev code']).split(',') if pd.notnull(row['Rev code']) else []
-            icd_codes = row['ICD9,ICD10']
-            cpt_codes = str(row['CPT']).split(',') if pd.notnull(row['CPT']) else []
-            notes = row.get('Notes', '')  # Get 'Notes' if it exists, otherwise default to an empty string
+            # Extract service description, ms-DRG, rev code, ICD9/ICD10, and notes
+            service_description = row.get('Service description', '')
+            ms_drg = 'X' if pd.notnull(row.get('Ms-DRG')) else ''
+            rev_code = 'X' if pd.notnull(row.get('Rev code')) else ''
+            icd_codes = row.get('ICD9,ICD10', '')
+            notes = row.get('Notes', '')  # Optional notes column
             
             # Separate coding definitions if multiple values are present
-            coding_defs = row['coding/def'].split(',') if pd.notnull(row['coding/def']) else ['']
+            coding_defs = str(row['coding/def']).split(',') if pd.notnull(row['coding/def']) else ['']
             
             # Loop through each dynamically identified provider column and create rows for each
             for provider in provider_columns:
@@ -50,31 +49,56 @@ for sheet_name, df in sheets_dict.items():
                 provider_value = row[provider]  # Value in the provider's cell
                 
                 # Extract percentages and dollar amounts using regex
-                amount_rate = re.search(r'(\d+%)', str(provider_value))
-                amount = re.search(r'\$([\d,]+)', str(provider_value))
+                amount_rate_match = re.search(r'(\d+%)', str(provider_value))
+                amount_match = re.search(r'\$?([\d,]+(?:\.\d{2})?)', str(provider_value))
                 
                 # Store the matched values or default to empty if not found
-                amount_rate = amount_rate.group(1) if amount_rate else ''
-                amount = amount.group(0) if amount else ''
+                amount_rate = amount_rate_match.group(1) if amount_rate_match else ''
+                amount = amount_match.group(0) if amount_match and not amount_rate else ''
                 
                 for coding_def in coding_defs:
-                    # If both Ms-DRG and Rev Code are present, create separate rows for each code
-                    for ms_drg in ms_drg_codes or ['']:
-                        for rev_code in rev_codes or ['']:
-                            for cpt_code in cpt_codes or ['']:
-                                all_reshaped_data.append({
-                                    'Sheet Name': sheet_name,  # Add sheet name for reference
-                                    'Provider': provider_name,
-                                    'Service Description': service_description,
-                                    'Ms-DRG': ms_drg.strip() if ms_drg else '',  
-                                    'Rev Code': rev_code.strip() if rev_code else '',  
-                                    'CPT': cpt_code.strip() if cpt_code else '',  
-                                    'ICD9,ICD10': icd_codes,
-                                    'Coding/Def': coding_def.strip(),
-                                    'Notes': notes,
-                                    'Amount Rate': amount_rate,
-                                    'Amount': amount
-                                })
+                    # Create a row with Ms-DRG if applicable, then another with Rev Code
+                    if ms_drg and rev_code:
+                        # Row for Ms-DRG
+                        all_reshaped_data.append({
+                            'Sheet Name': sheet_name,  # Add sheet name for reference
+                            'Provider': provider_name,
+                            'Service Description': service_description,
+                            'Ms-DRG': ms_drg,
+                            'Rev Code': '',
+                            'ICD9,ICD10': icd_codes,
+                            'Coding/Def': coding_def.strip(),
+                            'Notes': notes,
+                            'Amount Rate': amount_rate,
+                            'Amount': amount
+                        })
+                        # Row for Rev Code
+                        all_reshaped_data.append({
+                            'Sheet Name': sheet_name,  # Add sheet name for reference
+                            'Provider': provider_name,
+                            'Service Description': service_description,
+                            'Ms-DRG': '',
+                            'Rev Code': rev_code,
+                            'ICD9,ICD10': icd_codes,
+                            'Coding/Def': coding_def.strip(),
+                            'Notes': notes,
+                            'Amount Rate': amount_rate,
+                            'Amount': amount
+                        })
+                    else:
+                        # Single row if only one of Ms-DRG or Rev Code is present
+                        all_reshaped_data.append({
+                            'Sheet Name': sheet_name,  # Add sheet name for reference
+                            'Provider': provider_name,
+                            'Service Description': service_description,
+                            'Ms-DRG': ms_drg,
+                            'Rev Code': rev_code,
+                            'ICD9,ICD10': icd_codes,
+                            'Coding/Def': coding_def.strip(),
+                            'Notes': notes,
+                            'Amount Rate': amount_rate,
+                            'Amount': amount
+                        })
 
 # Convert the reshaped data to a single DataFrame
 reshaped_df = pd.DataFrame(all_reshaped_data)
@@ -83,4 +107,4 @@ reshaped_df = pd.DataFrame(all_reshaped_data)
 print(reshaped_df)
 
 # Optionally, save the reshaped data to a new Excel file
-reshaped_df.to_excel("reshaped_output_with_cpt.xlsx", index=False)
+reshaped_df.to_excel("reshaped_output_with_amounts.xlsx", index=False)
