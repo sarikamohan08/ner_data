@@ -1,79 +1,68 @@
 import pandas as pd
+import re
 
-def process_data(file_path):
-    # Load all sheets in the Excel file
-    all_sheets = pd.read_excel(file_path, sheet_name=None)
+def transform_excel(input_file, output_file):
+    # Load all sheets from the input file
+    sheets = pd.read_excel(input_file, sheet_name=None)
+    
+    transformed_data = []
 
-    # Prepare an empty list to hold the processed rows
-    output_rows = []
+    # Process each sheet
+    for sheet_name, df in sheets.items():
+        # Extract hospital/provider columns dynamically
+        provider_columns = [col for col in df.columns if 'hospital' in col.lower()]
+        service_description_column = [col for col in df.columns if 'service description' in col.lower()]
+        service_description_column = service_description_column[0] if service_description_column else None
 
-    # Iterate over each sheet
-    for sheet_name, sheet_data in all_sheets.items():
-        # Get the list of hospital/provider columns (dynamic)
-        hospital_columns = [col for col in sheet_data.columns if col not in [
-            "Service description", "descri[tion", "Ms-DRG", "Rev code", "ICD9,ICD10", "CPT", "coding/def"
-        ]]
+        # Iterate through rows
+        for _, row in df.iterrows():
+            service_description = row[service_description_column] if service_description_column else ""
+            service_description = service_description.split(':')[-1].strip()  # Extract text after ":"
 
-        # Iterate over each row in the sheet
-        for _, row in sheet_data.iterrows():
-            service_description = row.get("Service description", "")
+            # Loop through each hospital/provider column
+            for provider in provider_columns:
+                provider_name = provider.split(' ')[0].strip()  # Extract provider name from column header
+                rate = row[provider]
+                
+                # Process 'Coding/Def' column values (split by ',' or ' AND ')
+                coding_values = str(row['coding/def']).replace('AND', ',').split(',')
+                for code in coding_values:
+                    code = code.strip()
+                    if not code: continue
 
-            # Extract coding/def column and split it
-            coding_def = row.get("coding/def", "")
-            if pd.notna(coding_def):
-                codes = [code.strip() for code in coding_def.split(" AND ")]  # Split by "AND"
-
-                # Classify each code into Ms-DRG, Rev Code, or CPT
-                for code in codes:
-                    ms_drg_flag = "X" if code.isdigit() else ""
-                    rev_code_flag = "X" if code.startswith("RC") else ""
-                    cpt_flag = "X" if code.startswith("CPT") else ""
-
-                    # For each hospital, process the rates/amounts
-                    for hospital in hospital_columns:
-                        amount_rate = row.get(hospital, "")
-
-                        # Add processed row to output list
-                        output_rows.append({
-                            "Sheet Name": sheet_name,
-                            "Provider": hospital,
-                            "Service Description": service_description,
-                            "Ms-DRG": ms_drg_flag,
-                            "Rev Code": rev_code_flag,
-                            "ICD9,ICD10": "",
-                            "CPT": cpt_flag,
-                            "Coding/Def": code,
-                            "Amount Rate": amount_rate if "%" in str(amount_rate) else "",
-                            "Amount": amount_rate if "$" in str(amount_rate) else ""
-                        })
-            else:
-                # Handle rows without coding/def but with rate/amount
-                for hospital in hospital_columns:
-                    amount_rate = row.get(hospital, "")
-                    output_rows.append({
-                        "Sheet Name": sheet_name,
-                        "Provider": hospital,
-                        "Service Description": service_description,
-                        "Ms-DRG": row.get("Ms-DRG", ""),
-                        "Rev Code": row.get("Rev code", ""),
-                        "ICD9,ICD10": "",
-                        "CPT": row.get("CPT", ""),
-                        "Coding/Def": "",
-                        "Amount Rate": amount_rate if "%" in str(amount_rate) else "",
-                        "Amount": amount_rate if "$" in str(amount_rate) else ""
+                    # Identify type of code (Ms-DRG, Rev Code, CPT)
+                    if re.match(r'^\d+$', code):  # Ms-DRG
+                        ms_drg = 'X'
+                        rev_code, cpt = '', ''
+                    elif code.startswith('RC'):  # Rev Code
+                        ms_drg, rev_code, cpt = '', code, ''
+                    elif code.startswith('CPT'):  # CPT Code
+                        ms_drg, rev_code, cpt = '', '', code
+                    else:  # Assume Ms-DRG if unmatched
+                        ms_drg, rev_code, cpt = 'X', '', ''
+                    
+                    # Add a new row for the transformed data
+                    transformed_data.append({
+                        'Sheet Name': sheet_name,
+                        'Provider': provider_name,
+                        'Service Description': service_description,
+                        'Ms-DRG': ms_drg,
+                        'Rev Code': rev_code,
+                        'ICD9,ICD10': row.get('ICD9,ICD10', ''),
+                        'CPT': cpt,
+                        'Coding/Def': code,
+                        'Amount Rate': rate,
+                        'Amount': row.get('amount', '')  # Adjust the column name if different
                     })
 
-    # Convert the output list to a DataFrame
-    output_df = pd.DataFrame(output_rows)
-    return output_df
+    # Convert the list to a DataFrame
+    transformed_df = pd.DataFrame(transformed_data)
 
+    # Write the transformed data to a new Excel file
+    transformed_df.to_excel(output_file, index=False)
+    print(f"Transformed data saved to {output_file}")
 
-# Define the file path for the input and output
-input_file_path = 'input_file.xlsx'  # Replace with your input file path
-output_file_path = 'formatted_output.xlsx'  # Desired output file path
-
-# Process the data and save it to a new Excel file
-output_df = process_data(input_file_path)
-output_df.to_excel(output_file_path, index=False)
-
-print(f"Formatted data saved to {output_file_path}")
+# Example usage
+input_file = 'input_multisheets.xlsx'  # Replace with your input file path
+output_file = 'output_transformed.xlsx'  # Replace with your desired output file path
+transform_excel(input_file, output_file)
