@@ -19,15 +19,23 @@ def transform_excel(input_file, output_file):
             service_description = row[service_description_column] if service_description_column else ""
             service_description = service_description.split(':')[-1].strip()  # Extract text after ":"
 
+            # Check for spread-out Coding/Def data
+            coding_cells = []
+            for col in df.columns:
+                if 'coding/def' in col.lower():
+                    cell_value = row[col]
+                    if pd.notna(cell_value):
+                        coding_cells.append(str(cell_value).replace('AND', ',').split(','))
+
+            # Flatten the coding_cells list
+            coding_values = [code.strip() for sublist in coding_cells for code in sublist]
+
             # Loop through each hospital/provider column
             for provider in provider_columns:
                 provider_name = provider.split(' ')[0].strip()  # Extract provider name from column header
                 rate = row[provider]
                 
-                # Process 'Coding/Def' column values (split by ',' or ' AND ')
-                coding_values = str(row['coding/def']).replace('AND', ',').split(',')
                 for code in coding_values:
-                    code = code.strip()
                     if not code: continue
 
                     # Identify type of code (Ms-DRG, Rev Code, CPT)
