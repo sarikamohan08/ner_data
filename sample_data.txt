@@ -12,13 +12,17 @@ transformed_data = []
 
 # Iterate through each sheet
 for sheet_name, df in sheets.items():
+    # Identify provider columns dynamically (excluding standard columns)
+    standard_columns = ['Line', 'Service description', 'descri[tion', 'Ms-DRG', 'Rev code', 'ICD9,ICD10', 'CPT', 'coding/def']
+    provider_columns = [col for col in df.columns if col not in standard_columns]
+    
     # Process each sheet
     for index, row in df.iterrows():
         if pd.notna(row.get('Service description')):
             # Repeat rows for each provider and multiple coding/def values
             coding_values = str(row.get('coding/def', '')).split(' AND ')
             for coding_value in coding_values:
-                for provider in ['Poinciana Hospital', 'Putuam Hospital', 'Osceola Hospital']:
+                for provider in provider_columns:
                     transformed_data.append({
                         'Provider': provider,
                         'Service Description': row.get('Service description'),
@@ -27,7 +31,7 @@ for sheet_name, df in sheets.items():
                         'ICD9, ICD10': row.get('ICD9,ICD10'),
                         'CPT': row.get('CPT'),
                         'Coding/Def': coding_value.strip(),
-                        'Billed Charges/Percent': row.get(provider.lower())  # Assuming column names match providers
+                        'Billed Charges/Percent': row.get(provider)
                     })
 
 # Create a new DataFrame from the transformed data
