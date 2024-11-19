@@ -34,11 +34,16 @@ for sheet_name, df in sheets.items():
     # You may need to manually set the header row or identify it dynamically
     header_row_index = 1  # Set to the row index where your header is located (0-indexed)
 
-    # Reload the sheet with the correct header row
+    # Reload the sheet with the correct header row, skipping empty rows
     df = pd.read_excel(input_file, sheet_name=sheet_name, header=header_row_index)
     
     # After loading, ensure the column names are standardized by stripping extra spaces
     df.columns = df.columns.str.strip()
+
+    # Check if there is any data in the dataframe (not just headers)
+    if df.empty:
+        print(f"Sheet '{sheet_name}' is empty, skipping.")
+        continue
 
     # Identify provider columns dynamically by excluding standard columns
     provider_columns = [
@@ -50,10 +55,11 @@ for sheet_name, df in sheets.items():
     
     # Process each sheet
     for index, row in df.iterrows():
-        # Debugging: Print row being processed
-        print(f"Processing row {index}: {row.to_dict()}")
-        
-        if pd.notna(row.get('Service Description')):  # Check if "Service Description" is not NaN
+        # Check if there are valid data rows by ensuring 'Service Description' is not NaN
+        if pd.notna(row.get('Service Description')):  
+            # Debugging: Print row being processed
+            print(f"Processing row {index}: {row.to_dict()}")
+            
             # Split coding/def values and repeat rows
             coding_values = str(row.get('Coding/Definition', '')).split(' AND ')
             for coding_value in coding_values:
