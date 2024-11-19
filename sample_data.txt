@@ -1,49 +1,71 @@
 import pandas as pd
 
-def extract_data_from_excel(file_path):
-    # Load the Excel file with multiple sheets
-    excel_data = pd.ExcelFile(file_path)
-    output_data = []
+# Define a function to process each sheet
+def process_sheet(sheet_name, df):
+    # Find the provider columns dynamically
+    provider_cols = [col for col in df.columns if 'hospital' in str(col).lower()]
+    
+    # Extract Service Description
+    service_description = df.iloc[0, 1]
 
-    for sheet_name in excel_data.sheet_names:
-        # Load the sheet into a DataFrame
-        sheet_data = pd.read_excel(file_path, sheet_name=sheet_name, header=None)
+    # List to store processed rows
+    processed_data = []
 
-        # Locate header row dynamically
-        header_row = sheet_data[sheet_data.apply(lambda row: row.str.contains("Line", na=False).any(), axis=1)].index[0]
-        
-        # Extract provider names
-        provider_names = sheet_data.iloc[header_row + 1, 8:].dropna().tolist()
-        
-        # Set columns based on header row
-        sheet_data.columns = sheet_data.iloc[header_row]
-        sheet_data = sheet_data.iloc[header_row + 2:]  # Exclude header rows
+    # Iterate through the rows
+    for index, row in df.iterrows():
+        if pd.isna(row[0]) or index <= 1:  # Skip header and empty rows
+            continue
 
-        # Process each row in the DataFrame
-        for _, row in sheet_data.iterrows():
-            service_description = row['Service description']
-            ms_drg = 'X' if row['Ms-DRG'] == 'X' else ''
-            rev_code = row['Rev code'] if pd.notna(row['Rev code']) else ''
-            icd_cpt = row['CPT'] if pd.notna(row['CPT']) else ''
-            coding_def = row['coding/def'] if pd.notna(row['coding/def']) else ''
-            
-            for idx, provider in enumerate(provider_names):
-                amount_rate = row.iloc[8 + idx] if pd.notna(row.iloc[8 + idx]) and '%' in str(row.iloc[8 + idx]) else ''
-                amount = row.iloc[8 + idx] if pd.notna(row.iloc[8 + idx]) and '$' in str(row.iloc[8 + idx]) else ''
+        # Extract common data
+        service_desc = service_description
+        ms_drg = 'X' if 'X' in str(row['Ms-DRG']) else ''
+        rev_code = 'X' if 'X' in str(row['Rev code']) else ''
+        cpt = 'X' if 'X' in str(row['CPT']) else ''
 
-                output_data.append([
-                    sheet_name, provider, service_description, ms_drg, rev_code, '', icd_cpt, coding_def, amount_rate, amount
-                ])
+        # Split coding/def column into individual codes
+        coding_def_values = str(row['coding/def']).split(' AND ')
 
-    # Convert output data to DataFrame
-    output_df = pd.DataFrame(output_data, columns=[
-        'Sheet Name', 'Provider', 'Service Description', 'Ms-DRG', 'Rev Code', 'ICD9,ICD10', 'CPT', 'Coding/Def', 'Amount Rate', 'Amount'
-    ])
+        # Process each provider column
+        for provider_col in provider_cols:
+            provider_name = provider_col
+            rate = row[provider_col]
 
-    return output_df
+            for code in coding_def_values:
+                code = code.strip()
 
-# Example usage
-file_path = "path_to_your_excel_file.xlsx"
-output_df = extract_data_from_excel(file_path)
-output_df.to_csv("output_table.csv", index=False)  # Save to CSV if needed
-print(output_df)
+                # Split complex codes (e.g., RC 682-100) into separate rows
+                for sub_code in code.split(','):
+                    sub_code = sub_code.strip()
+
+                    processed_data.append({
+                        'Sheet Name': sheet_name,
+                        'Provider': provider_name,
+                        'Service Description': service_desc,
+                        'Ms-DRG': ms_drg,
+                        'Rev Code': rev_code,
+                        'ICD9,ICD10': '',
+                        'CPT': cpt,
+                        'Coding/Def': sub_code,
+                        'Amount Rate': rate,
+                        'Amount': row['putuam hospital'] if provider_col == 'putuam hospital' else ''
+                    })
+
+    return processed_data
+
+# Read the Excel file
+input_file = 'your_excel_file.xlsx'
+output_file = 'transformed_data.xlsx'
+excel_data = pd.ExcelFile(input_file)
+
+# Process all sheets
+all_data = []
+for sheet_name in excel_data.sheet_names:
+    df = excel_data.parse(sheet_name)
+    processed_data = process_sheet(sheet_name, df)
+    all_data.extend(processed_data)
+
+# Convert to DataFrame and save to Excel
+output_df = pd.DataFrame(all_data)
+output_df.to_excel(output_file, index=False)
+
+print(f"Data transformed and saved to {output_file}")
