@@ -1,11 +1,11 @@
 import pandas as pd
 
 # Load the Excel file with multiple sheets
-input_file = 'input_file.xlsx'  # Replace with your Excel file name
+input_file = 'input_file.xlsx'  # Replace with your actual Excel file path
 output_file = 'output_file.xlsx'
 
 # Load all sheets from the Excel file into a dictionary of DataFrames
-sheets = pd.read_excel(input_file, sheet_name=None, header=None)  # header=None will not use the first row as headers
+sheets = pd.read_excel(input_file, sheet_name=None, header=None)  # Load without headers to inspect the data
 
 # Define exact keywords for standard columns (columns we want to exclude)
 standard_column_keywords = [
@@ -27,22 +27,31 @@ print("Processing sheets...")
 for sheet_name, df in sheets.items():
     print(f"Processing sheet: {sheet_name}")
     
+    # Check if the sheet is empty or contains only headers
+    if df.isnull().all().all():
+        print(f"Sheet '{sheet_name}' is completely empty, skipping.")
+        continue
+    
     # Print first few rows to understand the structure
     print(f"First few rows of the sheet:\n{df.head()}")
     
     # Assume that the actual header row is in the 2nd or 3rd row (adjust if necessary)
-    # You may need to manually set the header row or identify it dynamically
-    header_row_index = 1  # Set to the row index where your header is located (0-indexed)
-
-    # Reload the sheet with the correct header row, skipping empty rows
-    df = pd.read_excel(input_file, sheet_name=sheet_name, header=header_row_index)
+    # Manually set the header row index to the appropriate value if necessary
+    header_row_index = 1  # Adjust if your header is elsewhere (0-based index)
     
+    # Reload the sheet with the correct header row, skipping any leading empty rows
+    try:
+        df = pd.read_excel(input_file, sheet_name=sheet_name, header=header_row_index)
+    except Exception as e:
+        print(f"Error loading sheet {sheet_name}: {e}")
+        continue  # Skip the current sheet if there's an error
+
     # After loading, ensure the column names are standardized by stripping extra spaces
     df.columns = df.columns.str.strip()
 
-    # Check if there is any data in the dataframe (not just headers)
+    # Check if the sheet actually has any valid data
     if df.empty:
-        print(f"Sheet '{sheet_name}' is empty, skipping.")
+        print(f"Sheet '{sheet_name}' has no data, skipping.")
         continue
 
     # Identify provider columns dynamically by excluding standard columns
@@ -55,8 +64,8 @@ for sheet_name, df in sheets.items():
     
     # Process each sheet
     for index, row in df.iterrows():
-        # Check if there are valid data rows by ensuring 'Service Description' is not NaN
-        if pd.notna(row.get('Service Description')):  
+        # Only process rows that have a valid 'Service Description'
+        if pd.notna(row.get('Service Description')):
             # Debugging: Print row being processed
             print(f"Processing row {index}: {row.to_dict()}")
             
@@ -77,7 +86,7 @@ for sheet_name, df in sheets.items():
                         'Billed Charges/Percent': provider_value
                     })
 
-# Create a new DataFrame from the transformed data
+# Check if any transformed data exists and save it to Excel
 if transformed_data:
     transformed_df = pd.DataFrame(transformed_data)
     # Save the transformed data to a new Excel file
