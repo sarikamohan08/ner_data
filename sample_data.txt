@@ -1,71 +1,39 @@
 import pandas as pd
 
-# Define a function to process each sheet
-def process_sheet(sheet_name, df):
-    # Find the provider columns dynamically
-    provider_cols = [col for col in df.columns if 'hospital' in str(col).lower()]
-    
-    # Extract Service Description
-    service_description = df.iloc[0, 1]
+# Load the Excel file with multiple sheets
+input_file = 'input_file.xlsx'  # Replace with your Excel file name
+output_file = 'output_file.xlsx'
 
-    # List to store processed rows
-    processed_data = []
+# Load all sheets from the Excel file into a dictionary of DataFrames
+sheets = pd.read_excel(input_file, sheet_name=None)
 
-    # Iterate through the rows
+# Placeholder for transformed data
+transformed_data = []
+
+# Iterate through each sheet
+for sheet_name, df in sheets.items():
+    # Process each sheet
     for index, row in df.iterrows():
-        if pd.isna(row[0]) or index <= 1:  # Skip header and empty rows
-            continue
-
-        # Extract common data
-        service_desc = service_description
-        ms_drg = 'X' if 'X' in str(row['Ms-DRG']) else ''
-        rev_code = 'X' if 'X' in str(row['Rev code']) else ''
-        cpt = 'X' if 'X' in str(row['CPT']) else ''
-
-        # Split coding/def column into individual codes
-        coding_def_values = str(row['coding/def']).split(' AND ')
-
-        # Process each provider column
-        for provider_col in provider_cols:
-            provider_name = provider_col
-            rate = row[provider_col]
-
-            for code in coding_def_values:
-                code = code.strip()
-
-                # Split complex codes (e.g., RC 682-100) into separate rows
-                for sub_code in code.split(','):
-                    sub_code = sub_code.strip()
-
-                    processed_data.append({
-                        'Sheet Name': sheet_name,
-                        'Provider': provider_name,
-                        'Service Description': service_desc,
-                        'Ms-DRG': ms_drg,
-                        'Rev Code': rev_code,
-                        'ICD9,ICD10': '',
-                        'CPT': cpt,
-                        'Coding/Def': sub_code,
-                        'Amount Rate': rate,
-                        'Amount': row['putuam hospital'] if provider_col == 'putuam hospital' else ''
+        if pd.notna(row.get('Service description')):
+            # Repeat rows for each provider and multiple coding/def values
+            coding_values = str(row.get('coding/def', '')).split(' AND ')
+            for coding_value in coding_values:
+                for provider in ['Poinciana Hospital', 'Putuam Hospital', 'Osceola Hospital']:
+                    transformed_data.append({
+                        'Provider': provider,
+                        'Service Description': row.get('Service description'),
+                        'MS-DRG': row.get('Ms-DRG'),
+                        'Rev Code': row.get('Rev code'),
+                        'ICD9, ICD10': row.get('ICD9,ICD10'),
+                        'CPT': row.get('CPT'),
+                        'Coding/Def': coding_value.strip(),
+                        'Billed Charges/Percent': row.get(provider.lower())  # Assuming column names match providers
                     })
 
-    return processed_data
+# Create a new DataFrame from the transformed data
+transformed_df = pd.DataFrame(transformed_data)
 
-# Read the Excel file
-input_file = 'your_excel_file.xlsx'
-output_file = 'transformed_data.xlsx'
-excel_data = pd.ExcelFile(input_file)
+# Save the transformed data to a new Excel file
+transformed_df.to_excel(output_file, index=False)
 
-# Process all sheets
-all_data = []
-for sheet_name in excel_data.sheet_names:
-    df = excel_data.parse(sheet_name)
-    processed_data = process_sheet(sheet_name, df)
-    all_data.extend(processed_data)
-
-# Convert to DataFrame and save to Excel
-output_df = pd.DataFrame(all_data)
-output_df.to_excel(output_file, index=False)
-
-print(f"Data transformed and saved to {output_file}")
+print(f"Transformed data saved to {output_file}")
