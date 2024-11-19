@@ -7,22 +7,39 @@ output_file = 'output_file.xlsx'
 # Load all sheets from the Excel file into a dictionary of DataFrames
 sheets = pd.read_excel(input_file, sheet_name=None)
 
+# Define keywords for standard columns (columns we want to exclude)
+standard_column_keywords = ['service description', 'ms-drg', 'rev code', 'icd9', 'icd10', 'cpt', 'coding/def']
+
 # Placeholder for transformed data
 transformed_data = []
 
+# Debugging: Track processing
+print("Processing sheets...")
+
 # Iterate through each sheet
 for sheet_name, df in sheets.items():
-    # Identify provider columns dynamically (excluding standard columns)
-    standard_columns = ['Line', 'Service description', 'descri[tion', 'Ms-DRG', 'Rev code', 'ICD9,ICD10', 'CPT', 'coding/def']
-    provider_columns = [col for col in df.columns if col not in standard_columns]
+    print(f"Processing sheet: {sheet_name}")
+    
+    # Identify provider columns dynamically by excluding standard columns
+    provider_columns = [
+        col for col in df.columns 
+        if not any(keyword.lower() in col.lower() for keyword in standard_column_keywords)
+    ]
+    
+    print(f"Detected provider columns: {provider_columns}")
     
     # Process each sheet
     for index, row in df.iterrows():
-        if pd.notna(row.get('Service description')):
-            # Repeat rows for each provider and multiple coding/def values
+        # Debugging: Print row being processed
+        print(f"Processing row {index}: {row.to_dict()}")
+        
+        if pd.notna(row.get('Service description')):  # Check if "Service description" is not NaN
+            # Split coding/def values and repeat rows
             coding_values = str(row.get('coding/def', '')).split(' AND ')
             for coding_value in coding_values:
                 for provider in provider_columns:
+                    provider_value = row.get(provider, None)
+                    # Add to the transformed data
                     transformed_data.append({
                         'Provider': provider,
                         'Service Description': row.get('Service description'),
@@ -31,13 +48,14 @@ for sheet_name, df in sheets.items():
                         'ICD9, ICD10': row.get('ICD9,ICD10'),
                         'CPT': row.get('CPT'),
                         'Coding/Def': coding_value.strip(),
-                        'Billed Charges/Percent': row.get(provider)
+                        'Billed Charges/Percent': provider_value
                     })
 
 # Create a new DataFrame from the transformed data
-transformed_df = pd.DataFrame(transformed_data)
-
-# Save the transformed data to a new Excel file
-transformed_df.to_excel(output_file, index=False)
-
-print(f"Transformed data saved to {output_file}")
+if transformed_data:
+    transformed_df = pd.DataFrame(transformed_data)
+    # Save the transformed data to a new Excel file
+    transformed_df.to_excel(output_file, index=False)
+    print(f"Transformed data saved to {output_file}")
+else:
+    print("No data was transformed. Check input file for data issues.")
