@@ -1,71 +1,98 @@
 import pandas as pd
 
-# Define a function to process each sheet
-def process_sheet(sheet_name, df):
-    # Find the provider columns dynamically
-    provider_cols = [col for col in df.columns if 'hospital' in str(col).lower()]
+def transform_data_with_dynamic_headers(input_file, output_file):
+    # Load the entire Excel file without assuming a header
+    raw_df = pd.read_excel(input_file, header=None)
+
+    # Identify the header row dynamically
+    header_row_index = None
+    for idx, row in raw_df.iterrows():
+        if set(["Line", "Service description", "Ms-DRG", "Rev code", "ICD9,ICD10", "CPT", "coding/def"]).issubset(row.values):
+            header_row_index = idx
+            break
+
+    if header_row_index is None:
+        raise ValueError("Could not find the header row with expected columns.")
+
+    # Re-read the Excel file with the correct header row
+    df = pd.read_excel(input_file, header=header_row_index)
+
+    # Identify hospital columns dynamically
+    known_columns = ["Line", "Service description", "Ms-DRG", "Rev code", "ICD9,ICD10", "CPT", "coding/def"]
+    hospital_columns = [col for col in df.columns if col not in known_columns]
     
-    # Extract Service Description
-    service_description = df.iloc[0, 1]
-
-    # List to store processed rows
-    processed_data = []
-
-    # Iterate through the rows
-    for index, row in df.iterrows():
-        if pd.isna(row[0]) or index <= 1:  # Skip header and empty rows
-            continue
-
-        # Extract common data
-        service_desc = service_description
-        ms_drg = 'X' if 'X' in str(row['Ms-DRG']) else ''
-        rev_code = 'X' if 'X' in str(row['Rev code']) else ''
-        cpt = 'X' if 'X' in str(row['CPT']) else ''
-
-        # Split coding/def column into individual codes
-        coding_def_values = str(row['coding/def']).split(' AND ')
-
-        # Process each provider column
-        for provider_col in provider_cols:
-            provider_name = provider_col
-            rate = row[provider_col]
-
-            for code in coding_def_values:
-                code = code.strip()
-
-                # Split complex codes (e.g., RC 682-100) into separate rows
-                for sub_code in code.split(','):
-                    sub_code = sub_code.strip()
-
-                    processed_data.append({
-                        'Sheet Name': sheet_name,
-                        'Provider': provider_name,
-                        'Service Description': service_desc,
-                        'Ms-DRG': ms_drg,
-                        'Rev Code': rev_code,
-                        'ICD9,ICD10': '',
-                        'CPT': cpt,
-                        'Coding/Def': sub_code,
-                        'Amount Rate': rate,
-                        'Amount': row['putuam hospital'] if provider_col == 'putuam hospital' else ''
+    # Initialize a list to hold output rows
+    output = []
+    
+    # Iterate over each row in the DataFrame
+    for _, row in df.iterrows():
+        # Extract service description, Ms-DRG, Rev code, etc., from the known columns
+        service_description = row.get("Service description", "")
+        ms_drg = row.get("Ms-DRG", "")
+        rev_code = row.get("Rev code", "")
+        icd_code = row.get("ICD9,ICD10", "")
+        cpt = row.get("CPT", "")
+        coding_def = str(row.get("coding/def", "")).split(",")  # Split codes if present
+        
+        # For each hospital, create rows for `coding_def`, `Rev code`, and `CPT` codes
+        for hospital_col in hospital_columns:
+            provider = hospital_col.strip()  # Get the provider name dynamically from the column
+            rate_or_amount = row[hospital_col]
+            
+            # Expand `coding_def` codes for the current provider
+            for code in coding_def:
+                output.append({
+                    "Sheet Name": "Sheet1",
+                    "Provider": provider,
+                    "Service Description": service_description,
+                    "Ms-DRG": "X" if ms_drg else "",
+                    "Rev Code": "",
+                    "ICD9,ICD10": "",
+                    "CPT": "",
+                    "Coding/Def": code.strip(),
+                    "Amount Rate": rate_or_amount if isinstance(rate_or_amount, str) and '%' in rate_or_amount else "",
+                    "Amount": "" if isinstance(rate_or_amount, str) and '%' in rate_or_amount else rate_or_amount
+                })
+            
+            # Expand `Rev Code` codes if present for the current provider
+            for rev in str(rev_code).split(","):
+                if rev.strip():  # Skip empty values
+                    output.append({
+                        "Sheet Name": "Sheet1",
+                        "Provider": provider,
+                        "Service Description": service_description,
+                        "Ms-DRG": "",
+                        "Rev Code": "X",
+                        "ICD9,ICD10": "",
+                        "CPT": "",
+                        "Coding/Def": rev.strip(),
+                        "Amount Rate": rate_or_amount if isinstance(rate_or_amount, str) and '%' in rate_or_amount else "",
+                        "Amount": "" if isinstance(rate_or_amount, str) and '%' in rate_or_amount else rate_or_amount
                     })
+            
+            # Expand `CPT` codes if present for the current provider
+            for cpt_code in str(cpt).split(","):
+                if cpt_code.strip():  # Skip empty values
+                    output.append({
+                        "Sheet Name": "Sheet1",
+                        "Provider": provider,
+                        "Service Description": service_description,
+                        "Ms-DRG": "",
+                        "Rev Code": "",
+                        "ICD9,ICD10": "",
+                        "CPT": "X",
+                        "Coding/Def": "CPT " + cpt_code.strip(),
+                        "Amount Rate": rate_or_amount if isinstance(rate_or_amount, str) and '%' in rate_or_amount else "",
+                        "Amount": "" if isinstance(rate_or_amount, str) and '%' in rate_or_amount else rate_or_amount
+                    })
+    
+    # Create a DataFrame from the output list
+    output_df = pd.DataFrame(output)
+    
+    # Save the transformed data to a new Excel file
+    output_df.to_excel(output_file, index=False)
 
-    return processed_data
-
-# Read the Excel file
-input_file = 'your_excel_file.xlsx'
-output_file = 'transformed_data.xlsx'
-excel_data = pd.ExcelFile(input_file)
-
-# Process all sheets
-all_data = []
-for sheet_name in excel_data.sheet_names:
-    df = excel_data.parse(sheet_name)
-    processed_data = process_sheet(sheet_name, df)
-    all_data.extend(processed_data)
-
-# Convert to DataFrame and save to Excel
-output_df = pd.DataFrame(all_data)
-output_df.to_excel(output_file, index=False)
-
-print(f"Data transformed and saved to {output_file}")
+# Example usage
+input_file = 'input_data_with_dynamic_headers.xlsx'  # Path to the input Excel file
+output_file = 'transformed_output.xlsx'  # Path to save the transformed output
+transform_data_with_dynamic_headers(input_file, output_file)
