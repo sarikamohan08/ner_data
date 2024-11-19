@@ -1,98 +1,49 @@
 import pandas as pd
 
-def transform_data_with_dynamic_headers(input_file, output_file):
-    # Load the entire Excel file without assuming a header
-    raw_df = pd.read_excel(input_file, header=None)
+def extract_data_from_excel(file_path):
+    # Load the Excel file with multiple sheets
+    excel_data = pd.ExcelFile(file_path)
+    output_data = []
 
-    # Identify the header row dynamically
-    header_row_index = None
-    for idx, row in raw_df.iterrows():
-        if set(["Line", "Service description", "Ms-DRG", "Rev code", "ICD9,ICD10", "CPT", "coding/def"]).issubset(row.values):
-            header_row_index = idx
-            break
+    for sheet_name in excel_data.sheet_names:
+        # Load the sheet into a DataFrame
+        sheet_data = pd.read_excel(file_path, sheet_name=sheet_name, header=None)
 
-    if header_row_index is None:
-        raise ValueError("Could not find the header row with expected columns.")
-
-    # Re-read the Excel file with the correct header row
-    df = pd.read_excel(input_file, header=header_row_index)
-
-    # Identify hospital columns dynamically
-    known_columns = ["Line", "Service description", "Ms-DRG", "Rev code", "ICD9,ICD10", "CPT", "coding/def"]
-    hospital_columns = [col for col in df.columns if col not in known_columns]
-    
-    # Initialize a list to hold output rows
-    output = []
-    
-    # Iterate over each row in the DataFrame
-    for _, row in df.iterrows():
-        # Extract service description, Ms-DRG, Rev code, etc., from the known columns
-        service_description = row.get("Service description", "")
-        ms_drg = row.get("Ms-DRG", "")
-        rev_code = row.get("Rev code", "")
-        icd_code = row.get("ICD9,ICD10", "")
-        cpt = row.get("CPT", "")
-        coding_def = str(row.get("coding/def", "")).split(",")  # Split codes if present
+        # Locate header row dynamically
+        header_row = sheet_data[sheet_data.apply(lambda row: row.str.contains("Line", na=False).any(), axis=1)].index[0]
         
-        # For each hospital, create rows for `coding_def`, `Rev code`, and `CPT` codes
-        for hospital_col in hospital_columns:
-            provider = hospital_col.strip()  # Get the provider name dynamically from the column
-            rate_or_amount = row[hospital_col]
+        # Extract provider names
+        provider_names = sheet_data.iloc[header_row + 1, 8:].dropna().tolist()
+        
+        # Set columns based on header row
+        sheet_data.columns = sheet_data.iloc[header_row]
+        sheet_data = sheet_data.iloc[header_row + 2:]  # Exclude header rows
+
+        # Process each row in the DataFrame
+        for _, row in sheet_data.iterrows():
+            service_description = row['Service description']
+            ms_drg = 'X' if row['Ms-DRG'] == 'X' else ''
+            rev_code = row['Rev code'] if pd.notna(row['Rev code']) else ''
+            icd_cpt = row['CPT'] if pd.notna(row['CPT']) else ''
+            coding_def = row['coding/def'] if pd.notna(row['coding/def']) else ''
             
-            # Expand `coding_def` codes for the current provider
-            for code in coding_def:
-                output.append({
-                    "Sheet Name": "Sheet1",
-                    "Provider": provider,
-                    "Service Description": service_description,
-                    "Ms-DRG": "X" if ms_drg else "",
-                    "Rev Code": "",
-                    "ICD9,ICD10": "",
-                    "CPT": "",
-                    "Coding/Def": code.strip(),
-                    "Amount Rate": rate_or_amount if isinstance(rate_or_amount, str) and '%' in rate_or_amount else "",
-                    "Amount": "" if isinstance(rate_or_amount, str) and '%' in rate_or_amount else rate_or_amount
-                })
-            
-            # Expand `Rev Code` codes if present for the current provider
-            for rev in str(rev_code).split(","):
-                if rev.strip():  # Skip empty values
-                    output.append({
-                        "Sheet Name": "Sheet1",
-                        "Provider": provider,
-                        "Service Description": service_description,
-                        "Ms-DRG": "",
-                        "Rev Code": "X",
-                        "ICD9,ICD10": "",
-                        "CPT": "",
-                        "Coding/Def": rev.strip(),
-                        "Amount Rate": rate_or_amount if isinstance(rate_or_amount, str) and '%' in rate_or_amount else "",
-                        "Amount": "" if isinstance(rate_or_amount, str) and '%' in rate_or_amount else rate_or_amount
-                    })
-            
-            # Expand `CPT` codes if present for the current provider
-            for cpt_code in str(cpt).split(","):
-                if cpt_code.strip():  # Skip empty values
-                    output.append({
-                        "Sheet Name": "Sheet1",
-                        "Provider": provider,
-                        "Service Description": service_description,
-                        "Ms-DRG": "",
-                        "Rev Code": "",
-                        "ICD9,ICD10": "",
-                        "CPT": "X",
-                        "Coding/Def": "CPT " + cpt_code.strip(),
-                        "Amount Rate": rate_or_amount if isinstance(rate_or_amount, str) and '%' in rate_or_amount else "",
-                        "Amount": "" if isinstance(rate_or_amount, str) and '%' in rate_or_amount else rate_or_amount
-                    })
-    
-    # Create a DataFrame from the output list
-    output_df = pd.DataFrame(output)
-    
-    # Save the transformed data to a new Excel file
-    output_df.to_excel(output_file, index=False)
+            for idx, provider in enumerate(provider_names):
+                amount_rate = row.iloc[8 + idx] if pd.notna(row.iloc[8 + idx]) and '%' in str(row.iloc[8 + idx]) else ''
+                amount = row.iloc[8 + idx] if pd.notna(row.iloc[8 + idx]) and '$' in str(row.iloc[8 + idx]) else ''
+
+                output_data.append([
+                    sheet_name, provider, service_description, ms_drg, rev_code, '', icd_cpt, coding_def, amount_rate, amount
+                ])
+
+    # Convert output data to DataFrame
+    output_df = pd.DataFrame(output_data, columns=[
+        'Sheet Name', 'Provider', 'Service Description', 'Ms-DRG', 'Rev Code', 'ICD9,ICD10', 'CPT', 'Coding/Def', 'Amount Rate', 'Amount'
+    ])
+
+    return output_df
 
 # Example usage
-input_file = 'input_data_with_dynamic_headers.xlsx'  # Path to the input Excel file
-output_file = 'transformed_output.xlsx'  # Path to save the transformed output
-transform_data_with_dynamic_headers(input_file, output_file)
+file_path = "path_to_your_excel_file.xlsx"
+output_df = extract_data_from_excel(file_path)
+output_df.to_csv("output_table.csv", index=False)  # Save to CSV if needed
+print(output_df)
