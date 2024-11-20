@@ -51,7 +51,9 @@ for sheet_name, df in sheets_dict.items():
             cpt_code = row.get('CPT', '')  # Get 'CPT' column if it exists
             icd_codes = row['ICD9,ICD10']
             notes = row.get('Notes', '')  # Get 'Notes' if it exists, otherwise default to an empty string
-            coding_defs = row['coding/def'].split(',')  # Split coding/def on commas
+            
+            # Split coding/def on both commas and AND
+            coding_defs = re.split(r',|\bAND\b', row['coding/def'])
             
             # Loop through each dynamically identified provider column and create rows for each
             for provider in provider_columns:
@@ -71,25 +73,27 @@ for sheet_name, df in sheets_dict.items():
                 cpt_marked = 'X' if pd.notnull(cpt_code) else None
                 
                 for coding_def in coding_defs:
-                    # Evaluate RC_ind and CPT_ind
-                    rc_ind, cpt_ind = evaluate_conditions(coding_def, rev_code_marked, cpt_marked)
-                    
-                    # Append the row with all fields
-                    all_reshaped_data.append({
-                        'Sheet Name': sheet_name,  # Add sheet name for reference
-                        'Provider': provider_name,
-                        'Service Description': service_description,
-                        'Ms-DRG': 'X' if pd.notnull(ms_drg) else '',
-                        'Rev Code': 'X' if pd.notnull(rev_code) else '',
-                        'CPT': 'X' if pd.notnull(cpt_code) else '',
-                        'ICD9,ICD10': icd_codes,
-                        'Coding/Def': coding_def.strip(),
-                        'RC_ind': rc_ind,
-                        'CPT_ind': cpt_ind,
-                        'Notes': notes,
-                        'Amount Rate': amount_rate,
-                        'Amount': amount
-                    })
+                    coding_def = coding_def.strip()  # Clean whitespace
+                    if coding_def:  # Skip empty values
+                        # Evaluate RC_ind and CPT_ind
+                        rc_ind, cpt_ind = evaluate_conditions(coding_def, rev_code_marked, cpt_marked)
+                        
+                        # Append the row with all fields
+                        all_reshaped_data.append({
+                            'Sheet Name': sheet_name,  # Add sheet name for reference
+                            'Provider': provider_name,
+                            'Service Description': service_description,
+                            'Ms-DRG': 'X' if pd.notnull(ms_drg) else '',
+                            'Rev Code': 'X' if pd.notnull(rev_code) else '',
+                            'CPT': 'X' if pd.notnull(cpt_code) else '',
+                            'ICD9,ICD10': icd_codes,
+                            'Coding/Def': coding_def,
+                            'RC_ind': rc_ind,
+                            'CPT_ind': cpt_ind,
+                            'Notes': notes,
+                            'Amount Rate': amount_rate,
+                            'Amount': amount
+                        })
     else:
         print(f"No header row found in sheet: {sheet_name}. Skipping.")
 
@@ -101,6 +105,6 @@ print("Transformed Data:")
 print(reshaped_df.head())
 
 # Optionally, save the reshaped data to a new Excel file
-output_file = "reshaped_output_with_indicators.xlsx"
+output_file = "reshaped_output_with_and_split.xlsx"
 reshaped_df.to_excel(output_file, index=False)
 print(f"Reshaped data saved to: {output_file}")
