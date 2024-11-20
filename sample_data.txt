@@ -38,10 +38,11 @@ for sheet_name, df in sheets_dict.items():
         
         # Process each row in the filtered DataFrame
         for index, row in df_filtered.iterrows():
-            # Extract service description, ms-DRG, rev code, ICD9/ICD10, and notes
+            # Extract service description, ms-DRG, rev code, CPT, ICD9/ICD10, and notes
             service_description = row['Service description']
             ms_drg = row['Ms-DRG']
             rev_code = row['Rev code']
+            cpt_code = row.get('CPT', '')  # Get 'CPT' column if it exists
             icd_codes = row['ICD9,ICD10']
             notes = row.get('Notes', '')  # Get 'Notes' if it exists, otherwise default to an empty string
             
@@ -62,8 +63,8 @@ for sheet_name, df in sheets_dict.items():
                 amount = amount.group(0) if amount else ''
                 
                 for coding_def in coding_defs:
-                    # If both Ms-DRG and Rev Code are present, create two rows
-                    if pd.notnull(ms_drg) and pd.notnull(rev_code):
+                    # If Ms-DRG, Rev Code, and CPT are all present, create multiple rows
+                    if pd.notnull(ms_drg) and pd.notnull(rev_code) and pd.notnull(cpt_code):
                         # Row with Ms-DRG
                         all_reshaped_data.append({
                             'Sheet Name': sheet_name,  # Add sheet name for reference
@@ -71,6 +72,7 @@ for sheet_name, df in sheets_dict.items():
                             'Service Description': service_description,
                             'Ms-DRG': 'X',  # Place "X" in Ms-DRG column
                             'Rev Code': '',  # Leave Rev Code blank
+                            'CPT': '',  # Leave CPT blank
                             'ICD9,ICD10': icd_codes,
                             'Coding/Def': coding_def.strip(),
                             'Notes': notes,
@@ -84,6 +86,21 @@ for sheet_name, df in sheets_dict.items():
                             'Service Description': service_description,
                             'Ms-DRG': '',  # Leave Ms-DRG blank
                             'Rev Code': 'X',  # Place "X" in Rev Code column
+                            'CPT': '',  # Leave CPT blank
+                            'ICD9,ICD10': icd_codes,
+                            'Coding/Def': coding_def.strip(),
+                            'Notes': notes,
+                            'Amount Rate': amount_rate,
+                            'Amount': amount
+                        })
+                        # Row with CPT
+                        all_reshaped_data.append({
+                            'Sheet Name': sheet_name,  # Add sheet name for reference
+                            'Provider': provider_name,
+                            'Service Description': service_description,
+                            'Ms-DRG': '',  # Leave Ms-DRG blank
+                            'Rev Code': '',  # Leave Rev Code blank
+                            'CPT': 'X',  # Place "X" in CPT column
                             'ICD9,ICD10': icd_codes,
                             'Coding/Def': coding_def.strip(),
                             'Notes': notes,
@@ -91,13 +108,14 @@ for sheet_name, df in sheets_dict.items():
                             'Amount': amount
                         })
                     else:
-                        # Single row if only one of Ms-DRG or Rev Code is present
+                        # Single row if only one of Ms-DRG, Rev Code, or CPT is present
                         all_reshaped_data.append({
                             'Sheet Name': sheet_name,  # Add sheet name for reference
                             'Provider': provider_name,
                             'Service Description': service_description,
                             'Ms-DRG': ms_drg if pd.notnull(ms_drg) else '',
                             'Rev Code': rev_code if pd.notnull(rev_code) else '',
+                            'CPT': cpt_code if pd.notnull(cpt_code) else '',
                             'ICD9,ICD10': icd_codes,
                             'Coding/Def': coding_def.strip(),
                             'Notes': notes,
@@ -115,6 +133,6 @@ print("Transformed Data:")
 print(reshaped_df.head())
 
 # Optionally, save the reshaped data to a new Excel file
-output_file = "reshaped_output_with_amounts.xlsx"
+output_file = "reshaped_output_with_cpt.xlsx"
 reshaped_df.to_excel(output_file, index=False)
 print(f"Reshaped data saved to: {output_file}")
