@@ -60,7 +60,28 @@ for sheet_name, df in sheets_dict.items():
                 amount_rate = amount_rate.group(1) if amount_rate else ''
                 amount = amount.group(0) if amount else ''
                 
-                # Create a single row for each provider
+                # Create the new indicators RC_ind and CPT_ind
+                rc_ind = None
+                cpt_ind = None
+                
+                # RC_ind: Mark as 1 if RC conditions are met
+                if (
+                    re.search(r"RC\b", coding_def) or
+                    re.search(r"AND RC \d{3}", coding_def) or
+                    re.search(r"\d{3}-\d{3}", coding_def)
+                ) and rev_code == 'X':
+                    rc_ind = 1
+                
+                # CPT_ind: Mark as 1 if CPT conditions are met
+                if (
+                    re.search(r"CPT\b", coding_def) or
+                    re.search(r"AND CPT \d{5}", coding_def) or
+                    re.search(r"\d{5}-\d{5}", coding_def) or
+                    re.search(r"\b\w{6}\b", coding_def)
+                ) and cpt_code == 'X':
+                    cpt_ind = 1
+                
+                # Append the transformed data
                 all_reshaped_data.append({
                     'Sheet Name': sheet_name,  # Add sheet name for reference
                     'Provider': provider_name,
@@ -72,7 +93,9 @@ for sheet_name, df in sheets_dict.items():
                     'Coding/Def': coding_def.strip(),
                     'Notes': notes,
                     'Amount Rate': amount_rate,
-                    'Amount': amount
+                    'Amount': amount,
+                    'RC_ind': rc_ind,  # Include the RC_ind column
+                    'CPT_ind': cpt_ind  # Include the CPT_ind column
                 })
     else:
         print(f"No header row found in sheet: {sheet_name}. Skipping.")
@@ -85,6 +108,6 @@ print("Transformed Data:")
 print(reshaped_df.head())
 
 # Optionally, save the reshaped data to a new Excel file
-output_file = "reshaped_output_no_split.xlsx"
+output_file = "reshaped_output_with_indicators.xlsx"
 reshaped_df.to_excel(output_file, index=False)
 print(f"Reshaped data saved to: {output_file}")
