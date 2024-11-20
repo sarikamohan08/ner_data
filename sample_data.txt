@@ -1,96 +1,120 @@
 import pandas as pd
+import re
 
-# Load the Excel file with multiple sheets
-input_file = 'input_file.xlsx'  # Replace with your actual Excel file path
-output_file = 'output_file.xlsx'
+# Load the Excel file and read all sheets into a dictionary of DataFrames
+excel_file = "your_file.xlsx"  # Replace with the path to your Excel file
+sheets_dict = pd.read_excel(excel_file, sheet_name=None, header=None)  # Load without headers for inspection
 
-# Load all sheets from the Excel file into a dictionary of DataFrames
-sheets = pd.read_excel(input_file, sheet_name=None, header=None)  # Load without headers to inspect the data
+# Initialize a list to collect reshaped data from all sheets
+all_reshaped_data = []
 
-# Define exact keywords for standard columns (columns we want to exclude)
-standard_column_keywords = [
-    'Service Description', 
-    'MS-DRG', 
-    'Rev Code', 
-    'ICD9/I CD10', 
-    'CPT', 
-    'Coding/Definition'
-]
+# Define a helper function to find the header row
+def find_header_row(df, keyword='coding/def'):
+    for i, row in df.iterrows():
+        if keyword.lower() in [str(cell).lower() for cell in row.values]:
+            return i
+    return None
 
-# Placeholder for transformed data
-transformed_data = []
-
-# Debugging: Track processing
-print("Processing sheets...")
-
-# Iterate through each sheet
-for sheet_name, df in sheets.items():
+# Loop through each sheet's DataFrame in the dictionary
+for sheet_name, df in sheets_dict.items():
     print(f"Processing sheet: {sheet_name}")
     
-    # Check if the sheet is empty or contains only headers
-    if df.isnull().all().all():
-        print(f"Sheet '{sheet_name}' is completely empty, skipping.")
-        continue
+    # Find the header row in the current sheet
+    header_row = find_header_row(df)
     
-    # Print first few rows to understand the structure
-    print(f"First few rows of the sheet:\n{df.head()}")
-    
-    # Assume that the actual header row is in the 2nd or 3rd row (adjust if necessary)
-    # Manually set the header row index to the appropriate value if necessary
-    header_row_index = 1  # Adjust if your header is elsewhere (0-based index)
-    
-    # Reload the sheet with the correct header row, skipping any leading empty rows
-    try:
-        df = pd.read_excel(input_file, sheet_name=sheet_name, header=header_row_index)
-    except Exception as e:
-        print(f"Error loading sheet {sheet_name}: {e}")
-        continue  # Skip the current sheet if there's an error
-
-    # After loading, ensure the column names are standardized by stripping extra spaces
-    df.columns = df.columns.str.strip()
-
-    # Check if the sheet actually has any valid data
-    if df.empty:
-        print(f"Sheet '{sheet_name}' has no data, skipping.")
-        continue
-
-    # Identify provider columns dynamically by excluding standard columns
-    provider_columns = [
-        col for col in df.columns
-        if col not in standard_column_keywords
-    ]
-    
-    print(f"Detected provider columns: {provider_columns}")
-    
-    # Process each sheet
-    for index, row in df.iterrows():
-        # Only process rows that have a valid 'Service Description'
-        if pd.notna(row.get('Service Description')):
-            # Debugging: Print row being processed
-            print(f"Processing row {index}: {row.to_dict()}")
+    if header_row is not None:
+        # Reload the sheet using the found header row
+        df = pd.read_excel(excel_file, sheet_name=sheet_name, header=header_row)
+        print(f"Header found at row {header_row} for sheet {sheet_name}.")
+        
+        # Filter out rows where "coding/def" is empty or null
+        df_filtered = df[df['coding/def'].notnull() & (df['coding/def'] != '')]
+        
+        # Identify dynamic provider columns by selecting all columns after the "coding/def" column
+        start_column = df.columns.get_loc("coding/def") + 1  # Get index after "coding/def"
+        provider_columns = df.columns[start_column:]  # All columns after "coding/def"
+        
+        print(f"Provider columns detected: {list(provider_columns)}")
+        
+        # Process each row in the filtered DataFrame
+        for index, row in df_filtered.iterrows():
+            # Extract service description, ms-DRG, rev code, ICD9/ICD10, and notes
+            service_description = row['Service description']
+            ms_drg = row['Ms-DRG']
+            rev_code = row['Rev code']
+            icd_codes = row['ICD9,ICD10']
+            notes = row.get('Notes', '')  # Get 'Notes' if it exists, otherwise default to an empty string
             
-            # Split coding/def values and repeat rows
-            coding_values = str(row.get('Coding/Definition', '')).split(' AND ')
-            for coding_value in coding_values:
-                for provider in provider_columns:
-                    provider_value = row.get(provider, None)
-                    # Add to the transformed data
-                    transformed_data.append({
-                        'Provider': provider,
-                        'Service Description': row.get('Service Description'),
-                        'MS-DRG': row.get('MS-DRG'),
-                        'Rev Code': row.get('Rev Code'),
-                        'ICD9/I CD10': row.get('ICD9/I CD10'),
-                        'CPT': row.get('CPT'),
-                        'Coding/Definition': coding_value.strip(),
-                        'Billed Charges/Percent': provider_value
-                    })
+            # Separate coding definitions if multiple values are present
+            coding_defs = row['coding/def'].split(',') if pd.notnull(row['coding/def']) else ['']
+            
+            # Loop through each dynamically identified provider column and create rows for each
+            for provider in provider_columns:
+                provider_name = provider  # Use the column name as the provider name
+                provider_value = row[provider]  # Value in the provider's cell
+                
+                # Extract percentages and dollar amounts using regex
+                amount_rate = re.search(r'(\d+%)', str(provider_value))
+                amount = re.search(r'\$([\d,]+)', str(provider_value))
+                
+                # Store the matched values or default to empty if not found
+                amount_rate = amount_rate.group(1) if amount_rate else ''
+                amount = amount.group(0) if amount else ''
+                
+                for coding_def in coding_defs:
+                    # If both Ms-DRG and Rev Code are present, create two rows
+                    if pd.notnull(ms_drg) and pd.notnull(rev_code):
+                        # Row with Ms-DRG
+                        all_reshaped_data.append({
+                            'Sheet Name': sheet_name,  # Add sheet name for reference
+                            'Provider': provider_name,
+                            'Service Description': service_description,
+                            'Ms-DRG': 'X',  # Place "X" in Ms-DRG column
+                            'Rev Code': '',  # Leave Rev Code blank
+                            'ICD9,ICD10': icd_codes,
+                            'Coding/Def': coding_def.strip(),
+                            'Notes': notes,
+                            'Amount Rate': amount_rate,
+                            'Amount': amount
+                        })
+                        # Row with Rev Code
+                        all_reshaped_data.append({
+                            'Sheet Name': sheet_name,  # Add sheet name for reference
+                            'Provider': provider_name,
+                            'Service Description': service_description,
+                            'Ms-DRG': '',  # Leave Ms-DRG blank
+                            'Rev Code': 'X',  # Place "X" in Rev Code column
+                            'ICD9,ICD10': icd_codes,
+                            'Coding/Def': coding_def.strip(),
+                            'Notes': notes,
+                            'Amount Rate': amount_rate,
+                            'Amount': amount
+                        })
+                    else:
+                        # Single row if only one of Ms-DRG or Rev Code is present
+                        all_reshaped_data.append({
+                            'Sheet Name': sheet_name,  # Add sheet name for reference
+                            'Provider': provider_name,
+                            'Service Description': service_description,
+                            'Ms-DRG': ms_drg if pd.notnull(ms_drg) else '',
+                            'Rev Code': rev_code if pd.notnull(rev_code) else '',
+                            'ICD9,ICD10': icd_codes,
+                            'Coding/Def': coding_def.strip(),
+                            'Notes': notes,
+                            'Amount Rate': amount_rate,
+                            'Amount': amount
+                        })
+    else:
+        print(f"No header row found in sheet: {sheet_name}. Skipping.")
 
-# Check if any transformed data exists and save it to Excel
-if transformed_data:
-    transformed_df = pd.DataFrame(transformed_data)
-    # Save the transformed data to a new Excel file
-    transformed_df.to_excel(output_file, index=False)
-    print(f"Transformed data saved to {output_file}")
-else:
-    print("No data was transformed. Check input file for data issues.")
+# Convert the reshaped data to a single DataFrame
+reshaped_df = pd.DataFrame(all_reshaped_data)
+
+# Display the new DataFrame
+print("Transformed Data:")
+print(reshaped_df.head())
+
+# Optionally, save the reshaped data to a new Excel file
+output_file = "reshaped_output_with_amounts.xlsx"
+reshaped_df.to_excel(output_file, index=False)
+print(f"Reshaped data saved to: {output_file}")
