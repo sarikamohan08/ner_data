@@ -1,124 +1,45 @@
+import os
+import fitz  # PyMuPDF for extracting text from PDFs
 import pandas as pd
-import re
 
-# Load the Excel file and read all sheets into a dictionary of DataFrames
-excel_file = "your_file.xlsx"  # Replace with your Excel file path
-sheets_dict = pd.read_excel(excel_file, sheet_name=None, header=None)  # Load without headers for inspection
+def extract_text_from_pdf(pdf_path):
+    """
+    Extract text from a single PDF file.
+    :param pdf_path: Path to the PDF file.
+    :return: Extracted text as a string.
+    """
+    text = ""
+    try:
+        with fitz.open(pdf_path) as pdf:
+            for page_num in range(len(pdf)):
+                page = pdf[page_num]
+                text += page.get_text()
+    except Exception as e:
+        print(f"Error reading {pdf_path}: {e}")
+    return text
 
-# Initialize a list to collect reshaped data from all sheets
-all_reshaped_data = []
+def process_pdfs_in_folder(folder_path, output_excel):
+    """
+    Process all PDF files in a folder and save their content into an Excel file.
+    :param folder_path: Path to the folder containing PDF files.
+    :param output_excel: Path to save the output Excel file.
+    """
+    # List all PDF files in the folder
+    pdf_files = [f for f in os.listdir(folder_path) if f.lower().endswith('.pdf')]
+    data = []
 
-# Define a helper function to find the header row
-def find_header_row(df, keyword='coding/def'):
-    for i, row in df.iterrows():
-        if keyword.lower() in [str(cell).lower() for cell in row.values]:
-            return i
-    return None
+    for pdf_file in pdf_files:
+        pdf_path = os.path.join(folder_path, pdf_file)
+        print(f"Processing: {pdf_file}")
+        text = extract_text_from_pdf(pdf_path)
+        data.append({"File Name": pdf_file, "Content": text})
 
-# Define a helper function to extract the first effective date
-def extract_effective_date(df):
-    for i, row in df.iterrows():
-        for cell in row:
-            if isinstance(cell, str) and "effective date" in cell.lower():
-                # Try to extract a date from the same row or next column
-                date_match = re.search(r'\b\d{4}-\d{2}-\d{2}\b|\b\d{2}/\d{2}/\d{4}\b', str(row.values))
-                if date_match:
-                    return date_match.group(0)
-    return None  # Return None if no effective date is found
+    # Save the extracted data to an Excel file
+    df = pd.DataFrame(data)
+    df.to_excel(output_excel, index=False, engine='openpyxl')
+    print(f"Data saved to {output_excel}")
 
-# Function to evaluate RC_ind, CPT_ind, and DRG_ind conditions
-def evaluate_conditions(coding_def, rev_code_marked, cpt_marked, ms_drg_marked):
-    rc_condition = re.search(r"(RC\s|AND\sRC\s\d{3}|\d{3}-\d{3})", coding_def, re.IGNORECASE) and rev_code_marked
-    cpt_condition = re.search(r"(CPT\s|AND\sCPT\s\d{5}|\d{5}-\d{5}|[A-Za-z0-9]{6})", coding_def, re.IGNORECASE) and cpt_marked
-    drg_condition = re.search(r"\b\d{3}\b|\b\d{3}-\d{3}\b", coding_def, re.IGNORECASE) and ms_drg_marked
-    return int(bool(rc_condition)), int(bool(cpt_condition)), int(bool(drg_condition))
-
-# Loop through each sheet's DataFrame in the dictionary
-for sheet_name, df in sheets_dict.items():
-    print(f"Processing sheet: {sheet_name}")
-    effective_date = extract_effective_date(df)
-    print(f"Extracted Effective Date: {effective_date} for sheet {sheet_name}")
-    header_row = find_header_row(df)
-    
-    if header_row is not None:
-        df = pd.read_excel(excel_file, sheet_name=sheet_name, header=header_row)
-        print(f"Header found at row {header_row} for sheet {sheet_name}.")
-        df_filtered = df[df['coding/def'].notnull() & (df['coding/def'] != '')]
-        start_column = df.columns.get_loc("coding/def") + 1  # Get index after "coding/def"
-        provider_columns = df.columns[start_column:]  # All columns after "coding/def"
-        print(f"Provider columns detected: {list(provider_columns)}")
-        for index, row in df_filtered.iterrows():
-            # Extract service description, ms-DRG, rev code, CPT, ICD9/ICD10, and notes
-            service_description = row['Service description']
-            ms_drg = row['Ms-DRG']
-            rev_code = row['Rev Code']
-            cpt_code = row.get('CPT', '')  # Get 'CPT' column if it exists
-            icd_codes = row['ICD9,ICD10']
-            notes = row.get('Notes', '')  # Get 'Notes' if it exists, otherwise default to an empty string
-            
-            # Split coding/def on both commas and case-insensitive AND
-            coding_defs = re.split(r',|\b(?:AND|and)\b', row['coding/def'], flags=re.IGNORECASE)
-            
-            # Loop through each dynamically identified provider column and create rows for each
-            for provider in provider_columns:
-                provider_name = provider  # Use the column name as the provider name
-                provider_value = row[provider]  # Value in the provider's cell
-                
-                # Extract percentages and dollar amounts using regex
-                amount_rate = re.search(r'(\d+%)', str(provider_value))
-                amount = re.search(r'\$([\d,]+)', str(provider_value))
-                
-                # Store the matched values or default to empty if not found
-                amount_rate = amount_rate.group(1) if amount_rate else ''
-                amount = amount.group(0) if amount else ''
-                
-                # Mark indicators based on conditions
-                rev_code_marked = 'X' if pd.notnull(rev_code) else None
-                cpt_marked = 'X' if pd.notnull(cpt_code) else None
-                ms_drg_marked = 'X' if pd.notnull(ms_drg) else None
-                
-                for coding_def in coding_defs:
-                    coding_def = coding_def.strip()  # Clean whitespace
-                    if coding_def:  # Skip empty values
-                        # Evaluate RC_ind, CPT_ind, and DRG_ind
-                        rc_ind, cpt_ind, drg_ind = evaluate_conditions(coding_def, rev_code_marked, cpt_marked, ms_drg_marked)
-                        
-                        # Append the row with all fields
-                        all_reshaped_data.append({
-                            'Sheet Name': sheet_name,  # Add sheet name for reference
-                            'Effective Date': effective_date,  # Include the extracted effective date
-                            'Provider': provider_name,
-                            'Service Description': service_description,
-                            'Ms-DRG': 'X' if pd.notnull(ms_drg) else '',
-                            'Rev Code': 'X' if pd.notnull(rev_code) else '',
-                            'CPT': 'X' if pd.notnull(cpt_code) else '',
-                            'ICD9,ICD10': icd_codes,
-                            'Coding/Def': coding_def,
-                            'RC_ind': rc_ind,
-                            'CPT_ind': cpt_ind,
-                            'DRG_ind': drg_ind,
-                            'Notes': notes,
-                            'Amount Rate': amount_rate,
-                            'Amount': amount
-                        })
-
-# Convert the reshaped data to a single DataFrame
-reshaped_df = pd.DataFrame(all_reshaped_data)
-
-# Final processing: Split coding/def on '/' and repeat rows
-reshaped_final = reshaped_df.copy()
-reshaped_final = reshaped_final.assign(
-    **{
-        'Coding/Def': reshaped_final['Coding/Def']
-        .str.split('/')  # Split on '/'
-    }
-).explode('Coding/Def')  # Explode the DataFrame on the split column
-
-# Display the final DataFrame
-print("Transformed Data with Effective Date and / split:")
-print(reshaped_final.head())
-
-# Optionally, save the reshaped data to a new Excel file
-output_file = "reshaped_output_with_effective_date.xlsx"
-reshaped_final.to_excel(output_file, index=False)
-print(f"Reshaped data saved to: {output_file}")
+if __name__ == "__main__":
+    folder_path = input("Enter the folder path containing PDF files: ")
+    output_excel = input("Enter the output Excel file path (e.g., output.xlsx): ")
+    process_pdfs_in_folder(folder_path, output_excel)
