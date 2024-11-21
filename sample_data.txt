@@ -15,15 +15,31 @@ def find_header_row(df, keyword='coding/def'):
             return i
     return None
 
-# Function to evaluate RC_ind and CPT_ind conditions
-def evaluate_conditions(coding_def, rev_code_marked, cpt_marked):
+# Define a helper function to extract the first effective date
+def extract_effective_date(df):
+    for i, row in df.iterrows():
+        for cell in row:
+            if isinstance(cell, str) and "effective date" in cell.lower():
+                # Try to extract a date from the same row or next column
+                date_match = re.search(r'\b\d{4}-\d{2}-\d{2}\b|\b\d{2}/\d{2}/\d{4}\b', str(row.values))
+                if date_match:
+                    return date_match.group(0)
+    return None  # Return None if no effective date is found
+
+# Function to evaluate RC_ind, CPT_ind, and DRG_ind conditions
+def evaluate_conditions(coding_def, rev_code_marked, cpt_marked, ms_drg_marked):
     rc_condition = re.search(r"(RC\s|AND\sRC\s\d{3}|\d{3}-\d{3})", coding_def, re.IGNORECASE) and rev_code_marked
     cpt_condition = re.search(r"(CPT\s|AND\sCPT\s\d{5}|\d{5}-\d{5}|[A-Za-z0-9]{6})", coding_def, re.IGNORECASE) and cpt_marked
-    return int(bool(rc_condition)), int(bool(cpt_condition))
+    drg_condition = re.search(r"\b\d{3}\b|\b\d{3}-\d{3}\b", coding_def, re.IGNORECASE) and ms_drg_marked
+    return int(bool(rc_condition)), int(bool(cpt_condition)), int(bool(drg_condition))
 
 # Loop through each sheet's DataFrame in the dictionary
 for sheet_name, df in sheets_dict.items():
     print(f"Processing sheet: {sheet_name}")
+    
+    # Extract the effective date for this sheet
+    effective_date = extract_effective_date(df)
+    print(f"Extracted Effective Date: {effective_date} for sheet {sheet_name}")
     
     # Find the header row in the current sheet
     header_row = find_header_row(df)
@@ -52,8 +68,8 @@ for sheet_name, df in sheets_dict.items():
             icd_codes = row['ICD9,ICD10']
             notes = row.get('Notes', '')  # Get 'Notes' if it exists, otherwise default to an empty string
             
-            # Split coding/def on both commas and AND
-            coding_defs = re.split(r',|\bAND\b', row['coding/def'])
+            # Split coding/def on both commas and case-insensitive AND
+            coding_defs = re.split(r',|\b(?:AND|and)\b', row['coding/def'], flags=re.IGNORECASE)
             
             # Loop through each dynamically identified provider column and create rows for each
             for provider in provider_columns:
@@ -71,16 +87,18 @@ for sheet_name, df in sheets_dict.items():
                 # Mark indicators based on conditions
                 rev_code_marked = 'X' if pd.notnull(rev_code) else None
                 cpt_marked = 'X' if pd.notnull(cpt_code) else None
+                ms_drg_marked = 'X' if pd.notnull(ms_drg) else None
                 
                 for coding_def in coding_defs:
                     coding_def = coding_def.strip()  # Clean whitespace
                     if coding_def:  # Skip empty values
-                        # Evaluate RC_ind and CPT_ind
-                        rc_ind, cpt_ind = evaluate_conditions(coding_def, rev_code_marked, cpt_marked)
+                        # Evaluate RC_ind, CPT_ind, and DRG_ind
+                        rc_ind, cpt_ind, drg_ind = evaluate_conditions(coding_def, rev_code_marked, cpt_marked, ms_drg_marked)
                         
                         # Append the row with all fields
                         all_reshaped_data.append({
                             'Sheet Name': sheet_name,  # Add sheet name for reference
+                            'Effective Date': effective_date,  # Include the extracted effective date
                             'Provider': provider_name,
                             'Service Description': service_description,
                             'Ms-DRG': 'X' if pd.notnull(ms_drg) else '',
@@ -90,21 +108,29 @@ for sheet_name, df in sheets_dict.items():
                             'Coding/Def': coding_def,
                             'RC_ind': rc_ind,
                             'CPT_ind': cpt_ind,
+                            'DRG_ind': drg_ind,
                             'Notes': notes,
                             'Amount Rate': amount_rate,
                             'Amount': amount
                         })
-    else:
-        print(f"No header row found in sheet: {sheet_name}. Skipping.")
 
 # Convert the reshaped data to a single DataFrame
 reshaped_df = pd.DataFrame(all_reshaped_data)
 
-# Display the new DataFrame
-print("Transformed Data:")
-print(reshaped_df.head())
+# Final processing: Split coding/def on '/' and repeat rows
+reshaped_final = reshaped_df.copy()
+reshaped_final = reshaped_final.assign(
+    **{
+        'Coding/Def': reshaped_final['Coding/Def']
+        .str.split('/')  # Split on '/'
+    }
+).explode('Coding/Def')  # Explode the DataFrame on the split column
+
+# Display the final DataFrame
+print("Transformed Data with Effective Date and / split:")
+print(reshaped_final.head())
 
 # Optionally, save the reshaped data to a new Excel file
-output_file = "reshaped_output_with_and_split.xlsx"
-reshaped_df.to_excel(output_file, index=False)
+output_file = "reshaped_output_with_effective_date.xlsx"
+reshaped_final.to_excel(output_file, index=False)
 print(f"Reshaped data saved to: {output_file}")
