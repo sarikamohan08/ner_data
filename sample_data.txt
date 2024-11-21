@@ -36,29 +36,17 @@ def evaluate_conditions(coding_def, rev_code_marked, cpt_marked, ms_drg_marked):
 # Loop through each sheet's DataFrame in the dictionary
 for sheet_name, df in sheets_dict.items():
     print(f"Processing sheet: {sheet_name}")
-    
-    # Extract the effective date for this sheet
     effective_date = extract_effective_date(df)
     print(f"Extracted Effective Date: {effective_date} for sheet {sheet_name}")
-    
-    # Find the header row in the current sheet
     header_row = find_header_row(df)
     
     if header_row is not None:
-        # Reload the sheet using the found header row
         df = pd.read_excel(excel_file, sheet_name=sheet_name, header=header_row)
         print(f"Header found at row {header_row} for sheet {sheet_name}.")
-        
-        # Filter out rows where "coding/def" is empty or null
         df_filtered = df[df['coding/def'].notnull() & (df['coding/def'] != '')]
-        
-        # Identify dynamic provider columns by selecting all columns after the "coding/def" column
         start_column = df.columns.get_loc("coding/def") + 1  # Get index after "coding/def"
         provider_columns = df.columns[start_column:]  # All columns after "coding/def"
-        
         print(f"Provider columns detected: {list(provider_columns)}")
-        
-        # Process each row in the filtered DataFrame
         for index, row in df_filtered.iterrows():
             # Extract service description, ms-DRG, rev code, CPT, ICD9/ICD10, and notes
             service_description = row['Service description']
