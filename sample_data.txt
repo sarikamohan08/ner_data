@@ -1,153 +1,36 @@
 import os
-import pandas as pd
-import re
+from excel_processor import ExcelProcessor  # Assuming the class is saved in `excel_processor.py`
 
-class ExcelProcessor:
-    def __init__(self, folder_path):
-        self.folder_path = folder_path
-        self.all_reshaped_data = []
+def process_excel_files_in_folder(folder_path, output_folder):
+    """
+    Process all Excel files in the given folder and save outputs in the specified output folder.
+    
+    Args:
+        folder_path (str): Path to the folder containing Excel files.
+        output_folder (str): Path to the folder where processed files will be saved.
+    """
+    # Ensure the output folder exists
+    os.makedirs(output_folder, exist_ok=True)
+    
+    # Iterate through all files in the folder
+    for filename in os.listdir(folder_path):
+        if filename.endswith(".xlsx") or filename.endswith(".xls"):  # Check for Excel files
+            input_file_path = os.path.join(folder_path, filename)
+            output_file_path = os.path.join(output_folder, f"processed_{filename}")
+            
+            print(f"Processing file: {filename}")
+            
+            # Process the file using the ExcelProcessor class
+            try:
+                processor = ExcelProcessor(input_file_path)
+                processor.process_all_sheets()
+                processor.save_to_excel(output_file_path)
+                print(f"Processed and saved: {output_file_path}")
+            except Exception as e:
+                print(f"Error processing {filename}: {e}")
 
-    def find_header_row(self, df, keyword='coding/def'):
-        """
-        Find the header row based on a keyword.
-        """
-        for i, row in df.iterrows():
-            if keyword.lower() in [str(cell).lower() for cell in row.values]:
-                return i
-        return None
-
-    def extract_effective_date_range(self, df):
-        """
-        Extract the effective date range from the sheet.
-        """
-        for _, row in df.iterrows():
-            for cell in row:
-                if isinstance(cell, str) and "rate sheet" in cell.lower():
-                    # Extract the full date range using regex
-                    date_range_match = re.search(r'\d{2}/\d{2}/\d{4}-\d{2}/\d{2}/\d{4}', cell)
-                    if date_range_match:
-                        date_range = date_range_match.group(0)  # Full date range
-                        effective_date_from, effective_date_to = date_range.split('-')
-                        return effective_date_from.strip(), effective_date_to.strip()
-        return None, None
-
-    def evaluate_conditions(self, coding_def, rev_code_marked, cpt_marked, ms_drg_marked):
-        """
-        Evaluate indicators (RC_ind, CPT_ind, DRG_ind) based on conditions.
-        """
-        # RC_ind
-        rc_condition = re.search(r'RC\s\d{3}|RC\s\d{3}-\d{3}', coding_def, re.IGNORECASE)
-        rc_ind = 1 if rc_condition and rev_code_marked == 'X' else None
-
-        # CPT_ind
-        cpt_condition = re.search(r'CPT\s\d{5}|CPT\s[A-Z0-9]{6}', coding_def, re.IGNORECASE)
-        cpt_ind = 1 if cpt_condition and cpt_marked == 'X' else None
-
-        # DRG_ind
-        drg_condition = re.search(r'\b\d{3}\b|\b\d{3}-\d{3}\b', coding_def)
-        drg_ind = 1 if drg_condition and ms_drg_marked == 'X' else None
-
-        return rc_ind, cpt_ind, drg_ind
-
-    def process_sheet(self, file_name, sheet_name, df):
-        """
-        Process a single sheet.
-        """
-        # Extract effective date range
-        effective_date_from, effective_date_to = self.extract_effective_date_range(df)
-
-        # Find header row
-        header_row = self.find_header_row(df)
-        if header_row is None:
-            return  # Skip processing if no header row is found
-
-        # Reload sheet with header
-        df = pd.read_excel(os.path.join(self.folder_path, file_name), sheet_name=sheet_name, header=header_row)
-
-        # Filter rows where "coding/def" is not null or empty
-        df_filtered = df[df['coding/def'].notnull() & (df['coding/def'] != '')]
-
-        # Identify provider columns
-        start_column = df.columns.get_loc("coding/def") + 1
-        provider_columns = df.columns[start_column:]
-
-        # Process rows
-        for _, row in df_filtered.iterrows():
-            service_description = row['Service description']
-            ms_drg = row['Ms-DRG']
-            rev_code = row['Rev Code']
-            cpt_code = row.get('CPT', '')
-            icd_codes = row['ICD9,ICD10']
-            notes = row.get('Notes', '')
-
-            # Split coding/def on commas and "and"/"AND"
-            coding_defs = re.split(r',|\b(?:AND|and)\b', row['coding/def'], flags=re.IGNORECASE)
-
-            for provider in provider_columns:
-                provider_name = provider
-                provider_value = row[provider]
-
-                # Extract percentages and dollar amounts
-                amount_rate = re.search(r'(\d+%)', str(provider_value))
-                amount = re.search(r'\$([\d,]+)', str(provider_value))
-                amount_rate = amount_rate.group(1) if amount_rate else ''
-                amount = amount.group(0) if amount else ''
-
-                # Mark indicators
-                rev_code_marked = 'X' if pd.notnull(rev_code) else None
-                cpt_marked = 'X' if pd.notnull(cpt_code) else None
-                ms_drg_marked = 'X' if pd.notnull(ms_drg) else None
-
-                for coding_def in coding_defs:
-                    coding_def = coding_def.strip()
-                    if coding_def:
-                        rc_ind, cpt_ind, drg_ind = self.evaluate_conditions(coding_def, rev_code_marked, cpt_marked, ms_drg_marked)
-                        self.all_reshaped_data.append({
-                            'File Name': file_name,
-                            'Sheet Name': sheet_name,
-                            'Effective Date From': effective_date_from,
-                            'Effective Date To': effective_date_to,
-                            'Provider': provider_name,
-                            'Service Description': service_description,
-                            'Ms-DRG': 'X' if pd.notnull(ms_drg) else '',
-                            'Rev Code': 'X' if pd.notnull(rev_code) else '',
-                            'CPT': 'X' if pd.notnull(cpt_code) else '',
-                            'ICD9,ICD10': icd_codes,
-                            'Coding/Def': coding_def,
-                            'RC_ind': rc_ind,
-                            'CPT_ind': cpt_ind,
-                            'DRG_ind': drg_ind,
-                            'Notes': notes,
-                            'Amount Rate': amount_rate,
-                            'Amount': amount
-                        })
-
-    def process_all_files(self):
-        """
-        Process all Excel files in the folder.
-        """
-        for file_name in os.listdir(self.folder_path):
-            if file_name.endswith('.xlsx') or file_name.endswith('.xls'):
-                print(f"Processing file: {file_name}")
-                sheets_dict = pd.read_excel(os.path.join(self.folder_path, file_name), sheet_name=None, header=None)
-                for sheet_name, df in sheets_dict.items():
-                    print(f"Processing sheet: {sheet_name} in file: {file_name}")
-                    self.process_sheet(file_name, sheet_name, df)
-
-    def save_to_excel(self, output_file):
-        """
-        Save the reshaped data to an Excel file.
-        """
-        reshaped_df = pd.DataFrame(self.all_reshaped_data)
-        reshaped_df.to_excel(output_file, index=False)
-        print(f"Data saved to {output_file}")
-
-
-# Usage
-folder_path = "your_folder_path"  # Replace with the folder containing Excel files
-output_file = "reshaped_output_with_effective_dates.xlsx"
-
-processor = ExcelProcessor(folder_path)
-processor.process_all_files()
-processor.save_to_excel(output_file)
-
+if __name__ == "__main__":
+    folder_path = "path_to_folder"  # Replace with the folder containing Excel files
+    output_folder = "path_to_output_folder"  # Replace with desired output folder path
+    
+    process_excel_files_in_folder(folder_path, output_folder)
