@@ -1,50 +1,74 @@
-import pytesseract
-from pdf2image import convert_from_path
 import os
+from pdf2image import convert_from_path
+import pytesseract
 
-# Specify the path to the Tesseract OCR executable
-pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'  # Update this path if necessary
+# Configure PyTesseract path if necessary (update the path to your Tesseract installation if needed)
+# pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 
-def process_pdf_with_tesseract(file_path, output_path):
+# Function to extract text from the first page of a PDF
+def extract_text_from_pdf(pdf_path):
     try:
         # Convert the first page of the PDF to an image
-        images = convert_from_path(file_path, first_page=1, last_page=1)
-        
-        if not images:
-            print(f"No pages found in the PDF: {file_path}")
-            return
-        
-        # Use pytesseract to extract text from the first page
-        text = pytesseract.image_to_string(images[0])
-        
-        # Check for the specific phrase
-        if "Amendment to the agreement between HCA" in text:
-            # Save the text to the output file
-            with open(output_path, 'w', encoding='utf-8') as output_file:
-                output_file.write(text)
-            print(f"Text extracted and saved to {output_path}")
+        pages = convert_from_path(pdf_path, first_page=1, last_page=1)
+        if pages:
+            first_page_image = pages[0]
+            
+            # Use PyTesseract to extract text from the image
+            extracted_text = pytesseract.image_to_string(first_page_image)
+            return extracted_text
         else:
-            print(f"The phrase was not found in the file: {file_path}")
-    
+            print(f"Failed to convert the first page of {pdf_path}.")
+            return None
     except Exception as e:
-        print(f"An error occurred while processing {file_path}: {e}")
+        print(f"An error occurred while processing {pdf_path}: {e}")
+        return None
 
-def process_folder(input_folder, output_folder):
-    # Ensure output folder exists
+# Function to check if the required phrase is in the extracted text
+def contains_required_phrase(extracted_text, phrase="Amendment to the agreement between HCA"):
+    return phrase in extracted_text
+
+# Function to save the extracted text to a file
+def save_extracted_text_to_file(extracted_text, output_file):
+    try:
+        with open(output_file, 'w', encoding='utf-8') as file:
+            file.write(extracted_text)
+        print(f"Text saved to {output_file}")
+    except Exception as e:
+        print(f"An error occurred while saving text to {output_file}: {e}")
+
+# Function to process a single PDF file
+def process_pdf(pdf_path, output_folder, phrase="Amendment to the agreement between HCA"):
+    extracted_text = extract_text_from_pdf(pdf_path)
+    
+    if extracted_text and contains_required_phrase(extracted_text, phrase):
+        # Get the base name of the PDF file (without extension)
+        base_name = os.path.splitext(os.path.basename(pdf_path))[0]
+        
+        # Define the output file path
+        output_file = os.path.join(output_folder, f"{base_name}_output.txt")
+        
+        # Save the extracted text to the output file
+        save_extracted_text_to_file(extracted_text, output_file)
+    else:
+        print(f"The required phrase was not found in {pdf_path}.")
+
+# Function to process all PDFs in a folder
+def process_all_pdfs_in_folder(input_folder, output_folder):
+    # Ensure the output folder exists
     os.makedirs(output_folder, exist_ok=True)
     
-    # Loop through all files in the input folder
+    # Iterate over all files in the input folder
     for file_name in os.listdir(input_folder):
-        if file_name.endswith('.pdf'):  # Process only PDF files
-            input_file_path = os.path.join(input_folder, file_name)
-            output_file_path = os.path.join(output_folder, f"{os.path.splitext(file_name)[0]}_output.txt")
-            print(f"Processing file: {file_name}")
-            process_pdf_with_tesseract(input_file_path, output_file_path)
+        if file_name.endswith('.pdf'):
+            pdf_file_path = os.path.join(input_folder, file_name)
+            process_pdf(pdf_file_path, output_folder)
 
-# Input and output folder paths
-input_folder_path = "path_to_your_input_folder"  # Replace with the path to your folder containing PDFs
-output_folder_path = "path_to_your_output_folder"  # Replace with the path to save output files
+# Main function to execute the script
+def main():
+    input_folder = 'path/to/your/pdf/folder'  # Replace with your PDF folder path
+    output_folder = 'path/to/output/folder'  # Replace with your desired output folder path
+    
+    process_all_pdfs_in_folder(input_folder, output_folder)
 
-# Process all PDFs in the folder
-process_folder(input_folder_path, output_folder_path)
-
+if __name__ == "__main__":
+    main()
