@@ -11,7 +11,7 @@ def process_pdf_with_tesseract(file_path, output_path):
         images = convert_from_path(file_path, first_page=1, last_page=1)
         
         if not images:
-            print("No pages found in the PDF.")
+            print(f"No pages found in the PDF: {file_path}")
             return
         
         # Use pytesseract to extract text from the first page
@@ -24,14 +24,27 @@ def process_pdf_with_tesseract(file_path, output_path):
                 output_file.write(text)
             print(f"Text extracted and saved to {output_path}")
         else:
-            print("The phrase was not found on the first page.")
+            print(f"The phrase was not found in the file: {file_path}")
     
     except Exception as e:
-        print(f"An error occurred: {e}")
+        print(f"An error occurred while processing {file_path}: {e}")
 
-# Input and output file paths
-input_pdf_path = "path_to_your_pdf_file.pdf"  # Replace with the actual PDF file path
-output_text_path = "input_file.txt"
+def process_folder(input_folder, output_folder):
+    # Ensure output folder exists
+    os.makedirs(output_folder, exist_ok=True)
+    
+    # Loop through all files in the input folder
+    for file_name in os.listdir(input_folder):
+        if file_name.endswith('.pdf'):  # Process only PDF files
+            input_file_path = os.path.join(input_folder, file_name)
+            output_file_path = os.path.join(output_folder, f"{os.path.splitext(file_name)[0]}_output.txt")
+            print(f"Processing file: {file_name}")
+            process_pdf_with_tesseract(input_file_path, output_file_path)
 
-# Process the PDF
-process_pdf_with_tesseract(input_pdf_path, output_text_path)
+# Input and output folder paths
+input_folder_path = "path_to_your_input_folder"  # Replace with the path to your folder containing PDFs
+output_folder_path = "path_to_your_output_folder"  # Replace with the path to save output files
+
+# Process all PDFs in the folder
+process_folder(input_folder_path, output_folder_path)
+
