@@ -23,10 +23,6 @@ def extract_text_from_pdf(pdf_path):
         print(f"An error occurred while processing {pdf_path}: {e}")
         return None
 
-# Function to check if the required phrase is in the extracted text
-def contains_required_phrase(extracted_text, phrase="Amendment to the agreement between HCA"):
-    return phrase in extracted_text
-
 # Function to save the extracted text to a file
 def save_extracted_text_to_file(extracted_text, output_file):
     try:
@@ -37,10 +33,10 @@ def save_extracted_text_to_file(extracted_text, output_file):
         print(f"An error occurred while saving text to {output_file}: {e}")
 
 # Function to process a single PDF file
-def process_pdf(pdf_path, output_folder, phrase="Amendment to the agreement between HCA"):
+def process_pdf(pdf_path, output_folder):
     extracted_text = extract_text_from_pdf(pdf_path)
     
-    if extracted_text and contains_required_phrase(extracted_text, phrase):
+    if extracted_text:
         # Get the base name of the PDF file (without extension)
         base_name = os.path.splitext(os.path.basename(pdf_path))[0]
         
@@ -49,8 +45,6 @@ def process_pdf(pdf_path, output_folder, phrase="Amendment to the agreement betw
         
         # Save the extracted text to the output file
         save_extracted_text_to_file(extracted_text, output_file)
-    else:
-        print(f"The required phrase was not found in {pdf_path}.")
 
 # Function to process all PDFs in a folder
 def process_all_pdfs_in_folder(input_folder, output_folder):
