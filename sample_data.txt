@@ -1,36 +1,37 @@
+import pytesseract
+from pdf2image import convert_from_path
 import os
-from excel_processor import ExcelProcessor  # Assuming the class is saved in `excel_processor.py`
 
-def process_excel_files_in_folder(folder_path, output_folder):
-    """
-    Process all Excel files in the given folder and save outputs in the specified output folder.
-    
-    Args:
-        folder_path (str): Path to the folder containing Excel files.
-        output_folder (str): Path to the folder where processed files will be saved.
-    """
-    # Ensure the output folder exists
-    os.makedirs(output_folder, exist_ok=True)
-    
-    # Iterate through all files in the folder
-    for filename in os.listdir(folder_path):
-        if filename.endswith(".xlsx") or filename.endswith(".xls"):  # Check for Excel files
-            input_file_path = os.path.join(folder_path, filename)
-            output_file_path = os.path.join(output_folder, f"processed_{filename}")
-            
-            print(f"Processing file: {filename}")
-            
-            # Process the file using the ExcelProcessor class
-            try:
-                processor = ExcelProcessor(input_file_path)
-                processor.process_all_sheets()
-                processor.save_to_excel(output_file_path)
-                print(f"Processed and saved: {output_file_path}")
-            except Exception as e:
-                print(f"Error processing {filename}: {e}")
+# Specify the path to the Tesseract OCR executable
+pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'  # Update this path if necessary
 
-if __name__ == "__main__":
-    folder_path = "path_to_folder"  # Replace with the folder containing Excel files
-    output_folder = "path_to_output_folder"  # Replace with desired output folder path
+def process_pdf_with_tesseract(file_path, output_path):
+    try:
+        # Convert the first page of the PDF to an image
+        images = convert_from_path(file_path, first_page=1, last_page=1)
+        
+        if not images:
+            print("No pages found in the PDF.")
+            return
+        
+        # Use pytesseract to extract text from the first page
+        text = pytesseract.image_to_string(images[0])
+        
+        # Check for the specific phrase
+        if "Amendment to the agreement between HCA" in text:
+            # Save the text to the output file
+            with open(output_path, 'w', encoding='utf-8') as output_file:
+                output_file.write(text)
+            print(f"Text extracted and saved to {output_path}")
+        else:
+            print("The phrase was not found on the first page.")
     
-    process_excel_files_in_folder(folder_path, output_folder)
+    except Exception as e:
+        print(f"An error occurred: {e}")
+
+# Input and output file paths
+input_pdf_path = "path_to_your_pdf_file.pdf"  # Replace with the actual PDF file path
+output_text_path = "input_file.txt"
+
+# Process the PDF
+process_pdf_with_tesseract(input_pdf_path, output_text_path)
