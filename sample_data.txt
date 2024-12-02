@@ -1,24 +1,25 @@
 import os
 import pandas as pd
 
-def extract_file_paths_to_excel(root_folder, output_excel):
-    # List to store file paths
-    file_paths = []
+def extract_pdf_paths_to_excel(root_folder, output_excel):
+    # List to store PDF file paths
+    pdf_paths = []
 
     # Traverse the directory tree
     for dirpath, dirnames, filenames in os.walk(root_folder):
         for file in filenames:
-            file_paths.append(os.path.join(dirpath, file))
+            if file.lower().endswith('.pdf'):  # Check for PDF files
+                pdf_paths.append(os.path.join(dirpath, file))
 
-    # Create a DataFrame from the file paths
-    df = pd.DataFrame(file_paths, columns=["File Path"])
+    # Create a DataFrame from the PDF file paths
+    df = pd.DataFrame(pdf_paths, columns=["PDF File Path"])
 
     # Save the DataFrame to an Excel file
     df.to_excel(output_excel, index=False)
 
-    print(f"File paths extracted and saved to {output_excel}")
+    print(f"PDF file paths extracted and saved to {output_excel}")
 
 # Example usage
 root_folder = "/path/to/your/root/folder"  # Replace with your root folder path
-output_excel = "file_paths.xlsx"          # Output Excel file name
-extract_file_paths_to_excel(root_folder, output_excel)
+output_excel = "pdf_paths.xlsx"           # Output Excel file name
+extract_pdf_paths_to_excel(root_folder, output_excel)
