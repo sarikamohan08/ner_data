@@ -1,3 +1,42 @@
+1. Input Files:
+
+Two types of Excel files are provided.
+
+Files are located at a specified path.
+
+
+
+2. Coversheet Extraction:
+
+Extract the "coversheet" (dsye) data from the input files.
+
+
+
+3. Store Results:
+
+Store the processed results back in the specified path.
+
+
+
+4. NLP Process:
+
+The script uses a mentioned date as input.
+
+It checks if the Excel file corresponding to that date exists and whether it has already been processed.
+
+If not processed, the script processes the file.
+
+
+
+5. Notification:
+
+Sends a mail notification confirming the file has been processed and stored in the specified path.
+
+Includes a copy of the results in the email.
+
+
+
+
 import os
 from pdf2image import convert_from_path
 import pytesseract
