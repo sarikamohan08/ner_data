@@ -1,25 +1,59 @@
 import os
 import pandas as pd
+import pytesseract
+from pdf2image import convert_from_path
 
-def extract_pdf_paths_to_excel(root_folder, output_excel):
-    # List to store PDF file paths
-    pdf_paths = []
+# Ensure pytesseract is installed and configured correctly
+pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'  # Adjust path as needed
 
-    # Traverse the directory tree
-    for dirpath, dirnames, filenames in os.walk(root_folder):
-        for file in filenames:
-            if file.lower().endswith('.pdf'):  # Check for PDF files
-                pdf_paths.append(os.path.join(dirpath, file))
+def extract_text_from_pdf(pdf_path):
+    """
+    Extract text from a PDF using pytesseract after converting to images.
+    """
+    text = ""
+    try:
+        images = convert_from_path(pdf_path)
+        for image in images:
+            text += pytesseract.image_to_string(image)
+    except Exception as e:
+        print(f"Error processing {pdf_path}: {e}")
+    return text
 
-    # Create a DataFrame from the PDF file paths
-    df = pd.DataFrame(pdf_paths, columns=["PDF File Path"])
+def check_ids_in_files(excel_file, folder_path, output_file):
+    """
+    Check if IDs from an Excel file are present in filenames or file content in a folder of PDFs.
+    """
+    # Load the Excel file
+    df = pd.read_excel(excel_file)
+    ids = df['ID'].astype(str).tolist()
 
-    # Save the DataFrame to an Excel file
-    df.to_excel(output_excel, index=False)
+    # Prepare results list
+    results = []
 
-    print(f"PDF file paths extracted and saved to {output_excel}")
+    # Iterate over files in the folder
+    for file_name in os.listdir(folder_path):
+        if file_name.endswith('.pdf'):
+            # Check if any ID is in the filename
+            matching_ids = [id_ for id_ in ids if id_ in file_name]
+            if matching_ids:
+                results.append({'File': file_name, 'Matching IDs': matching_ids})
+                continue
 
-# Example usage
-root_folder = "/path/to/your/root/folder"  # Replace with your root folder path
-output_excel = "pdf_paths.xlsx"           # Output Excel file name
-extract_pdf_paths_to_excel(root_folder, output_excel)
+            # Extract text from the file and search for IDs
+            pdf_path = os.path.join(folder_path, file_name)
+            file_text = extract_text_from_pdf(pdf_path)
+            matching_ids = [id_ for id_ in ids if id_ in file_text]
+            if matching_ids:
+                results.append({'File': file_name, 'Matching IDs': matching_ids})
+
+    # Save results to an Excel file
+    result_df = pd.DataFrame(results)
+    result_df.to_excel(output_file, index=False)
+    print(f"Results saved to {output_file}")
+
+# Usage
+excel_file = 'ids.xlsx'  # Path to your Excel file containing IDs
+folder_path = 'pdf_folder'  # Path to the folder containing PDF files
+output_file = 'output_results.xlsx'  # Path to save the results
+
+check_ids_in_files(excel_file, folder_path, output_file)
