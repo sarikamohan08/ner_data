@@ -3,57 +3,46 @@ import pandas as pd
 import pytesseract
 from pdf2image import convert_from_path
 
-# Ensure pytesseract is installed and configured correctly
-pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'  # Adjust path as needed
+# Path to Tesseract executable
+pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 
-def extract_text_from_pdf(pdf_path):
-    """
-    Extract text from a PDF using pytesseract after converting to images.
-    """
+# Function to extract text from PDF using PyTesseract
+def extract_text_from_pdf(file_path):
+    images = convert_from_path(file_path)
     text = ""
-    try:
-        images = convert_from_path(pdf_path)
-        for image in images:
-            text += pytesseract.image_to_string(image)
-    except Exception as e:
-        print(f"Error processing {pdf_path}: {e}")
+    for img in images:
+        text += pytesseract.image_to_string(img)
     return text
 
-def check_ids_in_files(excel_file, folder_path, output_file):
-    """
-    Check if IDs from an Excel file are present in filenames or file content in a folder of PDFs.
-    """
-    # Load the Excel file
+# Read IDs from Excel file
+def read_ids_from_excel(excel_file):
     df = pd.read_excel(excel_file)
-    ids = df['ID'].astype(str).tolist()
+    return df.iloc[:, 0].astype(str).tolist()
 
-    # Prepare results list
-    results = []
+# Main function to check filenames and process matching files
+def process_files_with_ids(directory, excel_file):
+    # Load IDs from Excel
+    ids = read_ids_from_excel(excel_file)
+    matching_files = []
 
-    # Iterate over files in the folder
-    for file_name in os.listdir(folder_path):
-        if file_name.endswith('.pdf'):
-            # Check if any ID is in the filename
-            matching_ids = [id_ for id_ in ids if id_ in file_name]
-            if matching_ids:
-                results.append({'File': file_name, 'Matching IDs': matching_ids})
-                continue
-
-            # Extract text from the file and search for IDs
-            pdf_path = os.path.join(folder_path, file_name)
-            file_text = extract_text_from_pdf(pdf_path)
-            matching_ids = [id_ for id_ in ids if id_ in file_text]
-            if matching_ids:
-                results.append({'File': file_name, 'Matching IDs': matching_ids})
-
-    # Save results to an Excel file
-    result_df = pd.DataFrame(results)
-    result_df.to_excel(output_file, index=False)
-    print(f"Results saved to {output_file}")
+    # Check filenames in the directory
+    for filename in os.listdir(directory):
+        for id_ in ids:
+            if id_ in filename:
+                matching_files.append(filename)
+                file_path = os.path.join(directory, filename)
+                
+                # Process file
+                print(f"Processing file: {filename}")
+                text = extract_text_from_pdf(file_path)
+                print(f"Extracted Text:\n{text}")
+    
+    if not matching_files:
+        print("No matching files found.")
+    else:
+        print(f"Matching files: {matching_files}")
 
 # Usage
-excel_file = 'ids.xlsx'  # Path to your Excel file containing IDs
-folder_path = 'pdf_folder'  # Path to the folder containing PDF files
-output_file = 'output_results.xlsx'  # Path to save the results
-
-check_ids_in_files(excel_file, folder_path, output_file)
+directory = r'path_to_directory_containing_files'
+excel_file = r'path_to_excel_file_with_ids.xlsx'
+process_files_with_ids(directory, excel_file)
