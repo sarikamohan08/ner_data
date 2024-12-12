@@ -1,48 +1,39 @@
-import os
-import pandas as pd
 import pytesseract
-from pdf2image import convert_from_path
+from pytesseract import Output
+from PIL import Image
+import fitz  # PyMuPDF
+import pandas as pd
+import os
 
-# Path to Tesseract executable
-pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
-
-# Function to extract text from PDF using PyTesseract
-def extract_text_from_pdf(file_path):
-    images = convert_from_path(file_path)
-    text = ""
-    for img in images:
-        text += pytesseract.image_to_string(img)
-    return text
-
-# Read IDs from Excel file
-def read_ids_from_excel(excel_file):
-    df = pd.read_excel(excel_file)
-    return df.iloc[:, 0].astype(str).tolist()
-
-# Main function to check filenames and process matching files
-def process_files_with_ids(directory, excel_file):
-    # Load IDs from Excel
-    ids = read_ids_from_excel(excel_file)
-    matching_files = []
-
-    # Check filenames in the directory
-    for filename in os.listdir(directory):
-        for id_ in ids:
-            if id_ in filename:
-                matching_files.append(filename)
-                file_path = os.path.join(directory, filename)
-                
-                # Process file
-                print(f"Processing file: {filename}")
-                text = extract_text_from_pdf(file_path)
-                print(f"Extracted Text:\n{text}")
+# Function to convert PDF pages to images and extract text
+def extract_pdf_text_to_dataframe(pdf_path, dpi=300):
+    # Open the PDF
+    doc = fitz.open(pdf_path)
+    data_frames = []
     
-    if not matching_files:
-        print("No matching files found.")
-    else:
-        print(f"Matching files: {matching_files}")
+    for page_num in range(len(doc)):
+        # Render page to image
+        page = doc.load_page(page_num)
+        pix = page.get_pixmap(dpi=dpi)
+        image_path = f"page_{page_num + 1}.png"
+        pix.save(image_path)
 
-# Usage
-directory = r'path_to_directory_containing_files'
-excel_file = r'path_to_excel_file_with_ids.xlsx'
-process_files_with_ids(directory, excel_file)
+        # Use pytesseract to extract text data
+        image = Image.open(image_path)
+        data = pytesseract.image_to_data(image, output_type=Output.DATAFRAME)
+        data['page_num'] = page_num + 1  # Add page number for reference
+        data_frames.append(data)
+
+        # Clean up image file
+        os.remove(image_path)
+    
+    # Combine all dataframes into one
+    final_df = pd.concat(data_frames, ignore_index=True)
+    return final_df
+
+# Path to your PDF file
+pdf_path = 'path_to_your_pdf.pdf'  # Replace with your PDF path
+
+# Extract text and organize in a DataFrame
+df = extract_pdf_text_to_dataframe(pdf_path)
+print(df)
