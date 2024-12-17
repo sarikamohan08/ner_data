@@ -11,7 +11,7 @@ from PIL import Image
 input_folder = "/path/to/pdf/folder"
 
 # Initialize an empty list to store results
-extracted_data = []
+file_results = []
 
 # Iterate over all PDF files in the folder
 for file_name in os.listdir(input_folder):
@@ -20,6 +20,8 @@ for file_name in os.listdir(input_folder):
         
         # Convert PDF pages to images
         images = convert_from_path(file_path)
+        
+        file_has_handwritten = False  # Flag to track if the file has handwritten text
         
         # Process each page of the PDF
         for page_num, image in enumerate(images, start=1):
@@ -31,24 +33,24 @@ for file_name in os.listdir(input_folder):
                 conf = int(ocr_result['conf'][i])
                 
                 # Only consider non-empty text
-                if text.strip():
-                    # Append extracted data
-                    extracted_data.append({
-                        "File Name": file_name,
-                        "Page Number": page_num,
-                        "Original Text": text,
-                        "Confidence": conf
-                    })
+                if text.strip() and 10 <= conf <= 30:
+                    file_has_handwritten = True  # Mark file as handwritten if condition is met
+                    break  # No need to process further if one match is found
+            
+            if file_has_handwritten:
+                break  # Stop processing further pages if condition is met
+        
+        # Append result for the file
+        classification = "handwritten" if file_has_handwritten else "not handwritten"
+        file_results.append({
+            "File Name": file_name,
+            "Classification": classification
+        })
 
-# Convert extracted data to a DataFrame
-df_extracted = pd.DataFrame(extracted_data)
-
-# Perform classification based on confidence
-df_extracted['Classification'] = df_extracted['Confidence'].apply(
-    lambda conf: "handwritten" if 10 <= conf <= 30 else "not handwritten"
-)
+# Convert file-level results to a DataFrame
+df_results = pd.DataFrame(file_results)
 
 # Save the final DataFrame as a CSV or print it
-output_file = "ocr_results_classified.csv"
-df_extracted.to_csv(output_file, index=False)
-print(df_extracted)
+output_file = "file_handwritten_results.csv"
+df_results.to_csv(output_file, index=False)
+print(df_results)
