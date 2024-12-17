@@ -1,39 +1,53 @@
-import pytesseract
-from pytesseract import Output
-from PIL import Image
-import fitz  # PyMuPDF
-import pandas as pd
 import os
+import pytesseract
+from pdf2image import convert_from_path
+import pandas as pd
+from PIL import Image
 
-# Function to convert PDF pages to images and extract text
-def extract_pdf_text_to_dataframe(pdf_path, dpi=300):
-    # Open the PDF
-    doc = fitz.open(pdf_path)
-    data_frames = []
-    
-    for page_num in range(len(doc)):
-        # Render page to image
-        page = doc.load_page(page_num)
-        pix = page.get_pixmap(dpi=dpi)
-        image_path = f"page_{page_num + 1}.png"
-        pix.save(image_path)
+# Configure Tesseract path if necessary
+# pytesseract.pytesseract.tesseract_cmd = r'/path/to/tesseract'
 
-        # Use pytesseract to extract text data
-        image = Image.open(image_path)
-        data = pytesseract.image_to_data(image, output_type=Output.DATAFRAME)
-        data['page_num'] = page_num + 1  # Add page number for reference
-        data_frames.append(data)
+# Folder containing PDF files
+input_folder = "/path/to/pdf/folder"
 
-        # Clean up image file
-        os.remove(image_path)
-    
-    # Combine all dataframes into one
-    final_df = pd.concat(data_frames, ignore_index=True)
-    return final_df
+# Initialize an empty DataFrame to store results
+results = []
 
-# Path to your PDF file
-pdf_path = 'path_to_your_pdf.pdf'  # Replace with your PDF path
+# Iterate over all PDF files in the folder
+for file_name in os.listdir(input_folder):
+    if file_name.endswith('.pdf'):
+        file_path = os.path.join(input_folder, file_name)
+        
+        # Convert PDF pages to images
+        images = convert_from_path(file_path)
+        
+        # Process each page of the PDF
+        for page_num, image in enumerate(images, start=1):
+            # OCR on the page image
+            ocr_result = pytesseract.image_to_data(image, output_type=pytesseract.Output.DICT)
+            
+            for i in range(len(ocr_result['text'])):
+                text = ocr_result['text'][i]
+                conf = int(ocr_result['conf'][i])
+                
+                # Only consider non-empty text
+                if text.strip():
+                    # Determine handwritten or not
+                    classification = "handwritten" if 10 <= conf <= 30 else "not handwritten"
+                    
+                    # Append result to the list
+                    results.append({
+                        "File Name": file_name,
+                        "Page Number": page_num,
+                        "Original Text": text,
+                        "Confidence": conf,
+                        "Classification": classification
+                    })
 
-# Extract text and organize in a DataFrame
-df = extract_pdf_text_to_dataframe(pdf_path)
-print(df)
+# Convert results to a DataFrame
+df_results = pd.DataFrame(results)
+
+# Save the final DataFrame as a CSV or print it
+output_file = "ocr_results.csv"
+df_results.to_csv(output_file, index=False)
+print(df_results)
