@@ -34,7 +34,7 @@ def append_to_excel(df, excel_file_path):
             startrow = 0
         
         # Now write the DataFrame to Excel, appending to the correct location
-        with pd.ExcelWriter(excel_file_path, engine='openpyxl', mode='a' if book else 'w') as writer:
+        with pd.ExcelWriter(excel_file_path, engine='openpyxl', mode='a') as writer:
             if book:
                 writer.book = book  # Use the existing workbook
             df.to_excel(writer, sheet_name='ExtractedData', startrow=startrow, header=(startrow == 0), index=False)
@@ -62,3 +62,4 @@ excel_file_path = 'output_combined.xlsx'  # Path to the output Excel file
 
 # Process and append PDFs
 process_and_append_pdfs(pdf_directory, excel_file_path)
+
