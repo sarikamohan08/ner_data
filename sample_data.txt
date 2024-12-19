@@ -1,16 +1,3 @@
-def append_to_excel(df, excel_file):
-    try:
-        # Load the existing workbook (or create one if it doesn't exist)
-        book = load_workbook(excel_file)
-        writer = pd.ExcelWriter(excel_file, engine='openpyxl')
-        writer.book = book
-        
-        # Get the last row number to avoid overwriting existing data
-        startrow = book.active.max_row
-        
-        # Write the DataFrame to the Excel file
-        df.to_excel(writer, index=False, header=book.active.max_row == 1, startrow=startrow)
-        writer.save()
-    except FileNotFoundError:
-        # If the Excel file does not exist, create it
-        df.to_excel(excel_file, index=False)
+def append_to_excel(fpath, df, sheet_name):
+    with pd.ExcelWriter(fpath, mode="a", if_sheet_exists = 'overlay') as f:
+        df.to_excel(f, sheet_name=sheet_name)
