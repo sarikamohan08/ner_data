@@ -1,15 +1,64 @@
+import os
+import pandas as pd
+from openpyxl import load_workbook
+
+# Your extraction function (example)
+def extract_data_from_pdf(pdf_path):
+    # Using lists for each column's data
+    data = {
+        'Column1': [1],  # A list for each column (even if it's a single value)
+        'Column2': [2],
+        'Column3': ['Extracted data'],
+    }
+    return pd.DataFrame(data)
+
+# Function to append data directly to an Excel file using DataFrame.to_excel
 def append_to_excel(df, excel_file_path):
     try:
-        # Check if the file exists
+        # Check if the Excel file exists
         if os.path.exists(excel_file_path):
-            # If the file exists, append the DataFrame without writing headers again
-            with pd.ExcelWriter(excel_file_path, engine='openpyxl', mode='a') as writer:
-                # Find the last row of the existing sheet
-                df.to_excel(writer, sheet_name='ExtractedData', startrow=writer.sheets['ExtractedData'].max_row, header=False, index=False)
+            # Load the existing workbook
+            book = load_workbook(excel_file_path)
+            
+            # Check if the sheet 'ExtractedData' exists
+            if 'ExtractedData' in book.sheetnames:
+                # If the sheet exists, open it and get the last row
+                sheet = book['ExtractedData']
+                startrow = sheet.max_row  # Find the last row in the sheet
+            else:
+                # If the sheet doesn't exist, we need to create it
+                startrow = 0
         else:
-            # If the file doesn't exist, create it and add the DataFrame with headers
-            with pd.ExcelWriter(excel_file_path, engine='openpyxl') as writer:
-                df.to_excel(writer, sheet_name='ExtractedData', index=False)
+            # If the file doesn't exist, create it
+            book = None
+            startrow = 0
+        
+        # Now write the DataFrame to Excel, appending to the correct location
+        with pd.ExcelWriter(excel_file_path, engine='openpyxl', mode='a' if book else 'w') as writer:
+            if book:
+                writer.book = book  # Use the existing workbook
+            df.to_excel(writer, sheet_name='ExtractedData', startrow=startrow, header=(startrow == 0), index=False)
 
     except Exception as e:
         print(f"Error appending to Excel: {e}")
+
+# Main function to process PDFs and append results to Excel
+def process_and_append_pdfs(pdf_directory, excel_file_path):
+    # Loop through each PDF file in the directory
+    for pdf_file in os.listdir(pdf_directory):
+        if pdf_file.endswith('.pdf'):  # Process only PDF files
+            pdf_path = os.path.join(pdf_directory, pdf_file)
+            
+            # Extract data from the PDF file
+            df = extract_data_from_pdf(pdf_path)
+            
+            # Append the extracted data to the Excel file
+            append_to_excel(df, excel_file_path)
+            print(f"Processed and appended data from {pdf_file}")
+
+# Example usage:
+pdf_directory = 'path/to/pdf/files'  # Your PDF directory
+excel_file_path = 'output_combined.xlsx'  # Path to the output Excel file
+
+# Process and append PDFs
+process_and_append_pdfs(pdf_directory, excel_file_path)
