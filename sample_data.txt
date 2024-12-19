@@ -1,56 +1,15 @@
-import os
-import pytesseract
-from pdf2image import convert_from_path
-import pandas as pd
-from PIL import Image
+def append_to_excel(df, excel_file_path):
+    try:
+        # Check if the file exists
+        if os.path.exists(excel_file_path):
+            # If the file exists, append the DataFrame without writing headers again
+            with pd.ExcelWriter(excel_file_path, engine='openpyxl', mode='a') as writer:
+                # Find the last row of the existing sheet
+                df.to_excel(writer, sheet_name='ExtractedData', startrow=writer.sheets['ExtractedData'].max_row, header=False, index=False)
+        else:
+            # If the file doesn't exist, create it and add the DataFrame with headers
+            with pd.ExcelWriter(excel_file_path, engine='openpyxl') as writer:
+                df.to_excel(writer, sheet_name='ExtractedData', index=False)
 
-# Configure Tesseract path if necessary
-# pytesseract.pytesseract.tesseract_cmd = r'/path/to/tesseract'
-
-# Folder containing PDF files
-input_folder = "/path/to/pdf/folder"
-
-# Initialize an empty list to store results
-file_results = []
-
-# Iterate over all PDF files in the folder
-for file_name in os.listdir(input_folder):
-    if file_name.endswith('.pdf'):
-        file_path = os.path.join(input_folder, file_name)
-        
-        # Convert PDF pages to images
-        images = convert_from_path(file_path)
-        
-        file_has_handwritten = False  # Flag to track if the file has handwritten text
-        
-        # Process each page of the PDF
-        for page_num, image in enumerate(images, start=1):
-            # OCR on the page image
-            ocr_result = pytesseract.image_to_data(image, output_type=pytesseract.Output.DICT)
-            
-            for i in range(len(ocr_result['text'])):
-                text = ocr_result['text'][i]
-                conf = int(ocr_result['conf'][i])
-                
-                # Only consider non-empty text
-                if text.strip() and 10 <= conf <= 30:
-                    file_has_handwritten = True  # Mark file as handwritten if condition is met
-                    break  # No need to process further if one match is found
-            
-            if file_has_handwritten:
-                break  # Stop processing further pages if condition is met
-        
-        # Append result for the file
-        classification = "handwritten" if file_has_handwritten else "not handwritten"
-        file_results.append({
-            "File Name": file_name,
-            "Classification": classification
-        })
-
-# Convert file-level results to a DataFrame
-df_results = pd.DataFrame(file_results)
-
-# Save the final DataFrame as a CSV or print it
-output_file = "file_handwritten_results.csv"
-df_results.to_csv(output_file, index=False)
-print(df_results)
+    except Exception as e:
+        print(f"Error appending to Excel: {e}")
