@@ -1,3 +1,16 @@
-def append_to_excel(fpath, df, sheet_name):
-    with pd.ExcelWriter(fpath, mode="a", if_sheet_exists = 'overlay') as f:
-        df.to_excel(f, sheet_name=sheet_name)
+def extract_service_types(self, df):
+        """
+        Extract service types from the DataFrame and propagate them down the rows.
+        """
+        service_type = None
+        service_types = []
+
+        for _, row in df.iterrows():
+            # Identify rows defining the service type
+            if pd.notnull(row['Service description']) and row['Service description'].strip() != "":
+                service_type = row['Service description'].strip()
+            
+            # Append the current service type for each row
+            service_types.append(service_type)
+
+        return service_types
