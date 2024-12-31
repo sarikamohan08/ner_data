@@ -1,9 +1,20 @@
-sheet_name = 'Sheet1'
-try:
-    with pd.ExcelWriter(file_path, engine='openpyxl', mode='a') as writer:
-        if sheet_name in writer.sheets:
-            df.to_excel(writer, sheet_name=sheet_name, index=False, header=False)
-        else:
-            raise ValueError(f"Sheet '{sheet_name}' does not exist.")
-except Exception as e:
-    print(f"Error: {e}")
+def extract_service_type(self, df):
+        """
+        Extract 'Service Type' based on rows containing 'Inpatient structure' or 'Outpatient structure'.
+        """
+        df['Service Type'] = None
+        current_service_type = None
+
+        for idx, row in df.iterrows():
+            service_description = row['Service description']
+            if pd.notnull(service_description):
+                description_lower = service_description.lower()
+
+                # Check for structure indicators
+                if "inpatient structure" in description_lower or "outpatient structure" in description_lower:
+                    current_service_type = service_description.strip()
+
+            # Propagate the current structure type
+            df.at[idx, 'Service Type'] = current_service_type
+
+        return df
