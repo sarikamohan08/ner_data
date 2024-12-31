@@ -6,13 +6,13 @@ def extract_service_type(self, df):
         current_service_type = None
 
         for idx, row in df.iterrows():
-            service_description = row['Service description']
-            if pd.notnull(service_description):
-                description_lower = service_description.lower()
+            # Check for standalone structure indicators
+            if pd.notnull(row.iloc[0]):  # Check the first column for structure types
+                description = str(row.iloc[0]).lower()
 
-                # Check for structure indicators
-                if "inpatient structure" in description_lower or "outpatient structure" in description_lower:
-                    current_service_type = service_description.strip()
+                if "inpatient structure" in description or "outpatient structure" in description:
+                    current_service_type = row.iloc[0].strip()
+                    print(f"Updated current_service_type to: {current_service_type}")
 
             # Propagate the current structure type
             df.at[idx, 'Service Type'] = current_service_type
