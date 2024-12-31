@@ -3,19 +3,22 @@ def extract_service_type(self, df):
         Extract 'Service Type' based on rows containing 'Inpatient structure' or 'Outpatient structure'.
         """
         df['Service Type'] = None
+
+        # Initialize a variable to track the current structure type
         current_service_type = None
 
+        # Iterate over rows to detect and propagate service type
         for idx, row in df.iterrows():
-            # Check for standalone structure indicators
-            if pd.notnull(row.iloc[0]):  # Check the first column for structure types
-                description = str(row.iloc[0]).lower()
+            first_column = str(row.iloc[0]) if pd.notnull(row.iloc[0]) else ""
+            first_column = first_column.strip().lower()
 
-                if "inpatient structure" in description:
-                    current_service_type = "Inpatient structure"
-                elif "outpatient structure" in description:
-                    current_service_type = "Outpatient structure"
+            # Check for structure types in the first column
+            if "inpatient structure" in first_column:
+                current_service_type = "Inpatient structure"
+            elif "outpatient structure" in first_column:
+                current_service_type = "Outpatient structure"
 
-            # Propagate the current structure type
+            # Propagate the current service type to the row
             if current_service_type:
                 df.at[idx, 'Service Type'] = current_service_type
 
