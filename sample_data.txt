@@ -19,8 +19,14 @@ def extract_service_type_from_rows(self, df):
             elif 'outpatient structure' in row_text:
                 current_service_type = 'Outpatient structure'
 
+            # If current service type is None, set it to previous valid service type
+            if current_service_type is None:
+                if service_type_column:
+                    current_service_type = service_type_column[-1]  # Propagate last valid service type
+
             # Append the current service type to the service type column
             service_type_column.append(current_service_type)
 
+        # Add service type as a new column in the DataFrame
         df['Service Type'] = service_type_column
         return df
