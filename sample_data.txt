@@ -1,24 +1,26 @@
-if not isinstance(df, pd.DataFrame) or df.empty:
-            print("Invalid DataFrame: DataFrame is empty or not loaded correctly.")
-            return pd.Series()
-
-        # Initialize variables
-        current_service_type = None
+def extract_service_type_from_rows(self, df):
+        """
+        Extract 'Service Type' based on rows containing 'Inpatient structure' and 'Outpatient structure'.
+        Carries forward the service type until the next structure type is encountered.
+        """
         service_type_column = []
+        current_service_type = None  # To keep track of the current service type
 
-        # Iterate over rows to detect and propagate service type
-        for idx, row in df.iterrows():
-            # Check the first column for structure type keywords
-            first_column = str(row.iloc[0]) if pd.notnull(row.iloc[0]) else ""
-            first_column_cleaned = first_column.strip().lower()
+        for _, row in df.iterrows():
+            # Check if any cell in the row contains the 'Inpatient structure' or 'Outpatient structure'
+            row_values = row.values.astype(str)  # Convert all row values to strings
+            row_text = " ".join(row_values).lower()  # Join all row values into a single text block
 
-            # Update current service type if a structure keyword is found
-            if "inpatient structure" in first_column_cleaned:
-                current_service_type = "Inpatient structure"
-            elif "outpatient structure" in first_column_cleaned:
-                current_service_type = "Outpatient structure"
+            # If 'Inpatient structure' is found, set current service type to 'Inpatient structure'
+            if 'inpatient structure' in row_text:
+                current_service_type = 'Inpatient structure'
 
-            # Append the current service type to the new column
+            # If 'Outpatient structure' is found, set current service type to 'Outpatient structure'
+            elif 'outpatient structure' in row_text:
+                current_service_type = 'Outpatient structure'
+
+            # Append the current service type to the service type column
             service_type_column.append(current_service_type)
 
-        return pd.Series(service_type_column)
+        df['Service Type'] = service_type_column
+        return df
