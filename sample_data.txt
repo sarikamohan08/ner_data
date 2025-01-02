@@ -1,36 +1,24 @@
-def extract_service_type(self, df):
-        """
-        Extract 'Service Type' based on rows containing 'Inpatient structure' or 'Outpatient structure'.
-
-        Args:
-            df (pd.DataFrame): Input DataFrame.
-
-        Returns:
-            list: A list containing the 'Service Type' for each row.
-        """
-        if not isinstance(df, pd.DataFrame) or df.empty:
+if not isinstance(df, pd.DataFrame) or df.empty:
             print("Invalid DataFrame: DataFrame is empty or not loaded correctly.")
-            return []
+            return pd.Series()
 
-        # Initialize the 'Service Type' list
+        # Initialize variables
+        current_service_type = None
         service_type_column = []
 
-        # Track the current service type
-        current_service_type = None
-
-        # Iterate over rows
+        # Iterate over rows to detect and propagate service type
         for idx, row in df.iterrows():
-            # Check the first column for structure type
+            # Check the first column for structure type keywords
             first_column = str(row.iloc[0]) if pd.notnull(row.iloc[0]) else ""
             first_column_cleaned = first_column.strip().lower()
 
-            # Update current service type based on keywords
+            # Update current service type if a structure keyword is found
             if "inpatient structure" in first_column_cleaned:
                 current_service_type = "Inpatient structure"
             elif "outpatient structure" in first_column_cleaned:
                 current_service_type = "Outpatient structure"
 
-            # Append the current service type to the column
+            # Append the current service type to the new column
             service_type_column.append(current_service_type)
 
-        return service_type_column
+        return pd.Series(service_type_column)
