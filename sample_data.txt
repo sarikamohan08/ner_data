@@ -1,32 +1,6 @@
-def extract_service_type_from_rows(self, df):
-        """
-        Extract 'Service Type' based on rows containing 'Inpatient structure' and 'Outpatient structure'.
-        Carries forward the service type until the next structure type is encountered.
-        """
-        service_type_column = []
-        current_service_type = None  # To keep track of the current service type
-
-        for _, row in df.iterrows():
-            # Check if any cell in the row contains the 'Inpatient structure' or 'Outpatient structure'
-            row_values = row.values.astype(str)  # Convert all row values to strings
-            row_text = " ".join(row_values).lower()  # Join all row values into a single text block
-
-            # If 'Inpatient structure' is found, set current service type to 'Inpatient structure'
-            if 'inpatient structure' in row_text:
-                current_service_type = 'Inpatient structure'
-
-            # If 'Outpatient structure' is found, set current service type to 'Outpatient structure'
-            elif 'outpatient structure' in row_text:
-                current_service_type = 'Outpatient structure'
-
-            # If current service type is None, set it to previous valid service type
-            if current_service_type is None:
-                if service_type_column:
-                    current_service_type = service_type_column[-1]  # Propagate last valid service type
-
-            # Append the current service type to the service type column
-            service_type_column.append(current_service_type)
-
-        # Add service type as a new column in the DataFrame
-        df['Service Type'] = service_type_column
-        return df
+health_benefit_plan = None
+    for i in range(min(5, len(df))):  # Check the first 5 rows
+        first_row_value = str(df.iloc[i, 0]).strip().lower()
+        if "attachment c: humana" in first_row_value:
+            health_benefit_plan = df.iloc[i, 0].strip()
+            break
