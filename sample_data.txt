@@ -1,2 +1,7 @@
-health_benefit_plan = df.iloc[0, 0] if not df.empty else None
-    health_benefit_plan = str(health_benefit_plan).strip() if health_benefit_plan else None
+health_benefit_plan = None
+    if not df.empty:
+        health_benefit_plan = str(df.iloc[0, 0]).strip() if pd.notnull(df.iloc[0, 0]) else None
+
+    # Re-read the sheet with proper headers (skip the first row for data)
+    df.columns = df.iloc[0]  # Use the first row as headers
+    df = df[1:] 
