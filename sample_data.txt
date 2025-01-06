@@ -1,6 +1,2 @@
-for i in range(min(5, len(df))):  # Check the first 5 rows
-        first_row_value = str(df.iloc[i, 0]) if not pd.isna(df.iloc[i, 0]) else ""
-        first_row_value = first_row_value.strip().lower()
-        if "attachment c: humana" in first_row_value:
-            health_benefit_plan = str(df.iloc[i, 0]).strip()
-            break
+health_benefit_plan = df.iloc[0, 0] if not df.empty else None
+    health_benefit_plan = str(health_benefit_plan).strip() if health_benefit_plan else None
