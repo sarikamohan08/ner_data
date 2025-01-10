@@ -1,7 +1,11 @@
-health_benefit_plan = None
-    if not df.empty:
-        health_benefit_plan = str(df.iloc[0, 0]).strip() if pd.notnull(df.iloc[0, 0]) else None
+if not isinstance(description, str) or not description.strip():
+        return None
 
-    # Re-read the sheet with proper headers (skip the first row for data)
-    df.columns = df.iloc[0]  # Use the first row as headers
-    df = df[1:] 
+    # Define a robust regex pattern to match variations of 'X-Y days'
+    pattern = r'\b\d+\s*-\s*\d+\s*days\b'
+
+    # Search for the pattern in the description
+    match = re.search(pattern, description, re.IGNORECASE)
+
+    # Return the matched case rate or None if not found
+    return match.group(0).strip() if match else None
