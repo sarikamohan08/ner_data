@@ -1,11 +1,26 @@
-if not isinstance(description, str) or not description.strip():
-        return None
+def add_grouper_info(df):
+    """
+    Adds an indicator column and a text column for rows containing the word 'grouper' in the 'Service description'.
 
-    # Define a robust regex pattern to match variations of 'X-Y days'
-    pattern = r'\b\d+\s*-\s*\d+\s*days\b'
+    Args:
+        df (pd.DataFrame): The input DataFrame containing a 'Service description' column.
 
-    # Search for the pattern in the description
-    match = re.search(pattern, description, re.IGNORECASE)
+    Returns:
+        pd.DataFrame: The DataFrame with new 'Grouper Indicator' and 'Grouper Text' columns.
+    """
+    # Ensure the 'Service description' column exists
+    if 'Service description' in df.columns:
+        # Add the Grouper Indicator column
+        df['Grouper Indicator'] = df['Service description'].apply(
+            lambda x: 1 if isinstance(x, str) and 'grouper' in x.lower() else 0
+        )
+        # Add the Grouper Text column
+        df['Grouper Text'] = df['Service description'].apply(
+            lambda x: x if isinstance(x, str) and 'grouper' in x.lower() else ''
+        )
+    else:
+        # Default columns if 'Service description' is missing
+        df['Grouper Indicator'] = 0
+        df['Grouper Text'] = ''
 
-    # Return the matched case rate or None if not found
-    return match.group(0).strip() if match else None
+    return df
