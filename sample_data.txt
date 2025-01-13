@@ -1,26 +1,12 @@
-def add_grouper_info(df):
-    """
-    Adds an indicator column and a text column for rows containing the word 'grouper' in the 'Service description'.
-
-    Args:
-        df (pd.DataFrame): The input DataFrame containing a 'Service description' column.
-
-    Returns:
-        pd.DataFrame: The DataFrame with new 'Grouper Indicator' and 'Grouper Text' columns.
-    """
-    # Ensure the 'Service description' column exists
-    if 'Service description' in df.columns:
-        # Add the Grouper Indicator column
-        df['Grouper Indicator'] = df['Service description'].apply(
-            lambda x: 1 if isinstance(x, str) and 'grouper' in x.lower() else 0
-        )
-        # Add the Grouper Text column
-        df['Grouper Text'] = df['Service description'].apply(
-            lambda x: x if isinstance(x, str) and 'grouper' in x.lower() else ''
-        )
+for sheet_name in workbook.sheetnames:
+    sheet = workbook[sheet_name]
+    
+    # Get the value of cell A1
+    cell_value = sheet['A1'].value
+    
+    # Check if the cell contains the desired text
+    if cell_value and "Attachment C: Humana" in cell_value:
+        # Append the value and sheet name to the DataFrame
+        df = pd.concat([df, pd.DataFrame({"Sheet Name": [sheet_name], "Value": [cell_value]})], ignore_index=True)
     else:
-        # Default columns if 'Service description' is missing
-        df['Grouper Indicator'] = 0
-        df['Grouper Text'] = ''
-
-    return df
+        print(f"Skipping sheet: {sheet_name} (No match found)")
