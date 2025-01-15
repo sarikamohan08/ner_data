@@ -1,12 +1,59 @@
-for sheet_name in workbook.sheetnames:
-    sheet = workbook[sheet_name]
-    
-    # Get the value of cell A1
-    cell_value = sheet['A1'].value
-    
-    # Check if the cell contains the desired text
-    if cell_value and "Attachment C: Humana" in cell_value:
-        # Append the value and sheet name to the DataFrame
-        df = pd.concat([df, pd.DataFrame({"Sheet Name": [sheet_name], "Value": [cell_value]})], ignore_index=True)
-    else:
-        print(f"Skipping sheet: {sheet_name} (No match found)")
+from fuzzywuzzy import process  # Ensure fuzzywuzzy is installed: pip install fuzzywuzzy[speedup]
+
+def extract_and_append_taxid_with_partial_match(df):
+    """
+    Extracts 9-digit tax IDs and their corresponding provider names, allowing partial matches 
+    when appending tax IDs back to the main DataFrame.
+
+    Args:
+        df (pd.DataFrame): The input DataFrame.
+
+    Returns:
+        pd.DataFrame: The updated DataFrame with a new 'Tax ID' column.
+    """
+    extracted_data = []
+
+    # Step 1: Extract Tax ID and Provider Name
+    for idx, row in df.iterrows():
+        for col_idx, value in enumerate(row):
+            # Check for a 9-digit Tax ID
+            if isinstance(value, str) and value.isdigit() and len(value) == 9:
+                # Get the provider name from the left cell (if it exists)
+                if col_idx > 0:  # Ensure there's a left column
+                    provider_name = row.iloc[col_idx - 1]
+                else:
+                    provider_name = None
+                
+                # Append to the extracted data
+                extracted_data.append({
+                    'Provider Name': str(provider_name).strip() if provider_name else None,
+                    'Tax ID': value
+                })
+
+    # Convert extracted data into a DataFrame
+    extracted_df = pd.DataFrame(extracted_data)
+
+    # Step 2: Initialize a new 'Tax ID' column in the main DataFrame
+    df['Tax ID'] = None
+
+    # Step 3: Append the tax ID back to the main DataFrame using partial matches
+    if not extracted_df.empty:
+        extracted_provider_names = extracted_df['Provider Name'].dropna().unique()
+
+        for idx, row in df.iterrows():
+            current_provider_name = str(row.get('Provider Name', '')).strip()
+
+            if current_provider_name:
+                # Use fuzzy matching to find the best match
+                best_match, score = process.extractOne(
+                    current_provider_name, extracted_provider_names
+                )
+
+                # Append Tax ID if the match score is high enough
+                if score > 80:  # Adjust threshold as needed
+                    tax_id = extracted_df.loc[
+                        extracted_df['Provider Name'] == best_match, 'Tax ID'
+                    ].values[0]
+                    df.at[idx, 'Tax ID'] = tax_id
+
+    return df
