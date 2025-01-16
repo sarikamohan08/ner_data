@@ -1,17 +1,24 @@
-def create_grouper_indicator(self, description):
-        
-taxid_provider_lookup = {}
+def fill_taxid_based_on_provider(self, df):
+        """
+        Fill missing Tax IDs in the DataFrame based on the provider name.
 
+        Args:
+            df (pd.DataFrame): DataFrame to process.
+
+        Returns:
+            pd.DataFrame: Updated DataFrame with missing Tax IDs filled.
+        """
+        # Step 1: Extract the Tax ID to Provider Name lookup
+        taxid_provider_lookup = self.extract_taxid_provider_lookup(df)
+
+        # Step 2: Reverse the lookup to map Provider Names to Tax IDs
+        provider_to_taxid = {v: k for k, v in taxid_provider_lookup.items()}
+
+        # Step 3: Fill missing Tax IDs
         for index, row in df.iterrows():
-            for col_index, cell in enumerate(row):
-                # Check if the cell contains a 9-digit number (potential Tax ID)
-                if isinstance(cell, str) and re.match(r'\b\d{9}\b', cell):
-                    tax_id = cell.strip()
-                    # Get the provider name from the left column, if it exists
-                    provider_name = row.iloc[col_index - 1] if col_index > 0 else None
+            provider_name = row.get('Provider Name', None)
+            tax_id = row.get('Tax ID', None)
+            if pd.isna(tax_id) and provider_name in provider_to_taxid:
+                df.at[index, 'Tax ID'] = provider_to_taxid[provider_name]
 
-                    # Add to the lookup if provider name is valid
-                    if provider_name:
-                        taxid_provider_lookup[tax_id] = provider_name.strip()
-
-        return taxid_provider_lookup
+        return df
