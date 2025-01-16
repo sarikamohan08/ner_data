@@ -1,13 +1,17 @@
 def create_grouper_indicator(self, description):
-        """
-        Checks if the word 'grouper' is present in the description.
+        
+taxid_provider_lookup = {}
 
-        Args:
-            description (str): The text to check for the keyword.
+        for index, row in df.iterrows():
+            for col_index, cell in enumerate(row):
+                # Check if the cell contains a 9-digit number (potential Tax ID)
+                if isinstance(cell, str) and re.match(r'\b\d{9}\b', cell):
+                    tax_id = cell.strip()
+                    # Get the provider name from the left column, if it exists
+                    provider_name = row.iloc[col_index - 1] if col_index > 0 else None
 
-        Returns:
-            int: 1 if 'grouper' is found, otherwise 0.
-        """
-        if not isinstance(description, str):
-            return 0
-        return 1 if 'grouper' in description.lower() else 0
+                    # Add to the lookup if provider name is valid
+                    if provider_name:
+                        taxid_provider_lookup[tax_id] = provider_name.strip()
+
+        return taxid_provider_lookup
