@@ -1,62 +1,42 @@
+from bs4 import BeautifulSoup
+import requests
+import zipfile
+import os
+import pandas as pd
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.action_chains import ActionChains
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-import os
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
 import time
-import zipfile
 
-# Set the download directory for the browser
-download_dir = os.path.abspath("downloads")  # Ensure this folder exists
-os.makedirs(download_dir, exist_ok=True)
+# Step 1: Open the Website using Selenium
+driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()))
+url = "https://example.com"  # Replace with the target URL
+driver.get(url)
 
-options = webdriver.ChromeOptions()
-prefs = {
-    "download.default_directory": download_dir,
-    "download.prompt_for_download": False,
-    "download.directory_upgrade": True,
-    "safebrowsing.enabled": True
-}
-options.add_experimental_option("prefs", prefs)
+# Step 2: Locate the Export Button
+export_button = driver.find_element(By.CLASS_NAME, "export-button-class")  # Replace with the correct class name
+export_button.click()  # Click the export button
 
-# Initialize the WebDriver
-driver = webdriver.Chrome(options=options)
+# Step 3: Wait for the File Download
+time.sleep(5)  # Adjust based on download time
 
-try:
-    # Navigate to the website
-    driver.get("YOUR_TARGET_WEBSITE_URL")  # Replace with the actual URL
+# Step 4: Locate the ZIP File
+download_dir = "/path/to/download"  # Replace with your browser's download directory
+zip_file_path = os.path.join(download_dir, "downloaded_file.zip")  # Replace with the downloaded zip file name
 
-    # Wait for the export button to be visible and click it
-    wait = WebDriverWait(driver, 20)
-    export_button = wait.until(EC.element_to_be_clickable((By.XPATH, "EXPORT_BUTTON_XPATH")))
-    export_button.click()
+# Step 5: Extract the ZIP File
+with zipfile.ZipFile(zip_file_path, 'r') as zip_ref:
+    zip_ref.extractall(download_dir)
 
-    # Wait for the CSV option to appear and click it
-    csv_option = wait.until(EC.element_to_be_clickable((By.XPATH, "CSV_OPTION_XPATH")))
-    csv_option.click()
+# Step 6: Load the CSV File
+csv_file_path = os.path.join(download_dir, "extracted_file.csv")  # Replace with the extracted CSV name
+df = pd.read_csv(csv_file_path)
 
-    # Wait for the ZIP file to download
-    time.sleep(10)  # Adjust based on expected download time
+# Display the DataFrame
+print(df.head())
 
-    # Find the downloaded ZIP file
-    downloaded_files = os.listdir(download_dir)
-    zip_files = [f for f in downloaded_files if f.endswith(".zip")]
-
-    if not zip_files:
-        raise FileNotFoundError("No ZIP file found in the download directory.")
-
-    zip_file_path = os.path.join(download_dir, zip_files[0])
-
-    # Extract the ZIP file
-    with zipfile.ZipFile(zip_file_path, 'r') as zip_ref:
-        zip_ref.extractall(download_dir)
-
-    print(f"Files extracted to: {download_dir}")
-
-except Exception as e:
-    print(f"An error occurred: {e}")
-
-finally:
-    # Close the browser
-    driver.quit()
+# Step 7: Clean Up
+driver.quit()
