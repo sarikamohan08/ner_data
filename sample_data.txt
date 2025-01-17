@@ -1,65 +1,68 @@
+import time
+import os
 from selenium import webdriver
+from selenium.webdriver.edge.service import Service
+from webdriver_manager.microsoft import EdgeChromiumDriverManager
 from selenium.webdriver.common.by import By
+from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-import os
-import time
-import zipfile
+from selenium.webdriver.edge.options import Options
 
-# Set the download directory for Edge
-download_dir = os.path.abspath("downloads")  # Ensure this folder exists
-os.makedirs(download_dir, exist_ok=True)
+# Set up the download directory
+download_dir = "/path/to/download"  # Change to your desired download directory
 
-# Configure Edge options for automatic download
-options = webdriver.EdgeOptions()
-prefs = {
-    "download.default_directory": download_dir,  # Set the default download location
-    "download.prompt_for_download": False,  # Disable download prompts
-    "safebrowsing.enabled": True,  # Enable safe browsing
-}
-options.add_experimental_option("prefs", prefs)
+# Step 1: Setup WebDriver with custom download directory
+options = Options()
+options.add_argument("--headless")  # Run in headless mode (no browser window)
+options.add_argument("--disable-gpu")
+options.add_argument(f"--user-data-dir={os.path.join(download_dir, 'chrome_user_data')}")
+options.add_experimental_option("prefs", {
+    "download.default_directory": download_dir,
+    "download.prompt_for_download": False,
+    "safebrowsing.enabled": "false"
+})
 
-# Initialize the Edge WebDriver
-driver = webdriver.Edge(options=options)
+driver = webdriver.Edge(service=Service(EdgeChromiumDriverManager().install()), options=options)
+driver.get("https://data.cms.gov/provider-characteristics/medicare-provider-supplier-enrollment/opioid-treatment-program-providers/data")  # Open the provided URL
 
 try:
-    # Navigate to the website
-    driver.get("https://data.cms.gov/provider-characteristics/medicare-provider-supplier-enrollment/opioid-treatment-program-providers/data")
-
-    # Wait for the first export button to be visible and click it
-    wait = WebDriverWait(driver, 20)
-    export_button = wait.until(EC.element_to_be_clickable((By.XPATH, "//button[@class='ds-export-btn']")))  # Adjusted XPath
+    # Step 2: Wait for and click the "Export" button
+    export_button = WebDriverWait(driver, 10).until(
+        EC.element_to_be_clickable((By.CLASS_NAME, "export_btn"))
+    )
     export_button.click()
 
-    # Wait for the CSV option to appear and click it
-    csv_option = wait.until(EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'CSV for Excel')]")))  # Adjusted XPath
+    # Step 3: Wait for 15 seconds to ensure export options are visible
+    time.sleep(15)
+
+    # Step 4: Select "CSV for Excel" by finding the correct <h3> element and click it
+    csv_option = WebDriverWait(driver, 10).until(
+        EC.element_to_be_clickable((By.XPATH, "//h3[@class='typeface-03' and text()='CSV for Excel']"))
+    )
     csv_option.click()
 
-    # Wait for the final export button to appear and click it
-    export_button_final = wait.until(EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Export')]")))  # Adjusted XPath
-    export_button_final.click()
+    # Step 5: Wait for the modal to disappear (optional)
+    WebDriverWait(driver, 10).until(
+        EC.invisibility_of_element_located((By.CLASS_NAME, "DataExportModal"))  # Modal class for waiting
+    )
 
-    # Wait for the ZIP file to download
-    time.sleep(10)  # Adjust based on expected download time
+    # Step 6: Click the "Export" button again to initiate the download
+    export_button_again = WebDriverWait(driver, 10).until(
+        EC.element_to_be_clickable((By.CLASS_NAME, "export_btn"))
+    )
+    export_button_again.click()
 
-    # Find the downloaded ZIP file
+    # Optional: Wait for the file to download (adjust based on file size)
+    time.sleep(30)
+
+    # Check if the file is downloaded
     downloaded_files = os.listdir(download_dir)
-    zip_files = [f for f in downloaded_files if f.endswith(".zip")]
-
-    if not zip_files:
-        raise FileNotFoundError("No ZIP file found in the download directory.")
-
-    zip_file_path = os.path.join(download_dir, zip_files[0])
-
-    # Extract the ZIP file
-    with zipfile.ZipFile(zip_file_path, 'r') as zip_ref:
-        zip_ref.extractall(download_dir)
-
-    print(f"Files extracted to: {download_dir}")
+    print("Downloaded files:", downloaded_files)
 
 except Exception as e:
-    print(f"An error occurred: {e}")
+    print(f"Error: {e}")
 
 finally:
-    # Close the browser
+    # Step 7: Quit the WebDriver
     driver.quit()
