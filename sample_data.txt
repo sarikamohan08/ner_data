@@ -1,51 +1,68 @@
+import time
+import os
 from selenium import webdriver
 from selenium.webdriver.edge.service import Service
 from webdriver_manager.microsoft import EdgeChromiumDriverManager
 from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.edge.options import Options
-import time
 
-# Step 1: Setup Edge WebDriver with download configuration
-download_dir = "/path/to/your/download/folder"  # Replace with your download folder path
+# Step 1: Setup WebDriver with Download Preferences for Edge
+download_dir = "/path/to/download/directory"  # Set your desired download directory
 
-options = Options()
-options.add_argument("--disable-extensions")
-options.add_argument("--headless")  # Optional: Run browser in headless mode
-options.add_argument("--disable-gpu")
-options.add_argument("--no-sandbox")
+edge_options = Options()
+edge_options.add_experimental_option("prefs", {
+    "download.default_directory": download_dir,  # Set download directory
+    "download.prompt_for_download": False,       # Disable download prompts
+    "directory_upgrade": True                    # Automatically upgrade the directory
+})
 
-# Configure automatic download for Edge
-prefs = {
-    "download.default_directory": download_dir,
-    "download.prompt_for_download": False,  # Don't show the prompt
-    "download.directory_upgrade": True,
-    "safebrowsing.enabled": True
-}
-options.add_experimental_option("prefs", prefs)
+# Initialize the WebDriver with EdgeOptions
+driver = webdriver.Edge(service=Service(EdgeChromiumDriverManager().install()), options=edge_options)
+driver.get("https://example.com")  # Replace with your URL
 
-# Initialize the Edge WebDriver with options
-driver = webdriver.Edge(service=Service(EdgeChromiumDriverManager().install()), options=options)
-driver.get("https://example.com")  # Replace with your target URL
-
+# Step 2: Wait for the Export Button to Be Clickable and Click it
 try:
-    # Step 2: Wait for Export Button and Click
     export_button = WebDriverWait(driver, 10).until(
-        EC.element_to_be_clickable((By.CLASS_NAME, "export_btn"))
+        EC.element_to_be_clickable((By.CLASS_NAME, "export_btn"))  # Replace with actual class name
     )
     export_button.click()
 
-    # Step 3: Wait for the dropdown or modal with CSV option to appear
-    # Replace this selector with the correct one for the dropdown or modal
+    # Step 3: Wait for 15 Seconds (Allowing the Export Options to Appear)
+    time.sleep(15)
+
+    # Step 4: Select the 'CSV for Excel' Option by Matching Text in <h3> tag with class 'typeface-03'
     csv_option = WebDriverWait(driver, 10).until(
-        EC.element_to_be_clickable((By.XPATH, "//li[text()='CSV for Excel']"))  # Adjust this XPATH as needed
+        EC.element_to_be_clickable(
+            (By.XPATH, "//h3[@class='typeface-03' and text()='CSV for Excel']")  # XPath for h3 tag and text
+        )
     )
     csv_option.click()
 
-    # Step 4: Wait for the file to download (Adjust the sleep time based on the download speed)
-    time.sleep(5)  # Adjust based on the actual time it takes for the file to download
+    # Step 5: Wait for the ZIP file to be downloaded
+    # Check if the download directory contains a ZIP file
+    download_complete = False
+    timeout = 30  # Maximum wait time in seconds
+    start_time = time.time()
+
+    while not download_complete and time.time() - start_time < timeout:
+        # Check if the ZIP file is present in the download directory
+        for file_name in os.listdir(download_dir):
+            if file_name.endswith(".zip"):  # Check if a .zip file is present
+                download_complete = True
+                print(f"Download complete: {file_name}")
+                break
+        time.sleep(1)  # Wait before checking again
+
+    # Step 6: Optionally, wait for the file to finish downloading completely
+    if download_complete:
+        print(f"ZIP file has been downloaded to {download_dir}.")
+    else:
+        print("Download did not complete within the specified timeout.")
 
 except Exception as e:
     print(f"Error: {e}")
 
-# Step 5: Quit Driver
+# Step 7: Quit Driver
 driver.quit()
