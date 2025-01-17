@@ -1,53 +1,62 @@
-import requests
-from bs4 import BeautifulSoup
-import zipfile
-import io
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.action_chains import ActionChains
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 import os
+import time
+import zipfile
 
-# URL where the export button is located
-export_url = "https://example.com/export"
+# Set the download directory for the browser
+download_dir = os.path.abspath("downloads")  # Ensure this folder exists
+os.makedirs(download_dir, exist_ok=True)
 
-# Step 1: Access the export page
-response = requests.get(export_url)
-if response.status_code != 200:
-    print("Failed to access the export page.")
-    exit()
+options = webdriver.ChromeOptions()
+prefs = {
+    "download.default_directory": download_dir,
+    "download.prompt_for_download": False,
+    "download.directory_upgrade": True,
+    "safebrowsing.enabled": True
+}
+options.add_experimental_option("prefs", prefs)
 
-# Step 2: Parse the page to find the "Export" button and trigger it
-soup = BeautifulSoup(response.content, 'html.parser')
-export_button = soup.find('button', {'id': 'export_button_id'})  # Update with actual button ID or class
+# Initialize the WebDriver
+driver = webdriver.Chrome(options=options)
 
-if not export_button:
-    print("Export button not found.")
-    exit()
+try:
+    # Navigate to the website
+    driver.get("YOUR_TARGET_WEBSITE_URL")  # Replace with the actual URL
 
-# Step 3: Find all links and filter for "CSV for Excel"
-csv_links = soup.find_all('a', text="CSV for Excel")  # Finds links with exact text "CSV for Excel"
+    # Wait for the export button to be visible and click it
+    wait = WebDriverWait(driver, 20)
+    export_button = wait.until(EC.element_to_be_clickable((By.XPATH, "EXPORT_BUTTON_XPATH")))
+    export_button.click()
 
-if not csv_links:
-    print("CSV for Excel link not found.")
-    exit()
+    # Wait for the CSV option to appear and click it
+    csv_option = wait.until(EC.element_to_be_clickable((By.XPATH, "CSV_OPTION_XPATH")))
+    csv_option.click()
 
-# Assuming the first match is the correct link
-csv_download_url = csv_links[0]['href']
-print(f"Found CSV download URL: {csv_download_url}")
+    # Wait for the ZIP file to download
+    time.sleep(10)  # Adjust based on expected download time
 
-# Step 4: Download the ZIP file containing the CSV
-response = requests.get(csv_download_url)
-if response.status_code == 200:
-    print("CSV ZIP file downloaded.")
-else:
-    print("Failed to download CSV ZIP file.")
-    exit()
+    # Find the downloaded ZIP file
+    downloaded_files = os.listdir(download_dir)
+    zip_files = [f for f in downloaded_files if f.endswith(".zip")]
 
-# Step 5: Extract the ZIP file and save the CSV
-zip_file = zipfile.ZipFile(io.BytesIO(response.content))
-output_dir = "extracted_csv"
-os.makedirs(output_dir, exist_ok=True)
+    if not zip_files:
+        raise FileNotFoundError("No ZIP file found in the download directory.")
 
-for file_name in zip_file.namelist():
-    if file_name.endswith(".csv"):
-        zip_file.extract(file_name, output_dir)
-        print(f"Extracted: {file_name}")
+    zip_file_path = os.path.join(download_dir, zip_files[0])
 
-print(f"All CSV files extracted to {output_dir}.")
+    # Extract the ZIP file
+    with zipfile.ZipFile(zip_file_path, 'r') as zip_ref:
+        zip_ref.extractall(download_dir)
+
+    print(f"Files extracted to: {download_dir}")
+
+except Exception as e:
+    print(f"An error occurred: {e}")
+
+finally:
+    # Close the browser
+    driver.quit()
