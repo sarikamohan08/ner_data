@@ -1,68 +1,65 @@
-import time
-import os
 from selenium import webdriver
-from selenium.webdriver.edge.service import Service
-from webdriver_manager.microsoft import EdgeChromiumDriverManager
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.edge.options import Options
+import os
+import time
+import zipfile
 
-# Step 1: Setup WebDriver with Download Preferences for Edge
-download_dir = "/path/to/download/directory"  # Set your desired download directory
+# Set the download directory for Edge
+download_dir = os.path.abspath("downloads")  # Ensure this folder exists
+os.makedirs(download_dir, exist_ok=True)
 
-edge_options = Options()
-edge_options.add_experimental_option("prefs", {
-    "download.default_directory": download_dir,  # Set download directory
-    "download.prompt_for_download": False,       # Disable download prompts
-    "directory_upgrade": True                    # Automatically upgrade the directory
-})
+# Configure Edge options for automatic download
+options = webdriver.EdgeOptions()
+prefs = {
+    "download.default_directory": download_dir,  # Set the default download location
+    "download.prompt_for_download": False,  # Disable download prompts
+    "safebrowsing.enabled": True,  # Enable safe browsing
+}
+options.add_experimental_option("prefs", prefs)
 
-# Initialize the WebDriver with EdgeOptions
-driver = webdriver.Edge(service=Service(EdgeChromiumDriverManager().install()), options=edge_options)
-driver.get("https://example.com")  # Replace with your URL
+# Initialize the Edge WebDriver
+driver = webdriver.Edge(options=options)
 
-# Step 2: Wait for the Export Button to Be Clickable and Click it
 try:
-    export_button = WebDriverWait(driver, 10).until(
-        EC.element_to_be_clickable((By.CLASS_NAME, "export_btn"))  # Replace with actual class name
-    )
+    # Navigate to the website
+    driver.get("https://data.cms.gov/provider-characteristics/medicare-provider-supplier-enrollment/opioid-treatment-program-providers/data")
+
+    # Wait for the first export button to be visible and click it
+    wait = WebDriverWait(driver, 20)
+    export_button = wait.until(EC.element_to_be_clickable((By.XPATH, "//button[@class='ds-export-btn']")))  # Adjusted XPath
     export_button.click()
 
-    # Step 3: Wait for 15 Seconds (Allowing the Export Options to Appear)
-    time.sleep(15)
-
-    # Step 4: Select the 'CSV for Excel' Option by Matching Text in <h3> tag with class 'typeface-03'
-    csv_option = WebDriverWait(driver, 10).until(
-        EC.element_to_be_clickable(
-            (By.XPATH, "//h3[@class='typeface-03' and text()='CSV for Excel']")  # XPath for h3 tag and text
-        )
-    )
+    # Wait for the CSV option to appear and click it
+    csv_option = wait.until(EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'CSV for Excel')]")))  # Adjusted XPath
     csv_option.click()
 
-    # Step 5: Wait for the ZIP file to be downloaded
-    # Check if the download directory contains a ZIP file
-    download_complete = False
-    timeout = 30  # Maximum wait time in seconds
-    start_time = time.time()
+    # Wait for the final export button to appear and click it
+    export_button_final = wait.until(EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Export')]")))  # Adjusted XPath
+    export_button_final.click()
 
-    while not download_complete and time.time() - start_time < timeout:
-        # Check if the ZIP file is present in the download directory
-        for file_name in os.listdir(download_dir):
-            if file_name.endswith(".zip"):  # Check if a .zip file is present
-                download_complete = True
-                print(f"Download complete: {file_name}")
-                break
-        time.sleep(1)  # Wait before checking again
+    # Wait for the ZIP file to download
+    time.sleep(10)  # Adjust based on expected download time
 
-    # Step 6: Optionally, wait for the file to finish downloading completely
-    if download_complete:
-        print(f"ZIP file has been downloaded to {download_dir}.")
-    else:
-        print("Download did not complete within the specified timeout.")
+    # Find the downloaded ZIP file
+    downloaded_files = os.listdir(download_dir)
+    zip_files = [f for f in downloaded_files if f.endswith(".zip")]
+
+    if not zip_files:
+        raise FileNotFoundError("No ZIP file found in the download directory.")
+
+    zip_file_path = os.path.join(download_dir, zip_files[0])
+
+    # Extract the ZIP file
+    with zipfile.ZipFile(zip_file_path, 'r') as zip_ref:
+        zip_ref.extractall(download_dir)
+
+    print(f"Files extracted to: {download_dir}")
 
 except Exception as e:
-    print(f"Error: {e}")
+    print(f"An error occurred: {e}")
 
-# Step 7: Quit Driver
-driver.quit()
+finally:
+    # Close the browser
+    driver.quit()
