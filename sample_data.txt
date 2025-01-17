@@ -6,6 +6,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 import time
 import os
+import glob
 
 def download_cms_otp_data(download_path):
     # Setup Edge options
@@ -14,40 +15,82 @@ def download_cms_otp_data(download_path):
         "download.default_directory": download_path,
         "download.prompt_for_download": False,
         "download.directory_upgrade": True,
-        "safebrowsing.enabled": True
+        "safebrowsing.enabled": True,
+        "download.open_pdf_in_system_reader": False
     })
+    
+    # Add additional options to prevent download issues
+    edge_options.add_argument("--disable-extensions")
+    edge_options.add_argument("--no-sandbox")
+    edge_options.add_argument("--disable-popup-blocking")
 
     # Initialize Edge driver
     driver = webdriver.Edge(options=edge_options)
+    driver.maximize_window()  # Maximize window to ensure all elements are visible
     
     try:
         # Navigate to the CMS website
         url = "https://data.cms.gov/provider-characteristics/medicare-provider-supplier-enrollment/opioid-treatment-program-providers/data"
         driver.get(url)
+        print("Navigated to website")
         
-        # Wait for the export button to be clickable and click it
-        export_button = WebDriverWait(driver, 20).until(
-            EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Export')]"))
+        # Wait for page to load completely
+        time.sleep(5)
+        
+        # Count files in download directory before download
+        files_before = set(glob.glob(os.path.join(download_path, "*")))
+        
+        # Click export button with explicit wait and scroll
+        export_button = WebDriverWait(driver, 30).until(
+            EC.presence_of_element_located((By.XPATH, "//button[contains(text(), 'Export')]"))
         )
+        driver.execute_script("arguments[0].scrollIntoView(true);", export_button)
+        time.sleep(2)
         export_button.click()
+        print("Clicked first export button")
         
         # Wait for and click the CSV for Excel option
-        csv_option = WebDriverWait(driver, 10).until(
+        csv_option = WebDriverWait(driver, 20).until(
             EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'CSV for Excel')]"))
         )
+        driver.execute_script("arguments[0].scrollIntoView(true);", csv_option)
+        time.sleep(2)
         csv_option.click()
+        print("Selected CSV for Excel option")
         
         # Wait for and click the final export button
-        final_export = WebDriverWait(driver, 10).until(
+        final_export = WebDriverWait(driver, 20).until(
             EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Export')]"))
         )
+        driver.execute_script("arguments[0].scrollIntoView(true);", final_export)
+        time.sleep(2)
         final_export.click()
+        print("Clicked final export button")
         
-        # Wait for download to complete (adjust time if needed)
-        time.sleep(10)
+        # Wait for download to complete by checking for new files
+        max_wait = 60  # Maximum wait time in seconds
+        start_time = time.time()
+        download_completed = False
         
-        print(f"Download completed. Check {download_path} for the file.")
+        while time.time() - start_time < max_wait and not download_completed:
+            files_after = set(glob.glob(os.path.join(download_path, "*")))
+            new_files = files_after - files_before
+            
+            # Check for both .zip files and .crdownload files
+            downloading_files = [f for f in new_files if f.endswith('.crdownload') or f.endswith('.zip')]
+            
+            if downloading_files:
+                if any(f.endswith('.zip') for f in downloading_files):
+                    download_completed = True
+                    print(f"Download completed! File: {[f for f in downloading_files if f.endswith('.zip')][0]}")
+                    break
+            
+            time.sleep(2)
+            print("Waiting for download to complete...")
         
+        if not download_completed:
+            print("Download timeout or failed. Please check the download directory manually.")
+            
     except Exception as e:
         print(f"An error occurred: {str(e)}")
     
@@ -56,10 +99,11 @@ def download_cms_otp_data(download_path):
 
 if __name__ == "__main__":
     # Specify your download path here
-    download_directory = r"C:\Downloads\CMS_Data"  # Change this to your preferred download location
+    download_directory = os.path.join(os.path.expanduser("~"), "Downloads", "CMS_Data")
     
     # Create the directory if it doesn't exist
     os.makedirs(download_directory, exist_ok=True)
+    print(f"Download directory: {download_directory}")
     
     # Run the download function
     download_cms_otp_data(download_directory)
