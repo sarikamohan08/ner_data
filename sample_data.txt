@@ -1,42 +1,22 @@
-from bs4 import BeautifulSoup
-import requests
-import zipfile
-import os
-import pandas as pd
 from selenium import webdriver
+from selenium.webdriver.edge.service import Service
+from webdriver_manager.microsoft import EdgeChromiumDriverManager
 from selenium.webdriver.common.by import By
-from selenium.webdriver.common.action_chains import ActionChains
-from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
 import time
 
-# Step 1: Open the Website using Selenium
-driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()))
+# Step 1: Setup Edge WebDriver
+driver = webdriver.Edge(service=Service(EdgeChromiumDriverManager().install()))
+
+# Step 2: Open the Website
 url = "https://example.com"  # Replace with the target URL
 driver.get(url)
 
-# Step 2: Locate the Export Button
-export_button = driver.find_element(By.CLASS_NAME, "export-button-class")  # Replace with the correct class name
-export_button.click()  # Click the export button
+# Step 3: Locate and Click the Export Button
+export_button = driver.find_element(By.CLASS_NAME, "export-button-class")  # Replace with the actual class name
+export_button.click()
 
-# Step 3: Wait for the File Download
+# Step 4: Wait for the File to Download
 time.sleep(5)  # Adjust based on download time
 
-# Step 4: Locate the ZIP File
-download_dir = "/path/to/download"  # Replace with your browser's download directory
-zip_file_path = os.path.join(download_dir, "downloaded_file.zip")  # Replace with the downloaded zip file name
-
-# Step 5: Extract the ZIP File
-with zipfile.ZipFile(zip_file_path, 'r') as zip_ref:
-    zip_ref.extractall(download_dir)
-
-# Step 6: Load the CSV File
-csv_file_path = os.path.join(download_dir, "extracted_file.csv")  # Replace with the extracted CSV name
-df = pd.read_csv(csv_file_path)
-
-# Display the DataFrame
-print(df.head())
-
-# Step 7: Clean Up
+# Step 5: Clean up
 driver.quit()
