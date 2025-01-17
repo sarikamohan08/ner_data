@@ -1,24 +1,11 @@
-def fill_taxid_based_on_provider(self, df):
-        """
-        Fill missing Tax IDs in the DataFrame based on the provider name.
+reverse_dict = {v: k for k, v in tax_provider_dict.items()}
 
-        Args:
-            df (pd.DataFrame): DataFrame to process.
+# Function to find tax_id based on provider_name
+def find_tax_id(name):
+    for full_name, tax_id in reverse_dict.items():
+        if name in full_name:
+            return tax_id
+    return None
 
-        Returns:
-            pd.DataFrame: Updated DataFrame with missing Tax IDs filled.
-        """
-        # Step 1: Extract the Tax ID to Provider Name lookup
-        taxid_provider_lookup = self.extract_taxid_provider_lookup(df)
-
-        # Step 2: Reverse the lookup to map Provider Names to Tax IDs
-        provider_to_taxid = {v: k for k, v in taxid_provider_lookup.items()}
-
-        # Step 3: Fill missing Tax IDs
-        for index, row in df.iterrows():
-            provider_name = row.get('Provider Name', None)
-            tax_id = row.get('Tax ID', None)
-            if pd.isna(tax_id) and provider_name in provider_to_taxid:
-                df.at[index, 'Tax ID'] = provider_to_taxid[provider_name]
-
-        return df
+# Apply the function to the DataFrame
+df['tax_id'] = df['provider_name'].apply(find_tax_id)
