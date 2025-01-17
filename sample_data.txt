@@ -13,7 +13,7 @@ if response.status_code != 200:
     print("Failed to access the export page.")
     exit()
 
-# Step 2: Parse the page to find the "Export" button and CSV option
+# Step 2: Parse the page to find the "Export" button and trigger it
 soup = BeautifulSoup(response.content, 'html.parser')
 export_button = soup.find('button', {'id': 'export_button_id'})  # Update with actual button ID or class
 
@@ -21,15 +21,16 @@ if not export_button:
     print("Export button not found.")
     exit()
 
-# Step 3: Find the link or trigger for CSV download
-# Assuming there's a link or a form that submits for CSV export
-csv_download_link = soup.find('a', {'id': 'csv_download_link'})  # Update with actual link ID or class
+# Step 3: Find all links and filter for "CSV for Excel"
+csv_links = soup.find_all('a', text="CSV for Excel")  # Finds links with exact text "CSV for Excel"
 
-if csv_download_link:
-    csv_download_url = csv_download_link['href']
-else:
-    print("CSV download link not found.")
+if not csv_links:
+    print("CSV for Excel link not found.")
     exit()
+
+# Assuming the first match is the correct link
+csv_download_url = csv_links[0]['href']
+print(f"Found CSV download URL: {csv_download_url}")
 
 # Step 4: Download the ZIP file containing the CSV
 response = requests.get(csv_download_url)
