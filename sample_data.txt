@@ -1,99 +1,15 @@
-import time
-import os
-from selenium import webdriver
-from selenium.webdriver.edge.service import Service
-from webdriver_manager.microsoft import EdgeChromiumDriverManager
-from selenium.webdriver.common.by import By
-from selenium.webdriver.common.action_chains import ActionChains
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.edge.options import Options
-
-# Set up the download directory
-download_dir = os.path.join(os.path.expanduser("~"), "Downloads", "CMS_Data")  # Change this path as needed
-os.makedirs(download_dir, exist_ok=True)
-
-# Setup WebDriver with custom download directory
-options = Options()
-options.add_experimental_option("prefs", {
-    "download.default_directory": download_dir,
-    "download.prompt_for_download": False,
-    "download.directory_upgrade": True,
-    "safebrowsing.enabled": False
-})
-
-# Initialize the driver
-driver = webdriver.Edge(
-    service=Service(EdgeChromiumDriverManager().install()),
-    options=options
-)
-
-try:
-    # Navigate to the website
-    print("Navigating to website...")
-    driver.get("https://data.cms.gov/provider-characteristics/medicare-provider-supplier-enrollment/opioid-treatment-program-providers/data")
-    
-    # Wait for initial page load
-    time.sleep(5)
-    
-    # Click first export button - trying multiple possible selectors
-    print("Looking for first export button...")
-    export_button = WebDriverWait(driver, 20).until(
-        EC.presence_of_element_located((By.XPATH, "//*[contains(@class, 'export') and (contains(text(), 'Export') or contains(@title, 'Export'))]"))
+# Step 6: Wait for the modal to disappear before clicking the "Export" button again
+    WebDriverWait(driver, 10).until(
+        EC.invisibility_of_element_located((By.CSS_SELECTOR, "div[role='dialog'][aria-modal='true']"))
     )
-    driver.execute_script("arguments[0].scrollIntoView(true);", export_button)
-    time.sleep(2)
-    export_button.click()
-    print("Clicked first export button")
-    
-    # Wait for and click CSV for Excel option
-    print("Looking for CSV option...")
-    csv_option = WebDriverWait(driver, 20).until(
-        EC.element_to_be_clickable((By.XPATH, "//*[contains(text(), 'CSV for Excel')]"))
+
+    # Step 7: Click the "Export" button again to initiate the download
+    export_button_again = WebDriverWait(driver, 10).until(
+        EC.element_to_be_clickable((By.CLASS_NAME, "export_btn"))
     )
-    driver.execute_script("arguments[0].scrollIntoView(true);", csv_option)
-    time.sleep(2)
-    csv_option.click()
-    print("Selected CSV option")
     
-    # Wait for and click final export button
-    print("Looking for final export button...")
-    # Try multiple approaches for the final export button
-    try:
-        # First attempt: Look for button by text
-        final_export = WebDriverWait(driver, 10).until(
-            EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Export')]"))
-        )
-    except:
-        try:
-            # Second attempt: Look for any element with export class and text
-            final_export = WebDriverWait(driver, 10).until(
-                EC.element_to_be_clickable((By.XPATH, "//*[contains(@class, 'export') and contains(text(), 'Export')]"))
-            )
-        except:
-            # Third attempt: Try to find by aria-label
-            final_export = WebDriverWait(driver, 10).until(
-                EC.element_to_be_clickable((By.XPATH, "//*[@aria-label='Export']"))
-            )
+    # Scroll the Export button into view again
+    driver.execute_script("arguments[0].scrollIntoView();", export_button_again)
     
-    driver.execute_script("arguments[0].scrollIntoView(true);", final_export)
-    time.sleep(2)
-    final_export.click()
-    print("Clicked final export button")
-    
-    # Wait for download to complete
-    print("Waiting for download...")
-    time.sleep(30)
-    
-    # Check downloaded files
-    downloaded_files = os.listdir(download_dir)
-    print(f"Files in download directory: {downloaded_files}")
-
-except Exception as e:
-    print(f"Error occurred: {str(e)}")
-    # Print the current page source for debugging
-    print("\nCurrent page source:")
-    print(driver.page_source)
-
-finally:
-    driver.quit()
+    # Click the "Export" button to download the zip file
+    export_button_again.click()
