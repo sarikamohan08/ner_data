@@ -1,11 +1,52 @@
-reverse_dict = {v: k for k, v in tax_provider_dict.items()}
+import requests
+from bs4 import BeautifulSoup
+import zipfile
+import io
+import os
 
-# Function to find tax_id based on provider_name
-def find_tax_id(name):
-    for full_name, tax_id in reverse_dict.items():
-        if name in full_name:
-            return tax_id
-    return None
+# URL where the export button is located
+export_url = "https://example.com/export"
 
-# Apply the function to the DataFrame
-df['tax_id'] = df['provider_name'].apply(find_tax_id)
+# Step 1: Access the export page
+response = requests.get(export_url)
+if response.status_code != 200:
+    print("Failed to access the export page.")
+    exit()
+
+# Step 2: Parse the page to find the "Export" button and CSV option
+soup = BeautifulSoup(response.content, 'html.parser')
+export_button = soup.find('button', {'id': 'export_button_id'})  # Update with actual button ID or class
+
+if not export_button:
+    print("Export button not found.")
+    exit()
+
+# Step 3: Find the link or trigger for CSV download
+# Assuming there's a link or a form that submits for CSV export
+csv_download_link = soup.find('a', {'id': 'csv_download_link'})  # Update with actual link ID or class
+
+if csv_download_link:
+    csv_download_url = csv_download_link['href']
+else:
+    print("CSV download link not found.")
+    exit()
+
+# Step 4: Download the ZIP file containing the CSV
+response = requests.get(csv_download_url)
+if response.status_code == 200:
+    print("CSV ZIP file downloaded.")
+else:
+    print("Failed to download CSV ZIP file.")
+    exit()
+
+# Step 5: Extract the ZIP file and save the CSV
+zip_file = zipfile.ZipFile(io.BytesIO(response.content))
+output_dir = "extracted_csv"
+os.makedirs(output_dir, exist_ok=True)
+
+for file_name in zip_file.namelist():
+    if file_name.endswith(".csv"):
+        zip_file.extract(file_name, output_dir)
+        print(f"Extracted: {file_name}")
+
+print(f"All CSV files extracted to {output_dir}.")
