@@ -1,109 +1,99 @@
-from selenium import webdriver
-from selenium.webdriver.edge.service import Service
-from selenium.webdriver.edge.options import Options
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
 import time
 import os
-import glob
+from selenium import webdriver
+from selenium.webdriver.edge.service import Service
+from webdriver_manager.microsoft import EdgeChromiumDriverManager
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.action_chains import ActionChains
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.edge.options import Options
 
-def download_cms_otp_data(download_path):
-    # Setup Edge options
-    edge_options = Options()
-    edge_options.add_experimental_option("prefs", {
-        "download.default_directory": download_path,
-        "download.prompt_for_download": False,
-        "download.directory_upgrade": True,
-        "safebrowsing.enabled": True,
-        "download.open_pdf_in_system_reader": False
-    })
-    
-    # Add additional options to prevent download issues
-    edge_options.add_argument("--disable-extensions")
-    edge_options.add_argument("--no-sandbox")
-    edge_options.add_argument("--disable-popup-blocking")
+# Set up the download directory
+download_dir = os.path.join(os.path.expanduser("~"), "Downloads", "CMS_Data")  # Change this path as needed
+os.makedirs(download_dir, exist_ok=True)
 
-    # Initialize Edge driver
-    driver = webdriver.Edge(options=edge_options)
-    driver.maximize_window()  # Maximize window to ensure all elements are visible
+# Setup WebDriver with custom download directory
+options = Options()
+options.add_experimental_option("prefs", {
+    "download.default_directory": download_dir,
+    "download.prompt_for_download": False,
+    "download.directory_upgrade": True,
+    "safebrowsing.enabled": False
+})
+
+# Initialize the driver
+driver = webdriver.Edge(
+    service=Service(EdgeChromiumDriverManager().install()),
+    options=options
+)
+
+try:
+    # Navigate to the website
+    print("Navigating to website...")
+    driver.get("https://data.cms.gov/provider-characteristics/medicare-provider-supplier-enrollment/opioid-treatment-program-providers/data")
     
+    # Wait for initial page load
+    time.sleep(5)
+    
+    # Click first export button - trying multiple possible selectors
+    print("Looking for first export button...")
+    export_button = WebDriverWait(driver, 20).until(
+        EC.presence_of_element_located((By.XPATH, "//*[contains(@class, 'export') and (contains(text(), 'Export') or contains(@title, 'Export'))]"))
+    )
+    driver.execute_script("arguments[0].scrollIntoView(true);", export_button)
+    time.sleep(2)
+    export_button.click()
+    print("Clicked first export button")
+    
+    # Wait for and click CSV for Excel option
+    print("Looking for CSV option...")
+    csv_option = WebDriverWait(driver, 20).until(
+        EC.element_to_be_clickable((By.XPATH, "//*[contains(text(), 'CSV for Excel')]"))
+    )
+    driver.execute_script("arguments[0].scrollIntoView(true);", csv_option)
+    time.sleep(2)
+    csv_option.click()
+    print("Selected CSV option")
+    
+    # Wait for and click final export button
+    print("Looking for final export button...")
+    # Try multiple approaches for the final export button
     try:
-        # Navigate to the CMS website
-        url = "https://data.cms.gov/provider-characteristics/medicare-provider-supplier-enrollment/opioid-treatment-program-providers/data"
-        driver.get(url)
-        print("Navigated to website")
-        
-        # Wait for page to load completely
-        time.sleep(5)
-        
-        # Count files in download directory before download
-        files_before = set(glob.glob(os.path.join(download_path, "*")))
-        
-        # Click export button with explicit wait and scroll
-        export_button = WebDriverWait(driver, 30).until(
-            EC.presence_of_element_located((By.XPATH, "//button[contains(text(), 'Export')]"))
-        )
-        driver.execute_script("arguments[0].scrollIntoView(true);", export_button)
-        time.sleep(2)
-        export_button.click()
-        print("Clicked first export button")
-        
-        # Wait for and click the CSV for Excel option
-        csv_option = WebDriverWait(driver, 20).until(
-            EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'CSV for Excel')]"))
-        )
-        driver.execute_script("arguments[0].scrollIntoView(true);", csv_option)
-        time.sleep(2)
-        csv_option.click()
-        print("Selected CSV for Excel option")
-        
-        # Wait for and click the final export button
-        final_export = WebDriverWait(driver, 20).until(
+        # First attempt: Look for button by text
+        final_export = WebDriverWait(driver, 10).until(
             EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Export')]"))
         )
-        driver.execute_script("arguments[0].scrollIntoView(true);", final_export)
-        time.sleep(2)
-        final_export.click()
-        print("Clicked final export button")
-        
-        # Wait for download to complete by checking for new files
-        max_wait = 60  # Maximum wait time in seconds
-        start_time = time.time()
-        download_completed = False
-        
-        while time.time() - start_time < max_wait and not download_completed:
-            files_after = set(glob.glob(os.path.join(download_path, "*")))
-            new_files = files_after - files_before
-            
-            # Check for both .zip files and .crdownload files
-            downloading_files = [f for f in new_files if f.endswith('.crdownload') or f.endswith('.zip')]
-            
-            if downloading_files:
-                if any(f.endswith('.zip') for f in downloading_files):
-                    download_completed = True
-                    print(f"Download completed! File: {[f for f in downloading_files if f.endswith('.zip')][0]}")
-                    break
-            
-            time.sleep(2)
-            print("Waiting for download to complete...")
-        
-        if not download_completed:
-            print("Download timeout or failed. Please check the download directory manually.")
-            
-    except Exception as e:
-        print(f"An error occurred: {str(e)}")
+    except:
+        try:
+            # Second attempt: Look for any element with export class and text
+            final_export = WebDriverWait(driver, 10).until(
+                EC.element_to_be_clickable((By.XPATH, "//*[contains(@class, 'export') and contains(text(), 'Export')]"))
+            )
+        except:
+            # Third attempt: Try to find by aria-label
+            final_export = WebDriverWait(driver, 10).until(
+                EC.element_to_be_clickable((By.XPATH, "//*[@aria-label='Export']"))
+            )
     
-    finally:
-        driver.quit()
+    driver.execute_script("arguments[0].scrollIntoView(true);", final_export)
+    time.sleep(2)
+    final_export.click()
+    print("Clicked final export button")
+    
+    # Wait for download to complete
+    print("Waiting for download...")
+    time.sleep(30)
+    
+    # Check downloaded files
+    downloaded_files = os.listdir(download_dir)
+    print(f"Files in download directory: {downloaded_files}")
 
-if __name__ == "__main__":
-    # Specify your download path here
-    download_directory = os.path.join(os.path.expanduser("~"), "Downloads", "CMS_Data")
-    
-    # Create the directory if it doesn't exist
-    os.makedirs(download_directory, exist_ok=True)
-    print(f"Download directory: {download_directory}")
-    
-    # Run the download function
-    download_cms_otp_data(download_directory)
+except Exception as e:
+    print(f"Error occurred: {str(e)}")
+    # Print the current page source for debugging
+    print("\nCurrent page source:")
+    print(driver.page_source)
+
+finally:
+    driver.quit()
