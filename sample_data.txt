@@ -1,68 +1,65 @@
-import time
-import os
 from selenium import webdriver
 from selenium.webdriver.edge.service import Service
-from webdriver_manager.microsoft import EdgeChromiumDriverManager
+from selenium.webdriver.edge.options import Options
 from selenium.webdriver.common.by import By
-from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.edge.options import Options
+import time
+import os
 
-# Set up the download directory
-download_dir = "/path/to/download"  # Change to your desired download directory
+def download_cms_otp_data(download_path):
+    # Setup Edge options
+    edge_options = Options()
+    edge_options.add_experimental_option("prefs", {
+        "download.default_directory": download_path,
+        "download.prompt_for_download": False,
+        "download.directory_upgrade": True,
+        "safebrowsing.enabled": True
+    })
 
-# Step 1: Setup WebDriver with custom download directory
-options = Options()
-options.add_argument("--headless")  # Run in headless mode (no browser window)
-options.add_argument("--disable-gpu")
-options.add_argument(f"--user-data-dir={os.path.join(download_dir, 'chrome_user_data')}")
-options.add_experimental_option("prefs", {
-    "download.default_directory": download_dir,
-    "download.prompt_for_download": False,
-    "safebrowsing.enabled": "false"
-})
+    # Initialize Edge driver
+    driver = webdriver.Edge(options=edge_options)
+    
+    try:
+        # Navigate to the CMS website
+        url = "https://data.cms.gov/provider-characteristics/medicare-provider-supplier-enrollment/opioid-treatment-program-providers/data"
+        driver.get(url)
+        
+        # Wait for the export button to be clickable and click it
+        export_button = WebDriverWait(driver, 20).until(
+            EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Export')]"))
+        )
+        export_button.click()
+        
+        # Wait for and click the CSV for Excel option
+        csv_option = WebDriverWait(driver, 10).until(
+            EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'CSV for Excel')]"))
+        )
+        csv_option.click()
+        
+        # Wait for and click the final export button
+        final_export = WebDriverWait(driver, 10).until(
+            EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Export')]"))
+        )
+        final_export.click()
+        
+        # Wait for download to complete (adjust time if needed)
+        time.sleep(10)
+        
+        print(f"Download completed. Check {download_path} for the file.")
+        
+    except Exception as e:
+        print(f"An error occurred: {str(e)}")
+    
+    finally:
+        driver.quit()
 
-driver = webdriver.Edge(service=Service(EdgeChromiumDriverManager().install()), options=options)
-driver.get("https://data.cms.gov/provider-characteristics/medicare-provider-supplier-enrollment/opioid-treatment-program-providers/data")  # Open the provided URL
-
-try:
-    # Step 2: Wait for and click the "Export" button
-    export_button = WebDriverWait(driver, 10).until(
-        EC.element_to_be_clickable((By.CLASS_NAME, "export_btn"))
-    )
-    export_button.click()
-
-    # Step 3: Wait for 15 seconds to ensure export options are visible
-    time.sleep(15)
-
-    # Step 4: Select "CSV for Excel" by finding the correct <h3> element and click it
-    csv_option = WebDriverWait(driver, 10).until(
-        EC.element_to_be_clickable((By.XPATH, "//h3[@class='typeface-03' and text()='CSV for Excel']"))
-    )
-    csv_option.click()
-
-    # Step 5: Wait for the modal to disappear (optional)
-    WebDriverWait(driver, 10).until(
-        EC.invisibility_of_element_located((By.CLASS_NAME, "DataExportModal"))  # Modal class for waiting
-    )
-
-    # Step 6: Click the "Export" button again to initiate the download
-    export_button_again = WebDriverWait(driver, 10).until(
-        EC.element_to_be_clickable((By.CLASS_NAME, "export_btn"))
-    )
-    export_button_again.click()
-
-    # Optional: Wait for the file to download (adjust based on file size)
-    time.sleep(30)
-
-    # Check if the file is downloaded
-    downloaded_files = os.listdir(download_dir)
-    print("Downloaded files:", downloaded_files)
-
-except Exception as e:
-    print(f"Error: {e}")
-
-finally:
-    # Step 7: Quit the WebDriver
-    driver.quit()
+if __name__ == "__main__":
+    # Specify your download path here
+    download_directory = r"C:\Downloads\CMS_Data"  # Change this to your preferred download location
+    
+    # Create the directory if it doesn't exist
+    os.makedirs(download_directory, exist_ok=True)
+    
+    # Run the download function
+    download_cms_otp_data(download_directory)
