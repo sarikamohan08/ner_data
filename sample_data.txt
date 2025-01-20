@@ -1,15 +1,16 @@
-# Step 6: Wait for the modal to disappear before clicking the "Export" button again
-    WebDriverWait(driver, 10).until(
-        EC.invisibility_of_element_located((By.CSS_SELECTOR, "div[role='dialog'][aria-modal='true']"))
-    )
-
-    # Step 7: Click the "Export" button again to initiate the download
-    export_button_again = WebDriverWait(driver, 10).until(
-        EC.element_to_be_clickable((By.CLASS_NAME, "export_btn"))
-    )
+provider_name = str(provider_name).upper()
     
-    # Scroll the Export button into view again
-    driver.execute_script("arguments[0].scrollIntoView();", export_button_again)
+    # Create reverse mapping with uppercase names
+    provider_to_tax = {name.upper(): tax_id for tax_id, name in tax_id_mapping.items()}
     
-    # Click the "Export" button to download the zip file
-    export_button_again.click()
+    # Try exact match
+    if provider_name in provider_to_tax:
+        return provider_to_tax[provider_name]
+    
+    # Try partial matching
+    for full_name, tax_id in provider_to_tax.items():
+        # Check if the shorter name is contained within the longer name
+        if provider_name in full_name or full_name in provider_name:
+            return tax_id
+    
+    return None
