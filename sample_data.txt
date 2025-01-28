@@ -1,25 +1,8 @@
-import re
-
-# Sample text
-text = """
-Tallahasses medical center, Inc d/b/a HCA Florida captial Hospital 
-2626 captial medical Blvd . Tallahasses , Fl 32308 Tax ID #62-1091430 
-NPI #:1709732303 medicare#: 10-0254 Medicaid #: 0119806-00
-"""
-
-# Patterns to extract NPI# and text after d/b/a
-npi_pattern = r"NPI #:\s*(\d+)"
-dba_pattern = r"d/b/a\s*(.+?)\n"
-
-# Extract NPI and text after d/b/a
-npi_match = re.search(npi_pattern, text)
-dba_match = re.search(dba_pattern, text)
-
-# Build the dictionary
-result = {
-    "NPI": npi_match.group(1) if npi_match else None,
-    "Hospital Name": dba_match.group(1).strip() if dba_match else None
-}
-
-# Output the result
-print(result)
+def extract_age_range(df):
+    # Define the regex pattern
+    pattern = r'(mental health|chemical dependency)\s*(Ages?\s*\d{1,2}-\d{1,2}(\syears?)?)'
+    
+    # Apply the regex to extract the matching text
+    df['age_range'] = df['description'].str.extract(pattern, expand=False)[1]
+    
+    return df
