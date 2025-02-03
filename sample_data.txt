@@ -1,8 +1,68 @@
-def extract_age_range(df):
-    # Define the regex pattern
-    pattern = r'(mental health|chemical dependency)\s*(Ages?\s*\d{1,2}-\d{1,2}(\syears?)?)'
-    
-    # Apply the regex to extract the matching text
-    df['age_range'] = df['description'].str.extract(pattern, expand=False)[1]
-    
-    return df
+Here’s the corrected version of your text with improved grammar and clarity:  
+
+---
+
+Developed a Python program to process a PDF containing Excel-based data.  
+
+### Approach:  
+1. **Extracting Content:**  
+   - Used **PyMuPDF4llm** to convert the PDF into markdown format and Excel, as it provides better text extraction for **HCA-type** documents.  
+
+2. **Excel File Creation & Transformation:**  
+   - Generated an Excel file with multiple sheets to transform the data and output the desired table format.  
+
+3. **Row-wise Transformation:**  
+   - Extracted relevant data for each row.  
+   - Split **coding/def** values by "AND" and repeated rows for each coding value.  
+   - Repeated rows for each provider (**Poinciana Hospital, Putnam Hospital, and Osceola Hospital**).  
+   - Constructed the final DataFrame by appending each transformed row to a list and converting it into a DataFrame.  
+
+### Challenges & Solutions:  
+
+#### 1. **Dynamic Provider Name Detection:**  
+   - Since there are multiple provider names, the code was adjusted to automatically detect provider columns in the input data.  
+
+#### 2. **Dynamic Header Row Detection:**  
+   - Implemented the **`find_header_row`** function to scan each row in a sheet and locate the row containing the **"coding/def"** keyword, ensuring adaptability to varying input formats.  
+
+#### 3. **Dynamic Provider Column Identification:**  
+   - Automatically identified provider columns as those appearing after the **"coding/def"** column, allowing flexibility in column placement across sheets.  
+
+#### 4. **Handling Multiple Coding Definitions:**  
+   - Split the **"coding/def"** column values on commas and generated separate rows for each coding definition.  
+
+#### 5. **Regex for Extracting Amounts & Percentages:**  
+   - Extracted **dollar amounts** (`\$[\d,]+`) and **percentages** (`\d+%`) from provider column values, ensuring structured financial data extraction.  
+
+#### 6. **Separation of MS-DRG, Rev Code, CPT, ICD9/ICD10, and HCPCS Codes:**  
+   - Created **five rows** for each combination when **CPT, ICD9/ICD10, and HCPCS** codes were present, marking them distinctly with an **(X)**.  
+
+#### 7. **Multi-Sheet Processing:**  
+   - Iterated over all sheets, processed each, and combined the transformed data into a single DataFrame.  
+
+#### 8. **Detecting Service Type (Inpatient or Outpatient):**  
+   - Looped through DataFrame rows to detect **"Inpatient structure"** and **"Outpatient structure"** keywords.  
+   - Assigned **service_type** dynamically:  
+     - If **"Inpatient structure"** was found, all subsequent rows were marked as **Inpatient** until **"Outpatient structure"** appeared.  
+     - If **"Outpatient structure"** was found, all subsequent rows were marked as **Outpatient** until **"Inpatient structure"** appeared again.  
+   - Solution:  
+     - The **`extract_service_type_from_rows`** function properly tracked transitions between "Inpatient structure" and "Outpatient structure" based on surrounding rows.  
+
+#### 9. **Handling Multiple Tax IDs & NPIs for Each Provider:**  
+   - Since multiple providers exist, each with unique **Tax ID** and **NPI** values, the mapping was handled dynamically for every row.  
+   - Approach:  
+     - **Provider Name Lookup:**  
+       - The **`fill_taxid_for_provider`** and **`fill_npi_for_provider`** functions retrieved the corresponding Tax ID and NPI for each provider.  
+     - **Filling Tax IDs & NPIs:**  
+       - When a provider name matched, the corresponding Tax ID and NPI were dynamically assigned.  
+
+### Final Implementation:  
+- To streamline the entire process, a **class-based structure** was developed specifically for **HCA-type** files.  
+- The program:  
+  1. **Identifies whether the file is HCA-type.**  
+  2. **Converts the PDF into markdown and Excel.**  
+  3. **Processes the extracted data seamlessly.**  
+
+---
+
+This version improves clarity and readability while maintaining the technical accuracy of your original text. Let me know if you need any further refinements! 🚀
