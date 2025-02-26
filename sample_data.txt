@@ -1,17 +1,8 @@
-file_name_lower = file_name.lower()
-        if 'reply_onshore' in file_name_lower.split():
-            output_file = os.path.join(output_folders['reply_onshore'], file_name)
-        elif 'reply_offshore' in file_name_lower.split():
-            output_file = os.path.join(output_folders['reply_offshore'], file_name)
-        elif 'rts_onshore' in file_name_lower.split():
-            output_file = os.path.join(output_folders['rts_onshore'], file_name)
-        elif 'rts_offshore' in file_name_lower.split():
-            output_file = os.path.join(output_folders['rts_offshore'], file_name)
-        else:
-            output_file = os.path.join(completed_folder, file_name)
-        
-        # Process the file
-        process_excel_file(input_file, output_file)
-        # Move the file to the 'completed' folder
-        shutil.move(input_file, os.path.join(completed_folder, file_name))
-        print(f'Moved {file_name} to completed folder.')
+import pdfplumber
+
+# Open the PDF file
+with pdfplumber.open("example.pdf") as pdf:
+    # Loop through each page
+    for page_num, page in enumerate(pdf.pages, start=1):
+        text = page.extract_text()
+        print(f"Page {page_num}:\n{text}\n")
