@@ -1,8 +1,9 @@
-import pdfplumber
+df['code'] = df.apply(
+    lambda row: re.search(r'revenue code ([\d,]+)\.', row['service_description']).group(1)
+    if pd.isnull(row['code']) and re.search(r'revenue code ([\d,]+)\.', row['service_description']) 
+    else row['code'],
+    axis=1
+)
 
-# Open the PDF file
-with pdfplumber.open("example.pdf") as pdf:
-    # Loop through each page
-    for page_num, page in enumerate(pdf.pages, start=1):
-        text = page.extract_text()
-        print(f"Page {page_num}:\n{text}\n")
+# Create the 'indicator' column based on whether 'code' was updated
+df['indicator'] = df['code'].apply(lambda x: 1 if re.match(r'^\d+(,\d+)*$', str(x)) else 0)
