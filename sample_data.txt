@@ -1,11 +1,11 @@
-def extract_revenue_codes(description):
-    match = re.search(r'revenue code (\d+(?:,\d+)*)', description)
-    if match:
-        return match.group(1)
-    return None
-
-# Apply the function to extract revenue codes and populate the 'code' column
-df['code'] = df.apply(lambda row: extract_revenue_codes(row['service_description']) if pd.isnull(row['code']) else row['code'], axis=1)
-
-# Update the 'rev_code' column based on whether 'code' is populated
-df['rev_code'] = df.apply(lambda row: 1 if pd.notnull(row['code']) else row['rev_code'], axis=1)
+# Iterate over each row in the DataFrame
+    for index, row in df.iterrows():
+        description = row['service_description']
+        if isinstance(description, str):  # Ensure the input is a string
+            match = re.search(r'revenue code (\d+(?:,\d+)*)', description)
+            if match:
+                # Update the 'code' column with the extracted revenue codes
+                df.at[index, 'code'] = match.group(1)
+                # Update the 'rev_code' column to 1 if 'code' is populated
+                df.at[index, 'rev_code'] = 1
+    return df
