@@ -1,16 +1,19 @@
-for idx, row in result_df[result_df['code'].isnull()].iterrows():
-        service_desc = row['service_description']
-        
-        # Check if service description contains revenue code pattern
-        if 'revenue code' in service_desc.lower():
-            # Extract the revenue codes until comma or full stop
-            pattern = r'revenue code\s+([0-9,\s]+)(?:[.,]|$)'
-            match = re.search(pattern, service_desc, re.IGNORECASE)
+if pd.isna(row['service_description']):
+            continue
             
+        service_desc = str(row['service_description'])
+        
+        # Try multiple patterns to extract revenue codes
+        patterns = [
+            r'revenue code\s+([0-9,\s]+)(?=[.,]|$)',  # Ends with period or comma
+            r'revenue code\s+([0-9,\s]+)',            # Just get all numbers after "revenue code"
+            r'(?:associated with|with)\s+revenue code\s+([0-9,\s]+)(?=[.,]|$)'  # With "associated with" prefix
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, service_desc, re.IGNORECASE)
             if match:
-                # Get the extracted codes and clean them up
                 codes = match.group(1).strip()
-                # Set indicator 1 in rev_code column
-                result_df.at[idx, 'rev_code'] = '1'
-    
-    return result_df
+                # Store the extracted codes
+                result_df.loc[idx, 'rev_code'] = codes
+                break
