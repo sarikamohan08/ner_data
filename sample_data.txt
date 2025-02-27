@@ -1,9 +1,16 @@
-df['code'] = df.apply(
-    lambda row: re.search(r'revenue code ([\d,]+)\.', row['service_description']).group(1)
-    if pd.isnull(row['code']) and re.search(r'revenue code ([\d,]+)\.', row['service_description']) 
-    else row['code'],
-    axis=1
-)
-
-# Create the 'indicator' column based on whether 'code' was updated
-df['indicator'] = df['code'].apply(lambda x: 1 if re.match(r'^\d+(,\d+)*$', str(x)) else 0)
+for idx, row in result_df[result_df['code'].isnull()].iterrows():
+        service_desc = row['service_description']
+        
+        # Check if service description contains revenue code pattern
+        if 'revenue code' in service_desc.lower():
+            # Extract the revenue codes until comma or full stop
+            pattern = r'revenue code\s+([0-9,\s]+)(?:[.,]|$)'
+            match = re.search(pattern, service_desc, re.IGNORECASE)
+            
+            if match:
+                # Get the extracted codes and clean them up
+                codes = match.group(1).strip()
+                # Set indicator 1 in rev_code column
+                result_df.at[idx, 'rev_code'] = '1'
+    
+    return result_df
