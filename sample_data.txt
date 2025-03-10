@@ -1,36 +1,16 @@
-import streamlit as st
-import pandas as pd
-from io import BytesIO
+import pdfplumber
 
-def process_file(uploaded_file):
-    # Read the uploaded file as a DataFrame
-    df = pd.read_excel(uploaded_file)
-    
-    # Perform some processing (example: add a new column)
-    df['Processed'] = df[df.columns[0]] * 2  # Example operation
-    
-    return df
+# Specify the PDF file path
+pdf_path = "sample.pdf"  # Change this to your actual PDF file
+text_file = "extracted_text.txt"  # Output text file
 
-def convert_df_to_excel(df):
-    output = BytesIO()
-    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        df.to_excel(writer, index=False, sheet_name='Processed Data')
-    output.seek(0)
-    return output
+# Extract text from PDF
+with pdfplumber.open(pdf_path) as pdf:
+    with open(text_file, "w", encoding="utf-8") as f:
+        for i, page in enumerate(pdf.pages):
+            text = page.extract_text()
+            if text:
+                f.write(f"--- Page {i + 1} ---\n")
+                f.write(text + "\n\n")
 
-st.title("File Upload and Processing")
-
-uploaded_file = st.file_uploader("Upload an Excel file", type=["xlsx", "xls"])
-
-if uploaded_file is not None:
-    st.success("File uploaded successfully!")
-    processed_df = process_file(uploaded_file)
-    st.dataframe(processed_df)  # Display processed data
-    
-    excel_data = convert_df_to_excel(processed_df)
-    st.download_button(
-        label="Download Processed Excel File",
-        data=excel_data,
-        file_name="processed_file.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
+print(f"Extracted text saved to {text_file}")
