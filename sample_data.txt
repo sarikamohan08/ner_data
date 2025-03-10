@@ -1,32 +1,11 @@
-import pdf2image
-import easyocr
-import os
+with open(markdown_file, "r", encoding="utf-8") as md:
+    md_content = md.read()
 
-# Set path to your PDF file
-pdf_path = "sample.pdf"  # Change this to your actual PDF
-text_file = "extracted_handwritten_text.txt"
+# Convert Markdown to plain text (removing formatting)
+plain_text = markdown.markdown(md_content, output_format="plain")
 
-# Initialize EasyOCR Reader (supports multiple languages)
-reader = easyocr.Reader(['en'])  # Add more languages if needed
+# Save to a text file
+with open(text_file, "w", encoding="utf-8") as txt:
+    txt.write(plain_text)
 
-# Convert PDF pages to images
-pages = pdf2image.convert_from_path(pdf_path)
-
-# Extract text from images using EasyOCR
-text_output = []
-for i, page in enumerate(pages):
-    text = reader.readtext(page, detail=0)  # Extract text
-    extracted_text = "\n".join(text)  # Join extracted text into paragraphs
-    text_output.append(f"--- Page {i + 1} ---\n{extracted_text}\n")
-
-# Save extracted text to a file
-with open(text_file, "w", encoding="utf-8") as f:
-    f.writelines(text_output)
-
-print(f"Extracted handwritten text saved to {text_file}")
-
-# Open the text file automatically
-if os.name == "nt":  # Windows
-    os.system(f"notepad {text_file}")
-elif os.name == "posix":  # macOS/Linux
-    os.system(f"open {text_file}" if "darwin" in os.sys.platform else f"xdg-open {text_file}")
+print(f"✅ Markdown converted to plain text and saved as {text_file}")
