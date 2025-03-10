@@ -1,16 +1,32 @@
-import pdfplumber
+import pdf2image
+import easyocr
+import os
 
-# Specify the PDF file path
-pdf_path = "sample.pdf"  # Change this to your actual PDF file
-text_file = "extracted_text.txt"  # Output text file
+# Set path to your PDF file
+pdf_path = "sample.pdf"  # Change this to your actual PDF
+text_file = "extracted_handwritten_text.txt"
 
-# Extract text from PDF
-with pdfplumber.open(pdf_path) as pdf:
-    with open(text_file, "w", encoding="utf-8") as f:
-        for i, page in enumerate(pdf.pages):
-            text = page.extract_text()
-            if text:
-                f.write(f"--- Page {i + 1} ---\n")
-                f.write(text + "\n\n")
+# Initialize EasyOCR Reader (supports multiple languages)
+reader = easyocr.Reader(['en'])  # Add more languages if needed
 
-print(f"Extracted text saved to {text_file}")
+# Convert PDF pages to images
+pages = pdf2image.convert_from_path(pdf_path)
+
+# Extract text from images using EasyOCR
+text_output = []
+for i, page in enumerate(pages):
+    text = reader.readtext(page, detail=0)  # Extract text
+    extracted_text = "\n".join(text)  # Join extracted text into paragraphs
+    text_output.append(f"--- Page {i + 1} ---\n{extracted_text}\n")
+
+# Save extracted text to a file
+with open(text_file, "w", encoding="utf-8") as f:
+    f.writelines(text_output)
+
+print(f"Extracted handwritten text saved to {text_file}")
+
+# Open the text file automatically
+if os.name == "nt":  # Windows
+    os.system(f"notepad {text_file}")
+elif os.name == "posix":  # macOS/Linux
+    os.system(f"open {text_file}" if "darwin" in os.sys.platform else f"xdg-open {text_file}")
