@@ -1,11 +1,29 @@
-with open(markdown_file, "r", encoding="utf-8") as md:
-    md_content = md.read()
+   import os
+   import openai
 
-# Convert Markdown to plain text (removing formatting)
-plain_text = markdown.markdown(md_content, output_format="plain")
+   os.environ["OPENAI_API_KEY"] = "YOUR_OPENAI_API_KEY" # Replace with your actual API key
+   openai.api_key = os.environ["OPENAI_API_KEY"]
 
-# Save to a text file
-with open(text_file, "w", encoding="utf-8") as txt:
-    txt.write(plain_text)
+   def use_llm_for_task(extracted_text, prompt):
+       try:
+           response = openai.Completion.create(
+               engine="text-davinci-003",  # Or another suitable engine
+               prompt=prompt + "\n" + extracted_text,
+               max_tokens=150,
+               n=1,
+               stop=None,
+               temperature=0.7,
+           )
+           return response.choices[0].text.strip()
+       except Exception as e:
+           print(f"Error: {e}")
+           return None
 
-print(f"✅ Markdown converted to plain text and saved as {text_file}")
+   # Example usage:
+   pdf_path = "path/to/your/document.pdf"
+   extracted_text = extract_text_from_pdf(pdf_path)
+
+   if extracted_text:
+       prompt = "Extract the following information from the document: [Your specific questions or instructions]"
+       llm_output = use_llm_for_task(extracted_text, prompt)
+       print("LLM Output:", llm_output)
