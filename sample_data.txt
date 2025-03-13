@@ -1,45 +1,19 @@
-from pdf2image import convert_from_path
-import pytesseract
-import cv2
+import fitz  # PyMuPDF
+from pymupdf4llm import to_markdown
 
-def preprocess_image(image):
-    # Convert the image to grayscale
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+# Step 1: Load the PDF document
+pdf_path = "example.pdf"  # Replace with your PDF file path
+doc = fitz.open(pdf_path)
 
-    # Apply thresholding to get a binary image
-    _, binary = cv2.threshold(gray, 150, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
+# Step 2: Extract text and convert to Markdown
+markdown_text = ""
+for page_num in range(len(doc)):
+    page = doc.load_page(page_num)
+    markdown_text += to_markdown(page.get_text("text"))
 
-    # Optional: Apply additional preprocessing (e.g., noise removal, dilation)
-    # binary = cv2.medianBlur(binary, 3)  # Noise removal
-    # kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
-    # binary = cv2.dilate(binary, kernel, iterations=1)  # Dilation
+# Step 3: Write the Markdown content to a text file
+output_md_path = "output.md"  # Output file path
+with open(output_md_path, "w", encoding="utf-8") as md_file:
+    md_file.write(markdown_text)
 
-    return binary
-
-def extract_text_from_scanned_pdf(pdf_path):
-    # Convert PDF pages to images
-    images = convert_from_path(pdf_path)
-
-    # Extract text from each image using Tesseract
-    extracted_text = ""
-    for image in images:
-        # Convert PIL image to OpenCV format (numpy array)
-        opencv_image = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
-
-        # Preprocess the image
-        processed_image = preprocess_image(opencv_image)
-
-        # Extract text from the processed image
-        text = pytesseract.image_to_string(processed_image, lang='eng')  # Use 'eng' for English
-        extracted_text += text + "\n"
-
-    return extracted_text
-
-# Path to your scanned PDF
-pdf_path = "scanned_document.pdf"
-
-# Extract text
-text = extract_text_from_scanned_pdf(pdf_path)
-print(text)
-with open("extracted_text.txt", "w") as text_file:
-    text_file.write(text)
+print(f"Markdown content has been written to {output_md_path}")
