@@ -1,19 +1,42 @@
 import fitz  # PyMuPDF
-from pymupdf4llm import to_markdown
+from pymupdf4llm import parse_document
+import os
 
-# Step 1: Load the PDF document
-pdf_path = "example.pdf"  # Replace with your PDF file path
-doc = fitz.open(pdf_path)
+def convert_pdf_to_markdown(input_file, output_file):
+    """
+    Convert a PDF file to Markdown format using PyMuPDF4LLM and save to a text file.
+    
+    Args:
+        input_file (str): Path to the input PDF file
+        output_file (str): Path to the output text file where Markdown will be saved
+    """
+    # Check if input file exists
+    if not os.path.exists(input_file):
+        raise FileNotFoundError(f"Input file not found: {input_file}")
+    
+    # Open the PDF document
+    doc = fitz.open(input_file)
+    
+    try:
+        # Parse the document using PyMuPDF4LLM
+        parsed_doc = parse_document(doc)
+        
+        # Convert to Markdown
+        markdown_content = parsed_doc.to_markdown()
+        
+        # Write the Markdown content to a text file
+        with open(output_file, 'w', encoding='utf-8') as f:
+            f.write(markdown_content)
+        
+        print(f"Successfully converted {input_file} to Markdown and saved to {output_file}")
+    
+    finally:
+        # Close the document
+        doc.close()
 
-# Step 2: Extract text and convert to Markdown
-markdown_text = ""
-for page_num in range(len(doc)):
-    page = doc.load_page(page_num)
-    markdown_text += to_markdown(page.get_text("text"))
-
-# Step 3: Write the Markdown content to a text file
-output_md_path = "output.md"  # Output file path
-with open(output_md_path, "w", encoding="utf-8") as md_file:
-    md_file.write(markdown_text)
-
-print(f"Markdown content has been written to {output_md_path}")
+# Example usage
+if __name__ == "__main__":
+    input_pdf = "your_document.pdf"  # Replace with your PDF file path
+    output_text = "output_markdown.txt"  # Output text file path
+    
+    convert_pdf_to_markdown(input_pdf, output_text)
