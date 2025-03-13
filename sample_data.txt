@@ -1,5 +1,5 @@
 import fitz  # PyMuPDF
-from pymupdf4llm import parse_document
+import pymupdf4llm
 import os
 
 def convert_pdf_to_markdown(input_file, output_file):
@@ -18,11 +18,8 @@ def convert_pdf_to_markdown(input_file, output_file):
     doc = fitz.open(input_file)
     
     try:
-        # Parse the document using PyMuPDF4LLM
-        parsed_doc = parse_document(doc)
-        
-        # Convert to Markdown
-        markdown_content = parsed_doc.to_markdown()
+        # Use pymupdf4llm to convert to markdown
+        markdown_content = pymupdf4llm.to_markdown(doc)
         
         # Write the Markdown content to a text file
         with open(output_file, 'w', encoding='utf-8') as f:
