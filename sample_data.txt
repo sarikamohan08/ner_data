@@ -38,6 +38,11 @@ def extract_tables_from_pdf(pdf_path, output_folder, pdf_name, pages=None):
     # Extract tables from specified pages using Camelot
     tables = camelot.read_pdf(pdf_path, pages=','.join(map(str, pages)) if pages else 'all')
 
+    # Check if any tables were extracted
+    if len(tables) == 0:
+        print(f"No tables found in {pdf_path} for the specified pages.")
+        return
+
     # Create a Pandas Excel writer object
     excel_file = os.path.join(output_folder, f"{pdf_name}_tables.xlsx")
     with pd.ExcelWriter(excel_file, engine='openpyxl') as writer:
