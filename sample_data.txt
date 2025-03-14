@@ -1,14 +1,109 @@
-def extract_npi_and_effective_date(text):
-    # Regex to extract NPI ID (10-digit number)
-    npi_pattern = r"NPI\s*ID\s*:\s*(\d{10})"
+import pytesseract
+from pdf2image import convert_from_path
+import cv2
+import os
+import pandas as pd
+import re
+
+# Path to Tesseract executable (update this path according to your system)
+pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+
+# Function to extract text from specified pages of a PDF using PyTesseract OCR
+def extract_text_from_pdf(pdf_path, pages=None):
+    # Convert specified pages of the PDF to images
+    images = convert_from_path(pdf_path, first_page=pages[0], last_page=pages[-1] if pages else None)
+
+    # Extract text from each image using OCR
+    full_text = ""
+    for i, image in enumerate(images):
+        # Save the image temporarily
+        image_path = f"temp_page_{i}.png"
+        image.save(image_path, "PNG")
+
+        # Preprocess the image (optional, improves OCR accuracy)
+        img = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
+        _, img = cv2.threshold(img, 150, 255, cv2.THRESH_BINARY)
+
+        # Perform OCR on the preprocessed image
+        text = pytesseract.image_to_string(img)
+        full_text += text + "\n"
+
+        # Remove the temporary image file
+        os.remove(image_path)
+
+    return full_text
+
+# Function to extract NPI#, Vendor#, and Effective Date from the extracted text
+def extract_metadata(text):
+    # Regex to extract NPI# (e.g., NPI# 1234567890)
+    npi_pattern = r"NPI#\s*:\s*(\d+)"
     npi_match = re.search(npi_pattern, text, re.IGNORECASE)
+
+    # Regex to extract Vendor# (e.g., Vendor# 3242)
+    vendor_pattern = r"Vendor#\s*:\s*(\d+)"
+    vendor_match = re.search(vendor_pattern, text, re.IGNORECASE)
 
     # Regex to extract Effective Date (format: MM/DD/YYYY or YYYY-MM-DD)
     date_pattern = r"Effective\s*Date\s*:\s*(\d{2}/\d{2}/\d{4}|\d{4}-\d{2}-\d{2})"
     date_match = re.search(date_pattern, text, re.IGNORECASE)
 
-    # Extract NPI ID and Effective Date
+    # Extract NPI#, Vendor#, and Effective Date
     npi_id = npi_match.group(1) if npi_match else "Not Found"
+    vendor_id = vendor_match.group(1) if vendor_match else "Not Found"
     effective_date = date_match.group(1) if date_match else "Not Found"
 
-    return npi_id, effective_date
+    return npi_id, vendor_id, effective_date
+
+# Function to process PDFs based on IDs from Excel and specified pages
+def process_pdfs_from_excel(excel_file, root_folder, output_base_folder, pages=None):
+    # Read the Excel file
+    df = pd.read_excel(excel_file)
+
+    # Ensure the output base folder exists
+    if not os.path.exists(output_base_folder):
+        os.makedirs(output_base_folder)
+
+    # Iterate through the ID column
+    for id_value in df['ID']:  # Replace 'ID' with the actual column name
+        # Search for PDF files containing the ID in the root folder
+        for root, _, files in os.walk(root_folder):
+            for file in files:
+                if str(id_value) in file and file.lower().endswith(".pdf"):
+                    pdf_path = os.path.join(root, file)
+                    print(f"Processing PDF: {pdf_path}")
+
+                    # Create a subfolder for the PDF's extracted content
+                    pdf_name = os.path.splitext(file)[0]
+                    output_folder = os.path.join(output_base_folder, pdf_name)
+                    if not os.path.exists(output_folder):
+                        os.makedirs(output_folder)
+
+                    # Extract text from specified pages of the PDF
+                    extracted_text = extract_text_from_pdf(pdf_path, pages=pages)
+                    text_output_file = os.path.join(output_folder, f"{pdf_name}.txt")
+                    with open(text_output_file, "w", encoding="utf-8") as text_file:
+                        text_file.write(extracted_text)
+                    print(f"Text extracted and saved to {text_output_file}")
+
+                    # Extract NPI#, Vendor#, and Effective Date from the extracted text
+                    npi_id, vendor_id, effective_date = extract_metadata(extracted_text)
+                    print(f"NPI#: {npi_id}, Vendor#: {vendor_id}, Effective Date: {effective_date}")
+
+                    # Save metadata to a CSV file
+                    metadata_df = pd.DataFrame({
+                        "NPI#": [npi_id],
+                        "Vendor#": [vendor_id],
+                        "Effective Date": [effective_date]
+                    })
+                    metadata_file = os.path.join(output_folder, f"{pdf_name}_metadata.csv")
+                    metadata_df.to_csv(metadata_file, index=False)
+                    print(f"Metadata saved to {metadata_file}")
+
+# Example usage
+if __name__ == "__main__":
+    excel_file = "ids.xlsx"  # Path to your Excel file
+    root_folder = "pdf_root_folder"  # Root folder containing PDF files
+    output_base_folder = "extracted_content"  # Base folder to save extracted content
+    pages_to_extract = [1, 3, 5]  # Specify the pages to extract (e.g., pages 1, 3, and 5)
+
+    process_pdfs_from_excel(excel_file, root_folder, output_base_folder, pages=pages_to_extract)
