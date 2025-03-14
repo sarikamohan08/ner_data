@@ -1,4 +1,14 @@
 # Regex to extract Capitation Fee paragraph
+    surplus_percentage_pattern = r"surplus\s*(?:to\s*/n\s*)?(\d+%)"
+    surplus_percentage_match = re.search(surplus_percentage_pattern, text, re.IGNORECASE)
+
+    # Regex to extract Surplus Amount (e.g., reduce reserves to $150 PMPM or reserve fea $150)
+    surplus_amount_pattern = r"(?:reduce\s*reserves\s*to|reserve\s*fea)\s*(\$\d+)"
+    surplus_amount_match = re.search(surplus_amount_pattern, text, re.IGNORECASE)
+
+    # Regex to extract LOB (e.g., Include 713)
+    lob_pattern = r"Include\s*(\d+)"
+    lob_match = re.search(lob_pattern, text, re.IGNORECASE)
     capitation_fee_pattern = r"Capitation Fee\s*(.*?)(?=\n\n|\Z)"
     capitation_fee_match = re.search(capitation_fee_pattern, text, re.DOTALL)
 
@@ -8,6 +18,9 @@
 
 capitation_fee = capitation_fee_match.group(1).strip() if capitation_fee_match else "Not Found"
     claims_fund = claims_fund_match.group(1).strip() if claims_fund_match else "Not Found"
+surplus_percentage = surplus_percentage_match.group(1) if surplus_percentage_match else "Not Found"
+    surplus_amount = surplus_amount_match.group(1) if surplus_amount_match else "Not Found"
+    lob = lob_match.group(1) if lob_match else "Not Found"
 
     return npi_id, vendor_id, effective_date, tin, surplus_percentage, surplus_amount, lob, capitation_fee, claims_fund
 
