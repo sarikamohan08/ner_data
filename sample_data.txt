@@ -1,12 +1,11 @@
-import pytesseract
-from pdf2image import convert_from_path
-import camelot
-import os
-import pandas as pd
-
-def extract_text_from_pdf(pdf_path, text_output_path, pages):
+def extract_text_from_pdf(pdf_path, output_dir, pages):
     images = convert_from_path(pdf_path)
     extracted_text = ""
+    
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    
+    text_output_path = os.path.join(output_dir, "extracted_text.txt")
     
     for i, image in enumerate(images):
         if i + 1 in pages:  # Process only specified pages
@@ -18,10 +17,11 @@ def extract_text_from_pdf(pdf_path, text_output_path, pages):
     
     print(f"Extracted text saved to {text_output_path}")
 
-def extract_tables_from_pdf(pdf_path, tables_output_dir, pages):
+def extract_tables_from_pdf(pdf_path, output_dir, pages):
     pages_str = ",".join(map(str, pages))  # Convert list of pages to string format for camelot
     tables = camelot.read_pdf(pdf_path, pages=pages_str)
     
+    tables_output_dir = os.path.join(output_dir, "extracted_tables")
     if not os.path.exists(tables_output_dir):
         os.makedirs(tables_output_dir)
     
@@ -30,12 +30,3 @@ def extract_tables_from_pdf(pdf_path, tables_output_dir, pages):
         df = table.df
         df.to_excel(table_path, index=False)
         print(f"Table {i+1} saved to {table_path}")
-
-if __name__ == "__main__":
-    pdf_file = "sample.pdf"  # Change to your PDF file path
-    text_file_output = "extracted_text.txt"
-    tables_output_directory = "extracted_tables"
-    specified_pages = [1, 3, 5]  # Change to the pages you want to extract text and tables from
-    
-    extract_text_from_pdf(pdf_file, text_file_output, specified_pages)
-    extract_tables_from_pdf(pdf_file, tables_output_directory, specified_pages)
