@@ -1,55 +1,66 @@
-import pytesseract
-from pdf2image import convert_from_path
-import camelot
 import os
 import pandas as pd
-import glob
+import pytesseract
+import camelot
+from pdf2image import convert_from_path
 
-def extract_text_from_pdf(pdf_path, output_dir):
-    images = convert_from_path(pdf_path)
-    extracted_text = ""
-    
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-    
-    pdf_filename = os.path.splitext(os.path.basename(pdf_path))[0]
-    text_output_path = os.path.join(output_dir, f"{pdf_filename}.txt")
-    
-    for image in images:
-        text = pytesseract.image_to_string(image)
-        extracted_text += text + "\n\n"
-    
-    with open(text_output_path, "w", encoding="utf-8") as text_file:
-        text_file.write(extracted_text)
-    
-    print(f"Extracted text saved to {text_output_path}")
+class PDFExtractor:
+    def __init__(self, excel_file, root_folder, output_folder):
+        self.excel_file = excel_file
+        self.root_folder = root_folder
+        self.output_folder = output_folder
+        os.makedirs(self.output_folder, exist_ok=True)  # Create output folder if not exists
+        self.ids = self.load_ids()
 
-def extract_tables_from_pdf(pdf_path, output_dir):
-    tables = camelot.read_pdf(pdf_path, pages='all')
-    
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-    
-    pdf_filename = os.path.splitext(os.path.basename(pdf_path))[0]
-    table_output_path = os.path.join(output_dir, f"{pdf_filename}.xlsx")
-    
-    with pd.ExcelWriter(table_output_path) as writer:
-        for i, table in enumerate(tables):
-            df = table.df
-            df.to_excel(writer, sheet_name=f"Table_{i+1}", index=False)
-    
-    print(f"Extracted tables saved to {table_output_path}")
+    def load_ids(self):
+        """Reads the Excel file and extracts the ID column."""
+        df = pd.read_excel(self.excel_file)
+        return df["ID"].astype(str).tolist()  # Convert IDs to string
 
-def process_pdfs_with_id(root_folder, excel_file):
-    file_id = os.path.splitext(os.path.basename(excel_file))[0]
-    matching_pdfs = glob.glob(os.path.join(root_folder, f"*{file_id}*.pdf"))
-    
-    for pdf_file in matching_pdfs:
-        output_directory = os.path.join(root_folder, file_id)
-        extract_text_from_pdf(pdf_file, output_directory)
-        extract_tables_from_pdf(pdf_file, output_directory)
+    def find_pdf_files(self, id_value):
+        """Finds PDF files in the root folder containing the given ID."""
+        return [f for f in os.listdir(self.root_folder) if id_value in f and f.endswith(".pdf")]
 
+    def extract_text(self, pdf_path):
+        """Extracts text from a PDF using Tesseract."""
+        extracted_text = ""
+        images = convert_from_path(pdf_path)
+        for image in images:
+            extracted_text += pytesseract.image_to_string(image)
+        return extracted_text
+
+    def extract_tables(self, pdf_path, xls_output_path):
+        """Extracts tables from a PDF using Camelot and saves as Excel."""
+        tables = camelot.read_pdf(pdf_path, pages="all")
+        if tables.n > 0:
+            tables.export(xls_output_path, f="excel")
+
+    def process_pdfs(self):
+        """Processes all PDFs that match IDs, extracts text and tables."""
+        for id_value in self.ids:
+            pdf_files = self.find_pdf_files(id_value)
+            for pdf_file in pdf_files:
+                pdf_path = os.path.join(self.root_folder, pdf_file)
+                txt_output_path = os.path.join(self.output_folder, f"{pdf_file}.txt")
+                xls_output_path = os.path.join(self.output_folder, f"{pdf_file}.xls")
+
+                # Extract and save text
+                extracted_text = self.extract_text(pdf_path)
+                with open(txt_output_path, "w", encoding="utf-8") as txt_file:
+                    txt_file.write(extracted_text)
+
+                # Extract and save tables
+                self.extract_tables(pdf_path, xls_output_path)
+
+                print(f"Processed: {pdf_file}")
+
+        print("Extraction complete!")
+
+# Usage
 if __name__ == "__main__":
-    root_directory = "root_folder"  # Change to your root folder path
-    excel_file = "file.xlsx"  # Provide the Excel file name
-    process_pdfs_with_id(root_directory, excel_file)
+    extractor = PDFExtractor(
+        excel_file="data.xlsx",  # Path to Excel file
+        root_folder="pdfs/",  # Folder where PDFs are stored
+        output_folder="extracted_output/"  # Folder for extracted text/tables
+    )
+    extractor.process_pdfs()
