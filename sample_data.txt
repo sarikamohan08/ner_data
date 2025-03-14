@@ -1,32 +1,55 @@
-def extract_text_from_pdf(pdf_path, output_dir, pages):
+import pytesseract
+from pdf2image import convert_from_path
+import camelot
+import os
+import pandas as pd
+import glob
+
+def extract_text_from_pdf(pdf_path, output_dir):
     images = convert_from_path(pdf_path)
     extracted_text = ""
     
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
     
-    text_output_path = os.path.join(output_dir, "extracted_text.txt")
+    pdf_filename = os.path.splitext(os.path.basename(pdf_path))[0]
+    text_output_path = os.path.join(output_dir, f"{pdf_filename}.txt")
     
-    for i, image in enumerate(images):
-        if i + 1 in pages:  # Process only specified pages
-            text = pytesseract.image_to_string(image)
-            extracted_text += text + "\n\n"
+    for image in images:
+        text = pytesseract.image_to_string(image)
+        extracted_text += text + "\n\n"
     
     with open(text_output_path, "w", encoding="utf-8") as text_file:
         text_file.write(extracted_text)
     
     print(f"Extracted text saved to {text_output_path}")
 
-def extract_tables_from_pdf(pdf_path, output_dir, pages):
-    pages_str = ",".join(map(str, pages))  # Convert list of pages to string format for camelot
-    tables = camelot.read_pdf(pdf_path, pages=pages_str)
+def extract_tables_from_pdf(pdf_path, output_dir):
+    tables = camelot.read_pdf(pdf_path, pages='all')
     
-    tables_output_dir = os.path.join(output_dir, "extracted_tables")
-    if not os.path.exists(tables_output_dir):
-        os.makedirs(tables_output_dir)
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
     
-    for i, table in enumerate(tables):
-        table_path = os.path.join(tables_output_dir, f"table_{i+1}.xlsx")
-        df = table.df
-        df.to_excel(table_path, index=False)
-        print(f"Table {i+1} saved to {table_path}")
+    pdf_filename = os.path.splitext(os.path.basename(pdf_path))[0]
+    table_output_path = os.path.join(output_dir, f"{pdf_filename}.xlsx")
+    
+    with pd.ExcelWriter(table_output_path) as writer:
+        for i, table in enumerate(tables):
+            df = table.df
+            df.to_excel(writer, sheet_name=f"Table_{i+1}", index=False)
+    
+    print(f"Extracted tables saved to {table_output_path}")
+
+def process_pdfs_with_id(root_folder, excel_file):
+    file_id = os.path.splitext(os.path.basename(excel_file))[0]
+    matching_pdfs = glob.glob(os.path.join(root_folder, f"*{file_id}*.pdf"))
+    
+    for pdf_file in matching_pdfs:
+        output_directory = os.path.join(root_folder, file_id)
+        extract_text_from_pdf(pdf_file, output_directory)
+        extract_tables_from_pdf(pdf_file, output_directory)
+
+if __name__ == "__main__":
+    root_directory = "root_folder"  # Change to your root folder path
+    excel_file = "file.xlsx"  # Provide the Excel file name
+    process_pdfs_with_id(root_directory, excel_file)
