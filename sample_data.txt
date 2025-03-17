@@ -1,43 +1,24 @@
-# Regex to extract Capitation Fee paragraph
-    surplus_percentage_pattern = r"surplus\s*(?:to\s*/n\s*)?(\d+%)"
-    surplus_percentage_match = re.search(surplus_percentage_pattern, text, re.IGNORECASE)
+def extract_page_numbers(text):
+    # Split the text into pages
+    pages = text.split("--- Page ")[1:]  # Skip the first empty split
 
-    # Regex to extract Surplus Amount (e.g., reduce reserves to $150 PMPM or reserve fea $150)
-    surplus_amount_pattern = r"(?:reduce\s*reserves\s*to|reserve\s*fea)\s*(\$\d+)"
-    surplus_amount_match = re.search(surplus_amount_pattern, text, re.IGNORECASE)
+    # Initialize variables to store page numbers
+    capitation_fee_page = None
+    claims_fund_page = None
 
-    # Regex to extract LOB (e.g., Include 713)
-    lob_pattern = r"Include\s*(\d+)"
-    lob_match = re.search(lob_pattern, text, re.IGNORECASE)
-    capitation_fee_pattern = r"Capitation Fee\s*(.*?)(?=\n\n|\Z)"
-    capitation_fee_match = re.search(capitation_fee_pattern, text, re.DOTALL)
+    # Iterate through each page
+    for page in pages:
+        page_number = int(page.split(" ---")[0])  # Extract the page number
+        page_text = page.split(" ---")[1]  # Extract the page text
 
-    # Regex to extract Claims Fund paragraph
-    claims_fund_pattern = r"Claims Fund\s*(.*?)(?=\n\n|\Z)"
-    claims_fund_match = re.search(claims_fund_pattern, text, re.DOTALL)
+        # Check if "Capitation Fee" is in the page text
+        if "Capitation Fee" in page_text and capitation_fee_page is None:
+            capitation_fee_page = page_number
 
-capitation_fee = capitation_fee_match.group(1).strip() if capitation_fee_match else "Not Found"
-    claims_fund = claims_fund_match.group(1).strip() if claims_fund_match else "Not Found"
-surplus_percentage = surplus_percentage_match.group(1) if surplus_percentage_match else "Not Found"
-    surplus_amount = surplus_amount_match.group(1) if surplus_amount_match else "Not Found"
-    lob = lob_match.group(1) if lob_match else "Not Found"
+        # Check if "Claims Fund" is in the page text
+        if "Claims Fund" in page_text and claims_fund_page is None:
+            claims_fund_page = page_number
 
-    return npi_id, vendor_id, effective_date, tin, surplus_percentage, surplus_amount, lob, capitation_fee, claims_fund
+    return capitation_fee_page, claims_fund_page
 
-npi_id, vendor_id, effective_date, tin, surplus_percentage, surplus_amount, lob, capitation_fee, claims_fund = extract_metadata(extracted_text)
-                    print(f"NPI#: {npi_id}, Vendor#: {vendor_id}, Effective Date: {effective_date}, TIN#: {tin}, Surplus Percentage: {surplus_percentage}, Surplus Amount: {surplus_amount}, LOB: {lob}")
-                    print(f"Capitation Fee: {capitation_fee}")
-                    print(f"Claims Fund: {claims_fund}")
-
-                    # Save metadata to a CSV file
-                    metadata_df = pd.DataFrame({
-                        "NPI#": [npi_id],
-                        "Vendor#": [vendor_id],
-                        "Effective Date": [effective_date],
-                        "TIN#": [tin],
-                        "Surplus Percentage": [surplus_percentage],
-                        "Surplus Amount": [surplus_amount],
-                        "LOB": [lob],
-                        "Capitation Fee": [capitation_fee],
-                        "Claims Fund": [claims_fund]
-                    })
+capitation_fee_page, claims_fund_page = extract_page_numbers(extracted_text)
