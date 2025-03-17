@@ -1,5 +1,26 @@
-county_plan = county_plan.group(0) if county_plan else None
-admin_fee = admin_fee_match.group(1) if admin_fee_match else None  # Ensures 20% is followed by $90
-capitation_fee = capitation_fee.group(0) if capitation_fee else None
-provider_share = provider_share_match[1] if len(provider_share_match) > 1 else None  # Extract '60%'
-reserve_fund = reserve_fund[-1] if reserve_fund else None
+def extract_page_numbers(text, pages_to_extract):
+    # Split the text into pages using a more robust delimiter
+    pages = re.split(r"--- Page \d+ ---", text)  # Split by "--- Page {number} ---"
+
+    # Remove the first empty split (if any)
+    if pages[0].strip() == "":
+        pages = pages[1:]
+
+    # Initialize variables to store page numbers
+    capitation_fee_page = None
+    claims_fund_page = None
+
+    # Iterate through each page
+    for i, page_text in enumerate(pages):
+        # Calculate the actual page number based on the pages_to_extract list
+        page_number = pages_to_extract[i]
+
+        # Check if "Capitation Fee" is in the page text
+        if "Capitation Fee" in page_text and capitation_fee_page is None:
+            capitation_fee_page = page_number
+
+        # Check if "Claims Fund" is in the page text
+        if "Claims Fund" in page_text and claims_fund_page is None:
+            claims_fund_page = page_number
+
+    return capitation_fee_page, claims_fund_page
