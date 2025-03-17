@@ -1,24 +1,13 @@
-def extract_page_numbers(text):
-    # Split the text into pages
-    pages = text.split("--- Page ")[1:]  # Skip the first empty split
+# Define regex patterns
+county_plan_pattern = r"^(All)"  # Extracts 'All' at the start
+admin_fee_pattern = r"(\d+%)"  # Extracts '20%'
+capitation_fee_pattern = r"(\$\d+\s+Per\s+Member\s+Per\s+Month)"  # Extracts '$90 Per Member Per Month'
+provider_share_pattern = r"(\d+%)\s+\$\d+"  # Extracts '60%' before the reserve fund
+reserve_fund_pattern = r"(\$\d+\s+Per\s+Member)"  # Extracts '$200 Per Member'
 
-    # Initialize variables to store page numbers
-    capitation_fee_page = None
-    claims_fund_page = None
-
-    # Iterate through each page
-    for page in pages:
-        page_number = int(page.split(" ---")[0])  # Extract the page number
-        page_text = page.split(" ---")[1]  # Extract the page text
-
-        # Check if "Capitation Fee" is in the page text
-        if "Capitation Fee" in page_text and capitation_fee_page is None:
-            capitation_fee_page = page_number
-
-        # Check if "Claims Fund" is in the page text
-        if "Claims Fund" in page_text and claims_fund_page is None:
-            claims_fund_page = page_number
-
-    return capitation_fee_page, claims_fund_page
-
-capitation_fee_page, claims_fund_page = extract_page_numbers(extracted_text)
+# Perform searches and store values in variables
+county_plan = re.search(county_plan_pattern, text).group(0) if re.search(county_plan_pattern, text) else None
+admin_fee = re.search(admin_fee_pattern, text).group(0) if re.search(admin_fee_pattern, text) else None
+capitation_fee = re.search(capitation_fee_pattern, text).group(0) if re.search(capitation_fee_pattern, text) else None
+provider_share = re.search(provider_share_pattern, text).group(0) if re.search(provider_share_pattern, text) else None
+reserve_fund = re.search(reserve_fund_pattern, text).group(0) if re.search(reserve_fund_pattern, text) else None
