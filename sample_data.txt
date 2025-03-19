@@ -1,26 +1,21 @@
-def extract_page_numbers(text, pages_to_extract):
-    # Split the text into pages using a more robust delimiter
-    pages = re.split(r"--- Page \d+ ---", text)  # Split by "--- Page {number} ---"
+def extract_text_from_doc(doc_path):
+    # Load the DOC/DOCX file
+    doc = Document(doc_path)
 
-    # Remove the first empty split (if any)
-    if pages[0].strip() == "":
-        pages = pages[1:]
+    # Extract text from each paragraph
+    full_text = ""
+    for para in doc.paragraphs:
+        full_text += para.text + "\n"
 
-    # Initialize variables to store page numbers
-    capitation_fee_page = None
-    claims_fund_page = None
+    return full_text
 
-    # Iterate through each page
-    for i, page_text in enumerate(pages):
-        # Calculate the actual page number based on the pages_to_extract list
-        page_number = pages_to_extract[i]
-
-        # Check if "Capitation Fee" is in the page text
-        if "Capitation Fee" in page_text and capitation_fee_page is None:
-            capitation_fee_page = page_number
-
-        # Check if "Claims Fund" is in the page text
-        if "Claims Fund" in page_text and claims_fund_page is None:
-            claims_fund_page = page_number
-
-    return capitation_fee_page, claims_fund_page
+# Extract text based on file type
+                    if file.lower().endswith(".pdf"):
+                        # Extract text from specified pages of the PDF
+                        extracted_text = extract_text_from_pdf(file_path, pages=pages_to_extract)
+                    elif file.lower().endswith((".doc", ".docx")):
+                        # Extract text from DOC/DOCX file
+                        extracted_text = extract_text_from_doc(file_path)
+                    else:
+                        print(f"Unsupported file type: {file}")
+                        continue
