@@ -1,21 +1,12 @@
-def extract_text_from_doc(doc_path):
-    # Load the DOC/DOCX file
-    doc = Document(doc_path)
+import win32com.client as win32
 
-    # Extract text from each paragraph
-    full_text = ""
-    for para in doc.paragraphs:
-        full_text += para.text + "\n"
+def convert_doc_to_docx(doc_path, docx_path):
+    word = win32.Dispatch("Word.Application")
+    doc = word.Documents.Open(doc_path)
+    doc.SaveAs(docx_path, FileFormat=16)  # 16 = .docx format
+    doc.Close()
+    word.Quit()
 
-    return full_text
-
-# Extract text based on file type
-                    if file.lower().endswith(".pdf"):
-                        # Extract text from specified pages of the PDF
-                        extracted_text = extract_text_from_pdf(file_path, pages=pages_to_extract)
-                    elif file.lower().endswith((".doc", ".docx")):
-                        # Extract text from DOC/DOCX file
-                        extracted_text = extract_text_from_doc(file_path)
-                    else:
-                        print(f"Unsupported file type: {file}")
-                        continue
+# Convert the file
+convert_doc_to_docx("path/to/your/file.doc", "path/to/your/file.docx")
+print("File converted to .docx")
