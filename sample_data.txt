@@ -1,1 +1,1 @@
-Capitation\s*Fees/Fee-for\s*Service\s*Fees\(FFS\)
+pattern = r'(capitation\s*Fee\s*([\s\S]*?)(?=\n\s*[A-Z]|\Z)|Capitation\s*Fees/Fee-for\s*Service\s*Fees\(FFS\)\s*([\s\S]*?)(?=\n\s*[A-Z]|\Z))'
