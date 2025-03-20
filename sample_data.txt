@@ -1,1 +1,1 @@
-r'([^\n]*?(?:Capitation Fees/Fee-for Service Fees \(FFS\)|capitation fee)[^\n]*?(\n[^\n]+)*)'
+r'(?i)(capitation\s*fee(?:s)?(?:/fee-for\s*service\s*fees\s*\(ffs\))?[\s\S]*?(?=\n\n[A-Z]|\n\n\d|\Z))'
