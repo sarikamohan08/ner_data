@@ -1,2 +1,3 @@
-pattern = r'Capitation\s*Fees/Fee-for\s*Service\s*Fees\(FFS\)\s*\n*(.+?)(?=\n{2,}|\Z)'
+pattern = pattern = r'Capitation\s*Fees/Fee-for\s*Service\s*Fees\(FFS\)[\s\n]*([\s\S]*?)(?=\n{2,}|\Z)'
+
 pattern = r'Capitation\s*Fees/Fee-?for\s*Service\s*Fees\(FFS\)\s*(.*?)(?=\n[A-Z]|\Z)'
