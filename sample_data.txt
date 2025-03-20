@@ -1,1 +1,1 @@
-pattern = r'(?i)capitation\s*fee(?:s)?(?:/fee-for\s*service\s*fees\s*\(ffs\))?[\s\S]*?(?=\n[A-Z]|\n\s*\n|\Z)'
+pattern = r'(?i)(capitation\s*fee(?:s)?(?:/fee-for\s*service\s*fees\s*\(ffs\))?[\s\S]*?\*\*[\s\S]*?\*\*)'
