@@ -1,1 +1,2 @@
 pattern = r'(capitation\s*Fee\s*([\s\S]*?)(?=\n\s*[A-Z]|\Z)|Capitation\s*Fees/Fee-for\s*Service\s*Fees\(FFS\)\s*([\s\S]*?)(?=\n\s*[A-Z]|\Z))'
+pattern = r'(3\. Claims Fund\s*([\s\S]*?)(?=\n\s*[A-Z]|\Z)|2\. Claims Fund\s*([\s\S]*?)(?=\n\s*[A-Z]|\Z))'
