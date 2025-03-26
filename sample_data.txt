@@ -1,1 +1,45 @@
-r'([^\n]*?(?:Capitation Fees/Fee-for Service Fees \(FFS\)|capitation fee)[^\n]*?(\n[^\n]+)*)'
+import fitz  # PyMuPDF
+from PIL import Image
+import openai
+import base64
+import os
+
+
+import openai
+import PyPDF2
+
+# Set your OpenAI API key
+openai.api_key = ""
+
+# Load PDF and extract text
+def extract_text_from_pdf(pdf_file):
+    with open(pdf_file, "rb") as f:
+        reader = PyPDF2.PdfReader(f)
+        text = ""
+        for page in reader.pages:
+            text += page.extract_text() or ""
+        return text
+
+# Chat with the PDF content
+def chat_with_pdf(pdf_text, question):
+    response = openai.ChatCompletion.create(
+        model="gpt-3.5-turbo",
+        messages=[
+            {"role": "system", "content": "You are a helpful assistant specialized in PDF content."},
+            {"role": "user", "content": f"Here is the PDF content: {pdf_text[:4000]}"},
+            {"role": "user", "content": question}
+        ]
+    )
+    return response['choices'][0]['message']['content']
+
+# Example usage
+pdf_file = "C:/Users/Sarika/Downloads/Sarika_M_offer_letter.pdf"  # Replace with your PDF file path
+pdf_text = extract_text_from_pdf(pdf_file)
+
+# Ask questions
+while True:
+    question = input("Ask a question (or type 'exit' to quit): ")
+    if question.lower() == "exit":
+        break
+    answer = chat_with_pdf(pdf_text, question)
+    print("\nAnswer:\n", answer)
