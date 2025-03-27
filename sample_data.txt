@@ -1,2 +1,23 @@
+import pdfplumber
 
-(?i)(\bcapitation\s+fees?(?:[-/]\s*fee-?for\s*service\s*fees?)?\b(?:\n[^\n]+)+)
+# Path to the PDF file
+pdf_path = "your_file.pdf"
+
+# Extract text
+def extract_text(pdf_path):
+    with pdfplumber.open(pdf_path) as pdf:
+        text = ""
+        for page in pdf.pages:
+            text += page.extract_text() or ""  # Extract text from each page
+        return text
+
+# Usage
+pdf_text = extract_text(pdf_path)
+print(pdf_text)
+
+# Save the extracted text to a file (optional)
+output_path = "extracted_text.txt"
+with open(output_path, "w", encoding="utf-8") as f:
+    f.write(pdf_text)
+
+print(f"Text extracted and saved to {output_path}")
