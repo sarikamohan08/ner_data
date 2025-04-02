@@ -1,99 +1,15 @@
-import base64
-import requests
-import json
-import pandas as pd
-import os
 import anthropic
 
-# API configuration for Claude
-API_KEY = "your_api_key_here"  # Replace with your actual Claude API key
+API_KEY = "your_actual_anthropic_api_key"
 client = anthropic.Anthropic(api_key=API_KEY)
-MODEL = "claude-3-5-sonnet-20240620-v2"  # Claude 3.5 Sonnet v2
 
-def encode_pdf_to_base64(pdf_path):
-    """Encode a PDF file to base64 for API submission."""
-    with open(pdf_path, "rb") as pdf_file:
-        return base64.b64encode(pdf_file.read()).decode('utf-8')
-
-def extract_text_with_claude(pdf_path):
-    """Use Claude to extract text from a PDF."""
-    # Read the PDF file as binary
-    with open(pdf_path, "rb") as f:
-        pdf_content = f.read()
-    
-    # Create a message with the PDF as media
-    try:
-        message = client.messages.create(
-            model=MODEL,
-            max_tokens=100000,
-            temperature=0,
-            messages=[
-                {
-                    "role": "user", 
-                    "content": [
-                        {"type": "text", "text": "Extract all the text content from this PDF document. Return only the extracted text without any additional commentary."},
-                        {"type": "image", "source": {"type": "base64", "media_type": "application/pdf", "data": base64.b64encode(pdf_content).decode('utf-8')}}
-                    ]
-                }
-            ]
-        )
-        return message.content[0].text
-    except Exception as e:
-        return f"Error extracting text with Claude: {str(e)}"
-
-def query_claude_with_prompt(extracted_text, prompt_text):
-    """Query Claude with a prompt and the extracted text."""
-    try:
-        message = client.messages.create(
-            model=MODEL,
-            max_tokens=4000,
-            temperature=0,
-            messages=[
-                {"role": "user", "content": f"{prompt_text}\n\n{extracted_text}"}
-            ]
-        )
-        return message.content[0].text
-    except Exception as e:
-        return f"Error querying Claude: {str(e)}"
-
-def process_pdf_with_prompts(pdf_path, prompts):
-    """Process a PDF with multiple prompts using Claude for extraction."""
-    # Extract text from PDF using Claude
-    print(f"Extracting text from {pdf_path} using Claude...")
-    extracted_text = extract_text_with_claude(pdf_path)
-    
-    # Query Claude with each prompt
-    results = {}
-    for prompt_key, prompt_text in prompts.items():
-        print(f"Processing prompt: {prompt_key}")
-        results[prompt_key] = query_claude_with_prompt(extracted_text, prompt_text)
-    
-    return results
-
-def main():
-    # Define your PDF file path
-    pdf_path = "your_document.pdf"
-    
-    # Define your prompts
-    prompts = {
-        "summary": "Provide a concise summary of the following document:",
-        "key_points": "What are the 5 most important points in this document?",
-        "action_items": "Extract all action items or next steps from this document:",
-        "stakeholders": "Identify all stakeholders mentioned in this document:",
-        "recommendations": "What recommendations are made in this document?",
-        # Add more prompts as needed
-    }
-    
-    # Process the PDF with all prompts
-    results = process_pdf_with_prompts(pdf_path, prompts)
-    
-    # Create a DataFrame with results
-    df = pd.DataFrame(list(results.items()), columns=['Prompt', 'Response'])
-    
-    # Save to Excel
-    output_file = "claude_analysis_results.xlsx"
-    df.to_excel(output_file, index=False)
-    print(f"Results saved to {output_file}")
-
-if __name__ == "__main__":
-    main()
+try:
+    response = client.messages.create(
+        model="claude-3.5-sonnet-20240620-v2",
+        max_tokens=50,
+        temperature=0,
+        messages=[{"role": "user", "content": "Hello, Claude! How are you today?"}]
+    )
+    print(response.content[0].text)  # Print response from Claude
+except Exception as e:
+    print(f"Error: {e}")
