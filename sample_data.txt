@@ -1,15 +1,26 @@
-import anthropic
+# Main function to process the PDF and extract information
+def main(pdf_file, output_excel):
+    # Extract text from the PDF
+    pdf_text = extract_text_from_pdf(pdf_file)
+    
+    # Define the queries
+    queries = {
+        "Effective Date": "What is the effective date?",
+        "Tax ID": "What is the tax ID?"
+    }
+    
+    # Dictionary to store responses
+    responses = {}
 
-API_KEY = "your_actual_anthropic_api_key"
-client = anthropic.Anthropic(api_key=API_KEY)
+    # Process each query
+    for key, question in queries.items():
+        answer = chat_with_pdf(pdf_text, question)
+        responses[key] = answer
+        print(f"{question}: {answer}")
 
-try:
-    response = client.messages.create(
-        model="claude-3.5-sonnet-20240620-v2",
-        max_tokens=50,
-        temperature=0,
-        messages=[{"role": "user", "content": "Hello, Claude! How are you today?"}]
-    )
-    print(response.content[0].text)  # Print response from Claude
-except Exception as e:
-    print(f"Error: {e}")
+    # Convert responses to a DataFrame
+    df = pd.DataFrame(list(responses.items()), columns=['Field', 'Value'])
+
+    # Write DataFrame to an Excel file
+    df.to_excel(output_excel, index=False, engine='openpyxl')
+    print(f"Data has been written to '{output_excel}'")
