@@ -1,65 +1,93 @@
 import pandas as pd
 import openai
+import json
 
-# Load raw Excel (header likely not on row 0)
-file_path = "your_excel_file.xlsx"
+# === CONFIG ===
+file_path = "your_excel_file.xlsx"           # Input Excel file
+output_file = "structured_output.xlsx"       # Output Excel file
+openai.api_key = "your-api-key-here"         # Your OpenAI API key
 
-# Load sheet with no header initially
+# === STEP 1: Load messy Excel ===
 df_raw = pd.read_excel(file_path, header=None)
 
-# Clean up: find where actual data starts
-start_row = df_raw[df_raw[0] == 1].index[0]  # finds the row where data starts
+# Find where data starts (row beginning with "1")
+start_row = df_raw[df_raw[0] == 1].index[0]
+header_row = df_raw.iloc[start_row - 1].fillna('').tolist()
 
-# Extract header from just above that
-header = df_raw.iloc[start_row - 1].fillna('').tolist()
+# Assign proper headers and get data rows
 df = df_raw.iloc[start_row:].reset_index(drop=True)
-df.columns = header
+df.columns = header_row
 
-# Keep only needed columns
-provider_cols = [col for col in df.columns if "hospital" in col.lower()]
-essential_cols = ["Service description", "coding/def"] + provider_cols
-df_filtered = df[essential_cols].copy()
+# === STEP 2: Detect dynamic provider columns (after 'coding/def') ===
+columns_list = df.columns.tolist()
+try:
+    coding_index = columns_list.index('coding/def')
+except ValueError:
+    raise ValueError("'coding/def' column not found in the sheet.")
 
-# Clean and expand coding/def if there are multiple codes
-def split_row(row):
-    codes = str(row['coding/def']).split('AND')
-    return [
-        {
-            "Service description": row["Service description"],
-            "coding/def": code.strip(),
-            **{provider: row[provider] for provider in provider_cols}
-        }
-        for code in codes if code.strip()
-    ]
+provider_cols = columns_list[coding_index + 1:]
+print("Detected providers:", provider_cols)
 
-expanded_rows = []
-for _, row in df_filtered.iterrows():
-    expanded_rows.extend(split_row(row))
+# === STEP 3: Build structured lines to send to GPT ===
+lines_for_gpt = []
 
-# Final clean DataFrame
-final_df = pd.DataFrame(expanded_rows)
+for _, row in df.iterrows():
+    service = str(row.get('Service description', '')).strip()
+    coding = str(row.get('coding/def', '')).strip()
 
-# Preview
-print(final_df)
+    if not service and not coding:
+        continue  # skip empty rows
 
-# Optional: Send to GPT for summary
-openai.api_key = "your-api-key-here"
-data_as_text = final_df.to_string(index=False)
+    provider_values = []
+    for provider in provider_cols:
+        value = str(row.get(provider, '')).strip()
+        if value:
+            provider_values.append(f"{provider}: {value}")
 
-prompt = f"""Here's cleaned data extracted from an Excel sheet:
+    line = f"Service: {service} | Coding: {coding} | " + " | ".join(provider_values)
+    lines_for_gpt.append(line)
 
-{data_as_text}
+# Join all rows into one text blob for GPT
+data_text = "\n".join(lines_for_gpt)
 
-Please summarize the service descriptions and give insights for each hospital based on charges or codes."""
+# === STEP 4: GPT-4o prompt for structured extraction ===
+prompt = f"""
+Extract structured rows from the following service data.
+
+Return it as a JSON list, where each item contains:
+- service_description
+- coding_def (split if there's an 'AND')
+- provider (e.g. hospital name)
+- value (like 29% or $115,656)
+
+Here is the raw data:
+
+{data_text}
+"""
+
+# === STEP 5: Send to OpenAI GPT-4o ===
 response = openai.ChatCompletion.create(
     model="gpt-4o",
     messages=[
-        {"role": "system", "content": "You are a data summarization assistant."},
         {"role": "user", "content": prompt}
     ],
-    temperature=0.7,
-    max_tokens=1500
+    temperature=0.2,
+    max_tokens=1800
 )
 
-print("\nGPT Analysis:\n")
-print(response['choices'][0]['message']['content'])
+# === STEP 6: Extract JSON from GPT response ===
+raw_output = response['choices'][0]['message']['content']
+
+# Extract only the JSON portion (safe parse)
+start = raw_output.find("[")
+end = raw_output.rfind("]") + 1
+json_text = raw_output[start:end]
+
+# Load into DataFrame
+structured_df = pd.DataFrame(json.loads(json_text))
+
+# === STEP 7: Save to NEW Excel file ===
+with pd.ExcelWriter(output_file, engine='openpyxl') as writer:
+    structured_df.to_excel(writer, sheet_name="structured_output", index=False)
+
+print(f"✅ Done! Structured data saved to: {output_file}")
