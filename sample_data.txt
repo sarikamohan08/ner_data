@@ -1,26 +1,65 @@
-# Main function to process the PDF and extract information
-def main(pdf_file, output_excel):
-    # Extract text from the PDF
-    pdf_text = extract_text_from_pdf(pdf_file)
-    
-    # Define the queries
-    queries = {
-        "Effective Date": "What is the effective date?",
-        "Tax ID": "What is the tax ID?"
-    }
-    
-    # Dictionary to store responses
-    responses = {}
+import pandas as pd
+import openai
 
-    # Process each query
-    for key, question in queries.items():
-        answer = chat_with_pdf(pdf_text, question)
-        responses[key] = answer
-        print(f"{question}: {answer}")
+# Load raw Excel (header likely not on row 0)
+file_path = "your_excel_file.xlsx"
 
-    # Convert responses to a DataFrame
-    df = pd.DataFrame(list(responses.items()), columns=['Field', 'Value'])
+# Load sheet with no header initially
+df_raw = pd.read_excel(file_path, header=None)
 
-    # Write DataFrame to an Excel file
-    df.to_excel(output_excel, index=False, engine='openpyxl')
-    print(f"Data has been written to '{output_excel}'")
+# Clean up: find where actual data starts
+start_row = df_raw[df_raw[0] == 1].index[0]  # finds the row where data starts
+
+# Extract header from just above that
+header = df_raw.iloc[start_row - 1].fillna('').tolist()
+df = df_raw.iloc[start_row:].reset_index(drop=True)
+df.columns = header
+
+# Keep only needed columns
+provider_cols = [col for col in df.columns if "hospital" in col.lower()]
+essential_cols = ["Service description", "coding/def"] + provider_cols
+df_filtered = df[essential_cols].copy()
+
+# Clean and expand coding/def if there are multiple codes
+def split_row(row):
+    codes = str(row['coding/def']).split('AND')
+    return [
+        {
+            "Service description": row["Service description"],
+            "coding/def": code.strip(),
+            **{provider: row[provider] for provider in provider_cols}
+        }
+        for code in codes if code.strip()
+    ]
+
+expanded_rows = []
+for _, row in df_filtered.iterrows():
+    expanded_rows.extend(split_row(row))
+
+# Final clean DataFrame
+final_df = pd.DataFrame(expanded_rows)
+
+# Preview
+print(final_df)
+
+# Optional: Send to GPT for summary
+openai.api_key = "your-api-key-here"
+data_as_text = final_df.to_string(index=False)
+
+prompt = f"""Here's cleaned data extracted from an Excel sheet:
+
+{data_as_text}
+
+Please summarize the service descriptions and give insights for each hospital based on charges or codes."""
+response = openai.ChatCompletion.create(
+    model="gpt-4o",
+    messages=[
+        {"role": "system", "content": "You are a data summarization assistant."},
+        {"role": "user", "content": prompt}
+    ],
+    temperature=0.7,
+    max_tokens=1500
+)
+
+print("\nGPT Analysis:\n")
+print(response['choices'][0]['message']['content'])
