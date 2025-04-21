@@ -1,22 +1,65 @@
-def extract_tables_from_pdf(pdf_path):
-    tables_by_page = {}
-    try:
-        tables = camelot.read_pdf(pdf_path, pages='all', flavor='lattice')
-        for table in tables:
-            page_num = table.page
-            if page_num not in tables_by_page:
-                tables_by_page[page_num] = []
-            tables_by_page[page_num].append(table.df.to_string(index=False))
-    except Exception as e:
-        print(f"[!] Error extracting tables: {e}")
-    return tables_by_page
+import openai
+from pdf2image import convert_from_path
+from PIL import Image
+from io import BytesIO
+import base64
 
-# --- Merge text and tables ---
-def merge_text_and_tables(pages, tables_by_page):
-    for page in pages:
-        page_num = page['page']
-        if page_num in tables_by_page:
-            page['tables'] = tables_by_page[page_num]
-    return pages
-tables_by_page = extract_tables_from_pdf(pdf_path)
-    merged_pages = merge_text_and_tables(pages, tables_by_page)
+# Set your OpenAI key
+openai.api_key = "your-openai-api-key"
+
+# Convert a list of images to one tall image
+def combine_images_vertically(images):
+    widths, heights = zip(*(img.size for img in images))
+    max_width = max(widths)
+    total_height = sum(heights)
+
+    combined = Image.new('RGB', (max_width, total_height), color=(255, 255, 255))
+    y_offset = 0
+    for img in images:
+        combined.paste(img, (0, y_offset))
+        y_offset += img.height
+
+    return combined
+
+# Convert image to base64
+def image_to_base64(img: Image.Image) -> str:
+    buffered = BytesIO()
+    img.save(buffered, format="PNG")
+    return base64.b64encode(buffered.getvalue()).decode()
+
+# Ask GPT-4o using one big image
+def ask_gpt_with_full_pdf(image_b64, question):
+    response = openai.ChatCompletion.create(
+        model="gpt-4o",
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": question},
+                    {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{image_b64}"}}
+                ]
+            }
+        ]
+    )
+    return response['choices'][0]['message']['content']
+
+# Main function
+def analyze_full_pdf(pdf_path, question):
+    print("📄 Converting PDF to images...")
+    images = convert_from_path(pdf_path)
+
+    print("🧵 Combining all pages into one image...")
+    combined_image = combine_images_vertically(images)
+
+    print("🖼️ Encoding image...")
+    b64_image = image_to_base64(combined_image)
+
+    print("🧠 Sending to GPT-4o...")
+    result = ask_gpt_with_full_pdf(b64_image, question)
+
+    print("\n✅ GPT-4o Response:")
+    print(result)
+
+# Run it
+if __name__ == "__main__":
+    analyze_full_pdf("your_scanned_pdf.pdf", "Summarize the entire document and highlight any tables, figures, or key data.")
