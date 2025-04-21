@@ -1,8 +1,20 @@
-Fields to extract:
-1. service_type - Found above the table; value is either "Inpatient" or "Outpatient".
-2. service_name - Located within the table; includes values like "Level 1", "Level 2", "Level 3", or "All Services".
-3. reimbursement_amount - The amount listed alongside each service_name.
-4. reimbursement_rate - Found below the level labels (e.g., under Level 1/2/3); may be a percentage or dollar value.
-5. revenue_code - A numeric or alphanumeric code found in or near the table.
-6. reimbursement_methodology - Look for and extract the text "Fee Schedule" if mentioned.
-7. health_benefits_plan - A single health plan per record. If multiple plans are listed in the document, create a separate record for each plan.
+def extract_tables_from_pdf(pdf_path):
+    tables_by_page = {}
+    try:
+        tables = camelot.read_pdf(pdf_path, pages='all', flavor='lattice')
+        for table in tables:
+            page_num = table.page
+            if page_num not in tables_by_page:
+                tables_by_page[page_num] = []
+            tables_by_page[page_num].append(table.df.to_string(index=False))
+    except Exception as e:
+        print(f"[!] Error extracting tables: {e}")
+    return tables_by_page
+
+# --- Merge text and tables ---
+def merge_text_and_tables(pages, tables_by_page):
+    for page in pages:
+        page_num = page['page']
+        if page_num in tables_by_page:
+            page['tables'] = tables_by_page[page_num]
+    return pages
