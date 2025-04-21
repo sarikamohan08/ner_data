@@ -18,3 +18,5 @@ def merge_text_and_tables(pages, tables_by_page):
         if page_num in tables_by_page:
             page['tables'] = tables_by_page[page_num]
     return pages
+tables_by_page = extract_tables_from_pdf(pdf_path)
+    merged_pages = merge_text_and_tables(pages, tables_by_page)
