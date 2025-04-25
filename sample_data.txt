@@ -8,13 +8,20 @@ def rename_sheets_in_excel(file_path):
         'bot output rts': 'ocr output rts'
     }
 
-    # Write the modified file back to the same path
     with pd.ExcelWriter(file_path, engine='openpyxl') as writer:
         for sheet_name in xls.sheet_names:
             df = xls.parse(sheet_name)
             # Normalize to lowercase and strip spaces for matching
             normalized_name = sheet_name.lower().strip()
             new_name = rename_map.get(normalized_name, sheet_name)
-            df.to_excel(writer, sheet_name=new_name, index=False)
+
+            # Rename the sheet only if the new name is not already in the workbook
+            if new_name != sheet_name:
+                if new_name not in xls.sheet_names:
+                    df.to_excel(writer, sheet_name=new_name, index=False)
+                else:
+                    df.to_excel(writer, sheet_name=sheet_name, index=False)
+            else:
+                df.to_excel(writer, sheet_name=sheet_name, index=False)
 
     return file_path
