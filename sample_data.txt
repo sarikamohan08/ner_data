@@ -1,27 +1,11 @@
-def rename_sheets_in_excel(file_path):
-    # Load the Excel file
-    xls = pd.ExcelFile(file_path)
+For the same HCA-type contracts, API scripts are currently under development.
+Basic entities have been successfully extracted from the contracts.
 
-    # Mapping with lowercase keys for case-insensitive matching
-    rename_map = {
-        'bot  output reply': 'ocr  output reply',
-        'bot output rts': 'ocr output rts'
-    }
+During testing, the following issues were encountered:
 
-    with pd.ExcelWriter(file_path, engine='openpyxl') as writer:
-        for sheet_name in xls.sheet_names:
-            df = xls.parse(sheet_name)
-            # Normalize to lowercase and strip spaces for matching
-            normalized_name = sheet_name.lower().strip()
-            new_name = rename_map.get(normalized_name, sheet_name)
+IndexError: "Index 0 is out of bounds for axis 0 with size 0" — This occurs because HCA-type contracts are structured more like tables, and while extracting and passing the data to the model, certain indexes are not being properly mapped.
 
-            # Rename the sheet only if the new name is not already in the workbook
-            if new_name != sheet_name:
-                if new_name not in xls.sheet_names:
-                    df.to_excel(writer, sheet_name=new_name, index=False)
-                else:
-                    df.to_excel(writer, sheet_name=sheet_name, index=False)
-            else:
-                df.to_excel(writer, sheet_name=sheet_name, index=False)
+BadRequestError (400): This error arises when attempting to pass the entire PDF directly to the model without chunking the content into structured text and tables.
 
-    return file_path
+
+We are actively addressing these issues by refining the extraction logic and implementing appropriate chunking strategies to ensure smooth API processing.
