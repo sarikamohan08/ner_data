@@ -1,11 +1,82 @@
-For the same HCA-type contracts, API scripts are currently under development.
-Basic entities have been successfully extracted from the contracts.
+import openai
+from pdf2image import convert_from_path
+import io
+from PIL import Image
+import base64
 
-During testing, the following issues were encountered:
+openai.api_key = "YOUR_OPENAI_API_KEY"
 
-IndexError: "Index 0 is out of bounds for axis 0 with size 0" — This occurs because HCA-type contracts are structured more like tables, and while extracting and passing the data to the model, certain indexes are not being properly mapped.
+# Convert PDF to images (one image per page)
+def pdf_to_images(pdf_path):
+    return convert_from_path(pdf_path)
 
-BadRequestError (400): This error arises when attempting to pass the entire PDF directly to the model without chunking the content into structured text and tables.
+# Convert PIL image to base64 string
+def image_to_base64(image):
+    buffered = io.BytesIO()
+    image.save(buffered, format="PNG")
+    return base64.b64encode(buffered.getvalue()).decode("utf-8")
 
+# Extract both text and tables from an image using GPT-4o
+def extract_text_and_tables_from_image(image):
+    base64_image = image_to_base64(image)
+    response = openai.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {"role": "system", "content": "You're a document analyst. Extract all useful content, especially structured tables, from scanned images."},
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/png;base64,{base64_image}"},
+                    },
+                    {
+                        "type": "text",
+                        "text": (
+                            "Please extract all important information from this document page. "
+                            "If there are any tables, extract them as structured data in Markdown or JSON. "
+                            "Also include key-value pairs and labeled information if available."
+                        )
+                    }
+                ],
+            },
+        ],
+    )
+    return response.choices[0].message.content.strip()
 
-We are actively addressing these issues by refining the extraction logic and implementing appropriate chunking strategies to ensure smooth API processing.
+# Extract all pages
+def extract_all_pages(pdf_path):
+    images = pdf_to_images(pdf_path)
+    chunks = []
+    for i, image in enumerate(images):
+        print(f"Extracting content from page {i+1}...")
+        extracted = extract_text_and_tables_from_image(image)
+        chunks.append(extracted)
+    return chunks
+
+# RAG-style question-answering
+def rag_ask_question(chunks, question):
+    context = "\n\n---\n\n".join(chunks)
+    prompt = f"""Use the following extracted document content to answer the question.
+
+DOCUMENT:
+{context}
+
+QUESTION:
+{question}
+"""
+    response = openai.chat.completions.create(
+        model="gpt-4o",
+        messages=[{"role": "user", "content": prompt}]
+    )
+    return response.choices[0].message.content.strip()
+
+# === Example Usage ===
+pdf_path = "scanned_with_tables.pdf"
+chunks = extract_all_pages(pdf_path)
+
+# Ask any question, tables will be part of the context
+question = "What is the Effective Date? Also, summarize any tabular data."
+answer = rag_ask_question(chunks, question)
+
+print("\n✅ Final Answer:\n", answer)
