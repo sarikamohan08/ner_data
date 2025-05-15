@@ -1,82 +1,45 @@
-import openai
-from pdf2image import convert_from_path
-import io
-from PIL import Image
-import base64
+pages = convert_from_path(pdf_path, dpi=200)
 
-openai.api_key = "YOUR_OPENAI_API_KEY"
+# Step 2: Loop through pages, send images to GPT-4o
+full_output = ""  # This will hold the final combined output
 
-# Convert PDF to images (one image per page)
-def pdf_to_images(pdf_path):
-    return convert_from_path(pdf_path)
+for i, page_image in enumerate(pages):
+    print(f"Processing Page {i + 1}...")
 
-# Convert PIL image to base64 string
-def image_to_base64(image):
-    buffered = io.BytesIO()
-    image.save(buffered, format="PNG")
-    return base64.b64encode(buffered.getvalue()).decode("utf-8")
+    # Convert PIL image to byte stream
+    img_byte_arr = io.BytesIO()
+    page_image.save(img_byte_arr, format='PNG')
+    img_byte_arr.seek(0)
 
-# Extract both text and tables from an image using GPT-4o
-def extract_text_and_tables_from_image(image):
-    base64_image = image_to_base64(image)
+    # Upload image to OpenAI
+    file_response = openai.files.create(
+        file=img_byte_arr,
+        purpose="vision"
+    )
+    image_file_id = file_response["id"]
+
+    # Ask GPT-4o to extract content
     response = openai.chat.completions.create(
         model="gpt-4o",
         messages=[
-            {"role": "system", "content": "You're a document analyst. Extract all useful content, especially structured tables, from scanned images."},
+            {
+                "role": "system",
+                "content": "You are an expert at extracting structured content from scanned documents. Extract all text and tables in Markdown format."
+            },
             {
                 "role": "user",
                 "content": [
                     {
                         "type": "image_url",
-                        "image_url": {"url": f"data:image/png;base64,{base64_image}"},
-                    },
-                    {
-                        "type": "text",
-                        "text": (
-                            "Please extract all important information from this document page. "
-                            "If there are any tables, extract them as structured data in Markdown or JSON. "
-                            "Also include key-value pairs and labeled information if available."
-                        )
+                        "image_url": {
+                            "file_id": image_file_id,
+                            "detail": "high"
+                        }
                     }
-                ],
-            },
-        ],
+                ]
+            }
+        ]
     )
-    return response.choices[0].message.content.strip()
 
-# Extract all pages
-def extract_all_pages(pdf_path):
-    images = pdf_to_images(pdf_path)
-    chunks = []
-    for i, image in enumerate(images):
-        print(f"Extracting content from page {i+1}...")
-        extracted = extract_text_and_tables_from_image(image)
-        chunks.append(extracted)
-    return chunks
-
-# RAG-style question-answering
-def rag_ask_question(chunks, question):
-    context = "\n\n---\n\n".join(chunks)
-    prompt = f"""Use the following extracted document content to answer the question.
-
-DOCUMENT:
-{context}
-
-QUESTION:
-{question}
-"""
-    response = openai.chat.completions.create(
-        model="gpt-4o",
-        messages=[{"role": "user", "content": prompt}]
-    )
-    return response.choices[0].message.content.strip()
-
-# === Example Usage ===
-pdf_path = "scanned_with_tables.pdf"
-chunks = extract_all_pages(pdf_path)
-
-# Ask any question, tables will be part of the context
-question = "What is the Effective Date? Also, summarize any tabular data."
-answer = rag_ask_question(chunks, question)
-
-print("\n✅ Final Answer:\n", answer)
+    page_content = response.choices[0].message.content
+    full_output += f"\n\n--- Page {i + 1} ---\n\n{page_content}"
