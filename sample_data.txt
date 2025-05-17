@@ -1,45 +1,31 @@
-pages = convert_from_path(pdf_path, dpi=200)
+from openpyxl import load_workbook
 
-# Step 2: Loop through pages, send images to GPT-4o
-full_output = ""  # This will hold the final combined output
+def rename_excel_sheets_inplace(file_path):
+    """
+    Rename specific sheets in an Excel file (in-place) using a predefined case-insensitive map.
 
-for i, page_image in enumerate(pages):
-    print(f"Processing Page {i + 1}...")
+    Parameters:
+    - file_path (str): Path to the Excel file to be modified.
+    """
+    # Predefined renaming map (case-insensitive)
+    rename_map = {
+        'bot output-reply': 'ocr output-reply',
+        'bot output-rts': 'ocr output-rts'
+    }
 
-    # Convert PIL image to byte stream
-    img_byte_arr = io.BytesIO()
-    page_image.save(img_byte_arr, format='PNG')
-    img_byte_arr.seek(0)
+    # Convert keys to lowercase for comparison
+    lower_rename_map = {k.lower(): v for k, v in rename_map.items()}
 
-    # Upload image to OpenAI
-    file_response = openai.files.create(
-        file=img_byte_arr,
-        purpose="vision"
-    )
-    image_file_id = file_response["id"]
+    # Load the workbook
+    wb = load_workbook(filename=file_path)
 
-    # Ask GPT-4o to extract content
-    response = openai.chat.completions.create(
-        model="gpt-4o",
-        messages=[
-            {
-                "role": "system",
-                "content": "You are an expert at extracting structured content from scanned documents. Extract all text and tables in Markdown format."
-            },
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "file_id": image_file_id,
-                            "detail": "high"
-                        }
-                    }
-                ]
-            }
-        ]
-    )
+    # Perform renaming
+    for sheet_name in wb.sheetnames:
+        sheet_name_lower = sheet_name.lower()
+        if sheet_name_lower in lower_rename_map:
+            ws = wb[sheet_name]
+            ws.title = lower_rename_map[sheet_name_lower]
 
-    page_content = response.choices[0].message.content
-    full_output += f"\n\n--- Page {i + 1} ---\n\n{page_content}"
+    # Overwrite original file
+    wb.save(file_path)
+    print(f"Workbook successfully updated: {file_path}")
