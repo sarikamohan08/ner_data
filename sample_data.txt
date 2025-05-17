@@ -1,4 +1,9 @@
-dataframes = {
-    sheet_title_changes.get(sheet_name, sheet_name): xls.parse(sheet_name)
-    for sheet_name in xls.sheet_names
-}
+wb = load_workbook(file_path)
+
+# Rename sheets if they match the dictionary
+for old_name, new_name in sheet_title_changes.items():
+    if old_name in wb.sheetnames:
+        wb[old_name].title = new_name
+
+# Save (overwrite the original or change filename as needed)
+wb.save('updated_' + file_path)
