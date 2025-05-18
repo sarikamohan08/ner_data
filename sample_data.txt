@@ -1,40 +1,70 @@
+import os
+import time
 import openpyxl
+from tempfile import NamedTemporaryFile
 
-def rename_excel_sheets(file_path):
-    try:
-        # Load the workbook with proper file handling
-        with open(file_path, 'rb') as f:
-            workbook = openpyxl.load_workbook(f)
-        
-        name_mapping = {
-            'bot output-reply': 'ocr output-reply',
-            'bot output-rts': 'ocr output-rts',
-            'bot output-reply kickouts': 'ocr output-reply kickouts',
-            'bot output-rts kickouts': 'ocr output-rts kickouts'
-        }
-        
-        for sheet in workbook.sheetnames:
-            if sheet in name_mapping:
-                workbook[sheet].title = name_mapping[sheet]
-        
-        # Save to a temporary file first
-        temp_path = file_path.replace('.xlsx', '_temp.xlsx')
-        workbook.save(temp_path)
-        
-        # Close the workbook properly
-        workbook.close()
-        
-        # Replace original file
-        import os
-        os.replace(temp_path, file_path)
-        
-        print(f"Sheet names updated in {file_path}")
+def rename_excel_sheets(file_path, max_retries=3, retry_delay=1):
+    """
+    Rename sheets in an Excel file with robust error handling.
     
-    except PermissionError:
-        print(f"Error: Could not access {file_path}. Please close the file in Excel or other programs.")
-    except Exception as e:
-        print(f"An error occurred: {str(e)}")
+    Args:
+        file_path (str): Path to the Excel file
+        max_retries (int): Number of times to retry if file is locked
+        retry_delay (float): Seconds to wait between retries
+    """
+    for attempt in range(max_retries):
+        try:
+            # Create a temporary file in the same directory as the original
+            temp_dir = os.path.dirname(file_path) or os.getcwd()
+            
+            with NamedTemporaryFile(dir=temp_dir, suffix='.xlsx', delete=False) as tmp_file:
+                temp_path = tmp_file.name
+            
+            # Load the original workbook
+            workbook = openpyxl.load_workbook(file_path)
+            
+            # Define the name mappings
+            name_mapping = {
+                'bot output-reply': 'ocr output-reply',
+                'bot output-rts': 'ocr output-rts',
+                'bot output-reply kickouts': 'ocr output-reply kickouts',
+                'bot output-rts kickouts': 'ocr output-rts kickouts'
+            }
+            
+            # Rename sheets
+            for sheet in workbook.sheetnames:
+                if sheet in name_mapping:
+                    workbook[sheet].title = name_mapping[sheet]
+            
+            # Save to temporary file
+            workbook.save(temp_path)
+            workbook.close()
+            
+            # Replace original file
+            os.replace(temp_path, file_path)
+            
+            print(f"Successfully updated sheet names in {file_path}")
+            return True
+            
+        except PermissionError as e:
+            print(f"Attempt {attempt + 1} failed: {str(e)}")
+            if attempt < max_retries - 1:
+                print(f"Waiting {retry_delay} seconds before retrying...")
+                time.sleep(retry_delay)
+            continue
+            
+        except Exception as e:
+            print(f"An unexpected error occurred: {str(e)}")
+            if os.path.exists(temp_path):
+                try:
+                    os.unlink(temp_path)
+                except:
+                    pass
+            return False
+            
+    print(f"Failed to update {file_path} after {max_retries} attempts")
+    return False
 
-# Usage
-file_path = 'your_file.xlsx'
+# Usage example
+file_path = r'C:\path\to\your\file.xlsx'  # Use raw string for Windows paths
 rename_excel_sheets(file_path)
