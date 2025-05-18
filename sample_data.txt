@@ -1,9 +1,32 @@
-wb = load_workbook(file_path)
+import pandas as pd
 
-# Rename sheets if they match the dictionary
-for old_name, new_name in sheet_title_changes.items():
-    if old_name in wb.sheetnames:
-        wb[old_name].title = new_name
+def rename_sheets_pandas(file_path):
+    # Read the Excel file
+    with pd.ExcelFile(file_path) as xls:
+        sheets = xls.sheet_names
+    
+    # Create name mapping
+    name_mapping = {
+        'bot output-reply': 'ocr output-reply',
+        'bot output-rts': 'ocr output-rts',
+        'bot output-reply kickouts': 'ocr output-reply kickouts',
+        'bot output-rts kickouts': 'ocr output-rts kickouts'
+    }
+    
+    # Create a dictionary of DataFrames with new names
+    dfs = {}
+    for sheet in sheets:
+        df = pd.read_excel(file_path, sheet_name=sheet)
+        new_name = name_mapping.get(sheet, sheet)
+        dfs[new_name] = df
+    
+    # Write back to Excel with new sheet names
+    with pd.ExcelWriter(file_path, engine='openpyxl') as writer:
+        for sheet_name, df in dfs.items():
+            df.to_excel(writer, sheet_name=sheet_name, index=False)
+    
+    print(f"Sheet names updated in {file_path}")
 
-# Save (overwrite the original or change filename as needed)
-wb.save('updated_' + file_path)
+# Usage
+file_path = 'your_file.xlsx'
+rename_sheets_pandas(file_path)
