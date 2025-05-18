@@ -1,70 +1,13 @@
-import os
-import time
-import openpyxl
-from tempfile import NamedTemporaryFile
+# Read all sheets
+    all_sheets = pd.read_excel(file_path, sheet_name=None)
 
-def rename_excel_sheets(file_path, max_retries=3, retry_delay=1):
-    """
-    Rename sheets in an Excel file with robust error handling.
-    
-    Args:
-        file_path (str): Path to the Excel file
-        max_retries (int): Number of times to retry if file is locked
-        retry_delay (float): Seconds to wait between retries
-    """
-    for attempt in range(max_retries):
-        try:
-            # Create a temporary file in the same directory as the original
-            temp_dir = os.path.dirname(file_path) or os.getcwd()
-            
-            with NamedTemporaryFile(dir=temp_dir, suffix='.xlsx', delete=False) as tmp_file:
-                temp_path = tmp_file.name
-            
-            # Load the original workbook
-            workbook = openpyxl.load_workbook(file_path)
-            
-            # Define the name mappings
-            name_mapping = {
-                'bot output-reply': 'ocr output-reply',
-                'bot output-rts': 'ocr output-rts',
-                'bot output-reply kickouts': 'ocr output-reply kickouts',
-                'bot output-rts kickouts': 'ocr output-rts kickouts'
-            }
-            
-            # Rename sheets
-            for sheet in workbook.sheetnames:
-                if sheet in name_mapping:
-                    workbook[sheet].title = name_mapping[sheet]
-            
-            # Save to temporary file
-            workbook.save(temp_path)
-            workbook.close()
-            
-            # Replace original file
-            os.replace(temp_path, file_path)
-            
-            print(f"Successfully updated sheet names in {file_path}")
-            return True
-            
-        except PermissionError as e:
-            print(f"Attempt {attempt + 1} failed: {str(e)}")
-            if attempt < max_retries - 1:
-                print(f"Waiting {retry_delay} seconds before retrying...")
-                time.sleep(retry_delay)
-            continue
-            
-        except Exception as e:
-            print(f"An unexpected error occurred: {str(e)}")
-            if os.path.exists(temp_path):
-                try:
-                    os.unlink(temp_path)
-                except:
-                    pass
-            return False
-            
-    print(f"Failed to update {file_path} after {max_retries} attempts")
-    return False
+    # Rename sheet names
+    renamed_sheets = {
+        rename_mapping.get(sheet_name, sheet_name): df
+        for sheet_name, df in all_sheets.items()
+    }
 
-# Usage example
-file_path = r'C:\path\to\your\file.xlsx'  # Use raw string for Windows paths
-rename_excel_sheets(file_path)
+    # Overwrite the original file
+    with pd.ExcelWriter(file_path, engine='openpyxl', mode='w') as writer:
+        for sheet_name, df in renamed_sheets.items():
+            df.to_excel(writer, sheet_name=sheet_name, index=False)
