@@ -1,11 +1,11 @@
-def is_file_locked(filepath):
-    try:
-        with open(filepath, 'r+'):
-            return False
-    except PermissionError:
-        return True
+# First, try one column to the left
+                if col_index > 0:
+                    left1 = row.iloc[col_index - 1]
+                    if isinstance(left1, str) and left1.strip():
+                        provider_name = left1.strip()
 
-# Usage:
-if is_file_locked(file_path):
-    print(f"File is currently locked: {filename}")
-    continue
+                # If not found, try two columns to the left
+                if not provider_name and col_index > 1:
+                    left2 = row.iloc[col_index - 2]
+                    if isinstance(left2, str) and left2.strip():
+                        provider_name = left2.strip()
