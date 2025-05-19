@@ -1,53 +1,11 @@
-def rename_sheets(excel_file_path):
-    """
-    Renames specific sheets in an Excel file.
-    
-    Sheet name changes:
-    - 'bot output-reply' to 'ocr output-reply'
-    - 'bot output-rts' to 'ocr output-rts'
-    - 'bot output-reply kickouts' to 'OCR output-reply kickouts'
-    - 'bot output-rts kickouts' to 'OCR output-rts kickouts'
-    """
-    # Dictionary mapping old sheet names to new sheet names
-    sheet_name_map = {
-        "bot output-reply": "ocr output-reply",
-        "bot output-rts": "ocr output-rts",
-        "bot output-reply kickouts": "OCR output-reply kickouts",
-        "bot output-rts kickouts": "OCR output-rts kickouts"
-    }
-    
-    # Load the workbook
-    print(f"Opening Excel file: {excel_file_path}")
-    wb = openpyxl.load_workbook(excel_file_path)
-    
-    # List all sheets before renaming
-    print("Sheets before renaming:")
-    for sheet in wb.sheetnames:
-        print(f"  - {sheet}")
-    
-    # Rename sheets
-    sheets_renamed = 0
-    for old_name in list(wb.sheetnames):
-        if old_name in sheet_name_map:
-            new_name = sheet_name_map[old_name]
-            sheet = wb[old_name]
-            sheet.title = new_name
-            print(f"Renamed sheet: '{old_name}' to '{new_name}'")
-            sheets_renamed += 1
-    
-    # List all sheets after renaming
-    print("\nSheets after renaming:")
-    for sheet in wb.sheetnames:
-        print(f"  - {sheet}")
-    
-    # Save the workbook with the renamed sheets
-    # Create a new filename to avoid overwriting the original
-    file_name, file_ext = os.path.splitext(excel_file_path)
-    new_file_path = f"{file_name}_renamed{file_ext}"
-    
-    wb.save(new_file_path)
-    print(f"\nSaved workbook with renamed sheets to: {new_file_path}")
-    print(f"Total sheets renamed: {sheets_renamed}")
-    
-    return new_file_path
+def is_file_locked(filepath):
+    try:
+        with open(filepath, 'r+'):
+            return False
+    except PermissionError:
+        return True
 
+# Usage:
+if is_file_locked(file_path):
+    print(f"File is currently locked: {filename}")
+    continue
