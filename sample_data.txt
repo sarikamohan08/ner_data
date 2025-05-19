@@ -1,11 +1,11 @@
-# First, try one column to the left
-                if col_index > 0:
-                    left1 = row.iloc[col_index - 1]
-                    if isinstance(left1, str) and left1.strip():
-                        provider_name = left1.strip()
+updated_sheets = {}
+        for sheet_name, df in xls.items():
+            if sheet_name.casefold() == "ocr output reply":
+                df['CCM'] = ""  # Add CCM column
+                print(f"'CCM' column added to sheet: {sheet_name}")
+            updated_sheets[sheet_name] = df
 
-                # If not found, try two columns to the left
-                if not provider_name and col_index > 1:
-                    left2 = row.iloc[col_index - 2]
-                    if isinstance(left2, str) and left2.strip():
-                        provider_name = left2.strip()
+        # Save all sheets back to the same file
+        with pd.ExcelWriter(filename, engine='openpyxl') as writer:
+            for sheet_name, df in updated_sheets.items():
+                df.to_excel(writer, sheet_name=sheet_name, index=False)
