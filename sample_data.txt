@@ -1,39 +1,32 @@
-import pandas as pd
+ain
+!pip install langchain
+from langchain.document_loaders.image import UnstructuredImageLoader
 
-def add_ccm_to_reply_sheet(filename):
-    # Check if 'reply' is in the filename (case-insensitive)
-    if "reply" in filename.casefold():
-        try:
-            # Read all sheets into a dictionary
-            xls = pd.read_excel(filename, sheet_name=None, engine='openpyxl')
-
-            updated_sheets = {}
-            sheet_found = False
-
-            # Loop through all sheets
-            for sheet_name, df in xls.items():
-                # Check if the sheet name is 'ocr output reply' (case-insensitive)
-                if sheet_name.casefold() == "ocr output reply":
-                    df['CCM'] = ""  # Add blank 'CCM' column
-                    sheet_found = True
-                    print(f"'CCM' column added to sheet: {sheet_name}")
-                updated_sheets[sheet_name] = df
-
-            if not sheet_found:
-                print("No sheet named 'ocr output reply' found (case-insensitive match).")
-
-            # Write all sheets back to the Excel file
-            with pd.ExcelWriter(filename, engine='openpyxl') as writer:
-                for sheet_name, df in updated_sheets.items():
-                    df.to_excel(writer, sheet_name=sheet_name, index=False)
-
-            print(f"✅ File updated: {filename}")
+def extract_text_with_langchain_image(list_dict_final_images):
+    
+    image_list = [list(data.values())[0] for data in list_dict_final_images]
+    image_content = []
+    
+    for index, image_bytes in enumerate(image_list):
         
-        except Exception as e:
-            print(f"❌ Error processing file: {e}")
-    else:
-        print(f"ℹ️ Skipped: 'reply' not found in filename '{filename}'")
+        image = Image.open(BytesIO(image_bytes))
+        loader = UnstructuredImageLoader(image)
+        data = loader.load()
+        raw_text = data[index].page_content
+                       
+        image_content.append(raw_text)
+    
+    return "\n".join(image_content)
+text_with_langchain_image = extract_text_with_langchain_image(convert_pdf_to_images)
+print(text_with_langchain_image)
+from langchain.document_loaders import UnstructuredFileLoader
 
-# ==== Example Usage ====
-# Replace with your actual Excel filename
-add_ccm_to_reply_sheet("Customer_OCR_OUTPUT_REPLY.xlsx")
+def extract_text_with_langchain_pdf(pdf_file):
+    
+    loader = UnstructuredFileLoader(pdf_file)
+    documents = loader.load()
+    pdf_pages_content = '\n'.join(doc.page_content for doc in documents)
+    
+    return pdf_pages_content
+text_with_langchain_files = extract_text_with_langchain_pdf("Experimentation_file.pdf")
+print(text_with_langchain_files)
