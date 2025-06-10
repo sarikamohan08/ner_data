@@ -1,24 +1,10 @@
-You are a structured data extraction assistant.
+You are an AI assistant tasked with extracting tabular data from a PDF document.
+For each table you find in the PDF, do the following:
 
-Your task is to extract a table from the following healthcare reimbursement policy text. The extracted table should have the following columns:
+Present the table in clear, structured format using Markdown.
 
-| service_type | service_desc | services | codes | rev code | drg code | cpt code | hcpcs code | reimbursement amt | reimbursement rate | reimbursement methodology | health benefit plans |
+Preserve the original row and column headers as accurately as possible.
 
-Follow these rules:
-- **service_type**: Determine whether the service is INPATIENT, OUTPATIENT, or another category mentioned in the text.
-- **service_desc**: A brief, contextual description of the policy or grouping (e.g., “level 2”, “covered services not listed”).
-- **services**: Extract the specific service being referenced (e.g., "Drugs & Biologicals", "level 1", "all other services").
-- **codes**: Extract any codes like fee schedule codes (e.g., 005-489, 201-544).
-- **rev code**: Extract revenue codes if listed (e.g., 191, 192, 193).
-- **drg code**, **cpt code**, **hcpcs code**: Set to 0 unless explicitly mentioned.
-- **reimbursement amt**: If there's a flat dollar payment (e.g., "$395"), convert to a numeric value (e.g., 395).
-- **reimbursement rate**: If a percentage is mentioned (e.g., 70%, 50%, 100%), extract the number only (e.g., 70).
-- **reimbursement methodology**: Use keywords like "fee schedule", "usual and customary", "Medicaid allowable", etc.
-- **health benefit plans**: Include payer or plan names if mentioned (e.g., Humana, Medicare); otherwise, leave blank.
+Label the tables sequentially (e.g., Table 1, Table 2).
 
-Output the result as a markdown table. Be precise and exhaustive.
-
-Text to analyze:
-"""
-<INSERT TEXT HERE>
-"""
+If any table appears to be split across pages, merge the parts into a complete table.
