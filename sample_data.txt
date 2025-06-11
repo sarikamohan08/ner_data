@@ -1,10 +1,11 @@
-You are an AI assistant tasked with extracting tabular data from a PDF document.
-For each table you find in the PDF, do the following:
+# Split full text into lines
+        all_lines = text.splitlines()
 
-Present the table in clear, structured format using Markdown.
-
-Preserve the original row and column headers as accurately as possible.
-
-Label the tables sequentially (e.g., Table 1, Table 2).
-
-If any table appears to be split across pages, merge the parts into a complete table.
+        # Find the line number where the matched paragraph starts
+        for idx, line in enumerate(all_lines):
+            if clean_paragraph.strip()[:20] in line:  # Rough check to find position
+                # Extract the next 10 lines after the match
+                lines_after = all_lines[idx + 1 : idx + 11]
+                joined_lines = "\n".join(lines_after)
+                para_match1.append(joined_lines)
+                page_match1.append(page_num)
