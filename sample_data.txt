@@ -1,11 +1,10 @@
-pattern = r"""1\.2 Notwithstanding anything to the contrary.*?that Humana shall not reimburse Hospital for Medicare inpatient prospective payment system components including, but not limited to the items listed in Table 1 below:.*?
-Table 1:
-
-(.*?)(?=\n\S|$)"""  # This captures the paragraph and the table list
-
-# Use re.DOTALL to capture newlines
-match = re.search(pattern, full_text, re.DOTALL)
-
-if match:
-    extracted_text = match.group(0)  # or match.group(1) for just the table list
-    print("Extracted Text:\n", extracted_text)
+lines_after = text.split('\n')
+            try:
+                start_index = next(
+                    i for i, line in enumerate(lines_after)
+                    if keywords1[0] in line
+                )
+                lines_to_extract = lines_after[start_index:start_index + 16]
+                extracted_block = "\n".join(lines_to_extract)
+                print(f"\nMatch found on page {page_num}:\n")
+                print(extracted_block)
