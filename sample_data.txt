@@ -1,15 +1,58 @@
-for pattern in regex_patterns:
-            if pattern.search(paragraph_clean):
-                language_present1 = "Yes"
-                para_match1.append(paragraph_clean)
-                page_match1.append(page_num)
+import os
+import re
+import pandas as pd
+from PyPDF2 import PdfReader
 
-                # Find 15 lines below match
-                all_lines = text.splitlines()
-                for j, line in enumerate(all_lines):
-                    if pattern.search(line):
-                        matched_block = "\n".join(all_lines[j:j+16])
-                        print(f"\n--- Match Found on Page {page_num} ---\n")
-                        print(matched_block)
-                        print("\n-------------------------\n")
-                        break
+# --- CONFIGURABLE VARIABLES ---
+INPUT_EXCEL_PATH = 'input_files.xlsx'  # Excel containing filenames
+EXCEL_COLUMN_NAME = 'filename'         # Column with filenames
+ROOT_FOLDER = 'pdf_folder'             # Folder where PDFs are stored
+TEXT_OUTPUT_FOLDER = 'text_output'     # Folder to store extracted .txt files
+OUTPUT_EXCEL_PATH = 'extracted_data.xlsx'  # Final Excel output
+
+# Regex pattern to match the full clause
+TEXT_PATTERN = r"""1\.2\s+Notwithstanding.*?Table\s+1:.*?(?:(?:Capital|Operating|Direct|Nursing|DSH).*?)+"""
+
+# Create output folder if it doesn't exist
+os.makedirs(TEXT_OUTPUT_FOLDER, exist_ok=True)
+
+# Load Excel with filenames
+df_files = pd.read_excel(INPUT_EXCEL_PATH)
+extracted_data = []
+
+# Process each file
+for fname in df_files[EXCEL_COLUMN_NAME]:
+    file_path = os.path.join(ROOT_FOLDER, fname)
+    
+    if not os.path.isfile(file_path):
+        print(f"File not found: {file_path}")
+        continue
+
+    try:
+        pdf_reader = PdfReader(file_path)
+        for page_num, page in enumerate(pdf_reader.pages, start=1):
+            text = page.extract_text()
+            if text:
+                matches = re.findall(TEXT_PATTERN, text, re.IGNORECASE | re.DOTALL)
+                for match in matches:
+                    # Save text to .txt file
+                    txt_file_path = os.path.join(
+                        TEXT_OUTPUT_FOLDER,
+                        f"{os.path.splitext(fname)[0]}_page_{page_num}.txt"
+                    )
+                    with open(txt_file_path, 'w', encoding='utf-8') as f:
+                        f.write(match.strip())
+                    
+                    # Store in final output list
+                    extracted_data.append({
+                        'filename': fname,
+                        'page_number': page_num,
+                        'extracted_text': match.strip()
+                    })
+    except Exception as e:
+        print(f"Error processing {fname}: {e}")
+
+# Convert to DataFrame and save to Excel
+final_df = pd.DataFrame(extracted_data)
+final_df.to_excel(OUTPUT_EXCEL_PATH, index=False)
+print(f"Extraction complete. Saved to {OUTPUT_EXCEL_PATH}")
