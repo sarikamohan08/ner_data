@@ -1,25 +1,15 @@
-regex_patterns = [
-    re.compile(r"notwithstanding anything to the contrary.*?table 1 below", re.IGNORECASE)
-]
+for pattern in regex_patterns:
+            if pattern.search(paragraph_clean):
+                language_present1 = "Yes"
+                para_match1.append(paragraph_clean)
+                page_match1.append(page_num)
 
-for i, paragraph in enumerate(paragraphs):
-        # Clean paragraph
-        paragraph = paragraph.replace('\n', ' ').strip()
-
-        # Search using regex
-        if any(pattern.search(paragraph) for pattern in regex_patterns):
-            language_present1 = "Yes"
-            para_match1.append(paragraph)
-
-            # Capture next 15 lines (approx)
-            all_lines = text.splitlines()
-            for j, line in enumerate(all_lines):
-                if pattern.search(line):
-                    matched_block = "\n".join(all_lines[j:j+16])
-                    print(f"\n--- Match Found on Page {page_num} ---\n")
-                    print(matched_block)
-                    print("\n-------------------------\n")
-                    break
-
-            page_match1.append(page_num)
-            break 
+                # Find 15 lines below match
+                all_lines = text.splitlines()
+                for j, line in enumerate(all_lines):
+                    if pattern.search(line):
+                        matched_block = "\n".join(all_lines[j:j+16])
+                        print(f"\n--- Match Found on Page {page_num} ---\n")
+                        print(matched_block)
+                        print("\n-------------------------\n")
+                        break
