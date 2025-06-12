@@ -1,10 +1,25 @@
-lines_after = text.split('\n')
-            try:
-                start_index = next(
-                    i for i, line in enumerate(lines_after)
-                    if keywords1[0] in line
-                )
-                lines_to_extract = lines_after[start_index:start_index + 16]
-                extracted_block = "\n".join(lines_to_extract)
-                print(f"\nMatch found on page {page_num}:\n")
-                print(extracted_block)
+regex_patterns = [
+    re.compile(r"notwithstanding anything to the contrary.*?table 1 below", re.IGNORECASE)
+]
+
+for i, paragraph in enumerate(paragraphs):
+        # Clean paragraph
+        paragraph = paragraph.replace('\n', ' ').strip()
+
+        # Search using regex
+        if any(pattern.search(paragraph) for pattern in regex_patterns):
+            language_present1 = "Yes"
+            para_match1.append(paragraph)
+
+            # Capture next 15 lines (approx)
+            all_lines = text.splitlines()
+            for j, line in enumerate(all_lines):
+                if pattern.search(line):
+                    matched_block = "\n".join(all_lines[j:j+16])
+                    print(f"\n--- Match Found on Page {page_num} ---\n")
+                    print(matched_block)
+                    print("\n-------------------------\n")
+                    break
+
+            page_match1.append(page_num)
+            break 
