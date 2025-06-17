@@ -1,1 +1,12 @@
-TEXT_PATTERN = r'1\.2\s+Notwithstanding.*?(?:Table\s*1:.*?DSH(?:\s|$))'
+from anthropic import Anthropic, AsyncAnthropic
+from anthropic._http_client import HttpxClient
+
+# Your API info
+API_KEY = "your_api_key_here"
+BASE_URL = "https://your-custom-gateway.com/v1"
+
+# Set up client manually
+http_client = HttpxClient(
+    base_url=BASE_URL,
+    headers={"x-api-key": API_KEY},  # some gateways use custom header names
+)
