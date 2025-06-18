@@ -1,12 +1,126 @@
-from anthropic import Anthropic, AsyncAnthropic
-from anthropic._http_client import HttpxClient
+import cv2
+import numpy as np
+import pytesseract
+from pdf2image import convert_from_path
+from skimage.feature import local_binary_pattern
 
-# Your API info
-API_KEY = "your_api_key_here"
-BASE_URL = "https://your-custom-gateway.com/v1"
+def preprocess_image(image):
+    """Preprocess the image for better feature extraction"""
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    # Apply adaptive thresholding to enhance text
+    thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
+                                  cv2.THRESH_BINARY_INV, 11, 2)
+    return thresh
 
-# Set up client manually
-http_client = HttpxClient(
-    base_url=BASE_URL,
-    headers={"x-api-key": API_KEY},  # some gateways use custom header names
-)
+def extract_lbp_features(image):
+    """Extract Local Binary Pattern features to detect handwriting-like texture"""
+    radius = 3
+    n_points = 8 * radius
+    lbp = local_binary_pattern(image, n_points, radius, method='uniform')
+    hist, _ = np.histogram(lbp, bins=np.arange(0, n_points + 3), range=(0, n_points + 2))
+    hist = hist.astype("float")
+    hist /= (hist.sum() + 1e-7)  # normalize
+    return hist
+
+def contains_handwriting(image_path, threshold=0.35):
+    """
+    Determine if an image contains handwritten text.
+    Returns True if handwriting is detected, False otherwise.
+    
+    Parameters:
+    - image_path: Path to the image file
+    - threshold: Confidence threshold (0-1) for handwriting detection
+    
+    Returns:
+    - Boolean indicating whether handwriting was detected
+    - Confidence score
+    """
+    # Read and preprocess image
+    image = cv2.imread(image_path)
+    if image is None:
+        raise ValueError(f"Could not read image at {image_path}")
+    
+    preprocessed = preprocess_image(image)
+    
+    # Get OCR results
+    ocr_data = pytesseract.image_to_data(preprocessed, output_type=pytesseract.Output.DICT)
+    
+    # Analyze each detected text block
+    handwriting_confidence = 0
+    total_blocks = 0
+    
+    for i in range(len(ocr_data['text'])):
+        if int(ocr_data['conf'][i]) > 60:  # Only consider confident detections
+            x, y, w, h = (ocr_data['left'][i], ocr_data['top'][i], 
+                          ocr_data['width'][i], ocr_data['height'][i])
+            
+            # Extract the text block
+            block = preprocessed[y:y+h, x:x+w]
+            
+            if block.size == 0:
+                continue
+                
+            # Get LBP features
+            lbp_features = extract_lbp_features(block)
+            
+            # Simple heuristic: handwriting tends to have more uniform LBP patterns
+            # than printed text which is more regular
+            uniformity = lbp_features.max()
+            handwriting_confidence += uniformity
+            total_blocks += 1
+    
+    if total_blocks == 0:
+        return False, 0.0
+    
+    avg_confidence = handwriting_confidence / total_blocks
+    return avg_confidence > threshold, avg_confidence
+
+def pdf_has_handwriting(pdf_path, pages_to_check=5):
+    """
+    Check if a PDF contains handwritten text by analyzing the first few pages.
+    
+    Parameters:
+    - pdf_path: Path to the PDF file
+    - pages_to_check: Number of pages to analyze (default: 5)
+    
+    Returns:
+    - Boolean indicating whether handwriting was detected in any page
+    - List of tuples with (page_num, confidence) for each page checked
+    """
+    # Convert PDF pages to images
+    pages = convert_from_path(pdf_path, first_page=1, last_page=pages_to_check)
+    
+    results = []
+    has_handwriting = False
+    
+    for i, page in enumerate(pages, start=1):
+        # Save page as temporary image
+        temp_img_path = f"temp_page_{i}.jpg"
+        page.save(temp_img_path, 'JPEG')
+        
+        # Check for handwriting
+        detected, confidence = contains_handwriting(temp_img_path)
+        results.append((i, confidence))
+        
+        if detected:
+            has_handwriting = True
+        
+        # Clean up
+        import os
+        os.remove(temp_img_path)
+    
+    return has_handwriting, results
+
+# Example usage
+if __name__ == "__main__":
+    pdf_path = "example.pdf"  # Replace with your PDF path
+    
+    has_handwriting, page_results = pdf_has_handwriting(pdf_path)
+    
+    if has_handwriting:
+        print("The PDF contains handwritten text.")
+        print("Page analysis results:")
+        for page_num, confidence in page_results:
+            print(f"Page {page_num}: Confidence = {confidence:.2f}")
+    else:
+        print("No handwritten text detected in the PDF.")
