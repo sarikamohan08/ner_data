@@ -1,92 +1,169 @@
 import cv2
 import numpy as np
-import pytesseract
 from pdf2image import convert_from_path
-from skimage.feature import local_binary_pattern
+import os
 
 def preprocess_image(image):
-    """Preprocess the image for better feature extraction"""
+    """Preprocess the image for better analysis"""
+    # Convert to grayscale
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    # Apply adaptive thresholding to enhance text
-    thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
-                                  cv2.THRESH_BINARY_INV, 11, 2)
-    return thresh
+    
+    # Apply adaptive thresholding
+    thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                 cv2.THRESH_BINARY_INV, 11, 2)
+    
+    # Remove small noise
+    kernel = np.ones((3,3), np.uint8)
+    cleaned = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel, iterations=1)
+    
+    return cleaned
 
-def extract_lbp_features(image):
-    """Extract Local Binary Pattern features to detect handwriting-like texture"""
-    radius = 3
-    n_points = 8 * radius
-    lbp = local_binary_pattern(image, n_points, radius, method='uniform')
-    hist, _ = np.histogram(lbp, bins=np.arange(0, n_points + 3), range=(0, n_points + 2))
-    hist = hist.astype("float")
-    hist /= (hist.sum() + 1e-7)  # normalize
-    return hist
-
-def contains_handwriting(image_path, threshold=0.35):
-    """
-    Determine if an image contains handwritten text.
-    Returns True if handwriting is detected, False otherwise.
+def stroke_width_transform(image):
+    """Implement Stroke Width Transform for text analysis"""
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    edges = cv2.Canny(gray, 50, 150)
+    gradients_x = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=3)
+    gradients_y = cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=3)
     
-    Parameters:
-    - image_path: Path to the image file
-    - threshold: Confidence threshold (0-1) for handwriting detection
+    swt = np.zeros(gray.shape, dtype=np.float32)
+    rays = []
     
-    Returns:
-    - Boolean indicating whether handwriting was detected
-    - Confidence score
-    """
-    # Read and preprocess image
-    image = cv2.imread(image_path)
-    if image is None:
-        raise ValueError(f"Could not read image at {image_path}")
+    # Find all edge pixels
+    edge_points = np.argwhere(edges > 0)
     
-    preprocessed = preprocess_image(image)
-    
-    # Get OCR results
-    ocr_data = pytesseract.image_to_data(preprocessed, output_type=pytesseract.Output.DICT)
-    
-    # Analyze each detected text block
-    handwriting_confidence = 0
-    total_blocks = 0
-    
-    for i in range(len(ocr_data['text'])):
-        if int(ocr_data['conf'][i]) > 60:  # Only consider confident detections
-            x, y, w, h = (ocr_data['left'][i], ocr_data['top'][i], 
-                          ocr_data['width'][i], ocr_data['height'][i])
+    for x, y in edge_points:
+        ray = []
+        ray.append((x, y))
+        step_x = gradients_x[x, y]
+        step_y = gradients_y[x, y]
+        
+        mag = np.sqrt(step_x*step_x + step_y*step_y)
+        if mag == 0:
+            continue
             
-            # Extract the text block
-            block = preprocessed[y:y+h, x:x+w]
+        step_x /= mag
+        step_y /= mag
+        
+        # Follow the ray
+        prev_x, prev_y = x, y
+        while True:
+            curr_x = int(prev_x + step_x)
+            curr_y = int(prev_y + step_y)
             
-            if block.size == 0:
-                continue
+            if curr_x < 0 or curr_y < 0 or curr_x >= edges.shape[0] or curr_y >= edges.shape[1]:
+                break
                 
-            # Get LBP features
-            lbp_features = extract_lbp_features(block)
+            ray.append((curr_x, curr_y))
             
-            # Simple heuristic: handwriting tends to have more uniform LBP patterns
-            # than printed text which is more regular
-            uniformity = lbp_features.max()
-            handwriting_confidence += uniformity
-            total_blocks += 1
+            if edges[curr_x, curr_y] > 0:
+                # Found another edge point
+                opposite_x = -gradients_x[curr_x, curr_y]
+                opposite_y = -gradients_y[curr_x, curr_y]
+                
+                mag_opp = np.sqrt(opposite_x*opposite_x + opposite_y*opposite_y)
+                if mag_opp == 0:
+                    break
+                    
+                opposite_x /= mag_opp
+                opposite_y /= mag_opp
+                
+                # Check if gradient directions are opposite
+                if abs(step_x * opposite_x + step_y * opposite_y) < -0.5:
+                    # Valid stroke
+                    length = np.sqrt((curr_x - x)**2 + (curr_y - y)**2)
+                    for (rx, ry) in ray:
+                        swt[rx, ry] = length
+                    rays.append(ray)
+                break
+                
+            prev_x, prev_y = curr_x, curr_y
     
-    if total_blocks == 0:
-        return False, 0.0
-    
-    avg_confidence = handwriting_confidence / total_blocks
-    return avg_confidence > threshold, avg_confidence
+    return swt, rays
 
-def pdf_has_handwriting(pdf_path, pages_to_check=5):
-    """
-    Check if a PDF contains handwritten text by analyzing the first few pages.
+def analyze_swt_features(swt):
+    """Analyze SWT results for handwriting characteristics"""
+    nonzero_swt = swt[swt > 0]
+    if len(nonzero_swt) == 0:
+        return 0.0, 0.0, 0.0
     
-    Parameters:
-    - pdf_path: Path to the PDF file
-    - pages_to_check: Number of pages to analyze (default: 5)
+    # Calculate stroke width statistics
+    mean_sw = np.mean(nonzero_swt)
+    std_sw = np.std(nonzero_swt)
+    cv_sw = std_sw / mean_sw if mean_sw > 0 else 0  # Coefficient of variation
     
-    Returns:
-    - Boolean indicating whether handwriting was detected in any page
-    - List of tuples with (page_num, confidence) for each page checked
-    """
+    return mean_sw, std_sw, cv_sw
+
+def analyze_contours(image):
+    """Analyze contours for handwriting-like features"""
+    preprocessed = preprocess_image(image)
+    contours, _ = cv2.findContours(preprocessed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    
+    if len(contours) == 0:
+        return 0.0, 0.0, 0.0
+    
+    irregularity_scores = []
+    aspect_ratios = []
+    solidities = []
+    
+    for contour in contours:
+        area = cv2.contourArea(contour)
+        if area < 50:  # Ignore very small contours
+            continue
+            
+        perimeter = cv2.arcLength(contour, True)
+        
+        # Irregularity measure (1 for perfect circle, >1 for more irregular)
+        if perimeter > 0 and area > 0:
+            irregularity = (perimeter ** 2) / (4 * np.pi * area)
+            irregularity_scores.append(irregularity)
+        
+        # Aspect ratio
+        x, y, w, h = cv2.boundingRect(contour)
+        if h > 0:
+            aspect_ratio = float(w)/h
+            aspect_ratios.append(aspect_ratio)
+        
+        # Solidity (area / convex hull area)
+        hull = cv2.convexHull(contour)
+        hull_area = cv2.contourArea(hull)
+        if hull_area > 0:
+            solidity = float(area)/hull_area
+            solidities.append(solidity)
+    
+    # Calculate average features
+    avg_irregularity = np.mean(irregularity_scores) if irregularity_scores else 1.0
+    avg_aspect_ratio = np.mean(aspect_ratios) if aspect_ratios else 1.0
+    avg_solidity = np.mean(solidities) if solidities else 1.0
+    
+    return avg_irregularity, avg_aspect_ratio, avg_solidity
+
+def detect_handwriting(image):
+    """Combine SWT and Contour analysis to detect handwriting"""
+    # Get SWT features
+    swt, _ = stroke_width_transform(image)
+    mean_sw, std_sw, cv_sw = analyze_swt_features(swt)
+    
+    # Get Contour features
+    avg_irregularity, avg_aspect_ratio, avg_solidity = analyze_contours(image)
+    
+    # Calculate confidence scores
+    swt_confidence = min(1.0, cv_sw * 2)  # More variation = more likely handwriting
+    contour_confidence = min(1.0, (avg_irregularity - 1) * 0.5 + (1 - avg_solidity) * 2)
+    
+    # Combine confidences (weighted average)
+    combined_confidence = (swt_confidence * 0.6 + contour_confidence * 0.4)
+    
+    return combined_confidence > 0.5, combined_confidence, {
+        'swt_mean': mean_sw,
+        'swt_std': std_sw,
+        'swt_cv': cv_sw,
+        'contour_irregularity': avg_irregularity,
+        'contour_aspect_ratio': avg_aspect_ratio,
+        'contour_solidity': avg_solidity
+    }
+
+def pdf_has_handwriting(pdf_path, pages_to_check=5, output_dir=None):
+    """Check PDF for handwriting using combined SWT and Contour analysis"""
     # Convert PDF pages to images
     pages = convert_from_path(pdf_path, first_page=1, last_page=pages_to_check)
     
@@ -94,33 +171,45 @@ def pdf_has_handwriting(pdf_path, pages_to_check=5):
     has_handwriting = False
     
     for i, page in enumerate(pages, start=1):
-        # Save page as temporary image
-        temp_img_path = f"temp_page_{i}.jpg"
-        page.save(temp_img_path, 'JPEG')
+        # Convert PIL image to OpenCV format
+        image = cv2.cvtColor(np.array(page), cv2.COLOR_RGB2BGR)
         
-        # Check for handwriting
-        detected, confidence = contains_handwriting(temp_img_path)
-        results.append((i, confidence))
+        # Detect handwriting
+        detected, confidence, features = detect_handwriting(image)
+        results.append({
+            'page': i,
+            'has_handwriting': detected,
+            'confidence': confidence,
+            'features': features
+        })
         
         if detected:
             has_handwriting = True
         
-        # Clean up
-        import os
-        os.remove(temp_img_path)
+        # Optionally save analysis images
+        if output_dir:
+            os.makedirs(output_dir, exist_ok=True)
+            # Save original image
+            cv2.imwrite(os.path.join(output_dir, f'page_{i}_original.jpg'), image)
+            # Save preprocessed image
+            preprocessed = preprocess_image(image)
+            cv2.imwrite(os.path.join(output_dir, f'page_{i}_preprocessed.jpg'), preprocessed)
     
     return has_handwriting, results
 
 # Example usage
 if __name__ == "__main__":
-    pdf_path = "example.pdf"  # Replace with your PDF path
+    pdf_path = "sample.pdf"  # Replace with your PDF path
+    output_directory = "analysis_results"  # Optional: directory to save analysis images
     
-    has_handwriting, page_results = pdf_has_handwriting(pdf_path)
+    has_handwriting, page_results = pdf_has_handwriting(pdf_path, output_dir=output_directory)
     
-    if has_handwriting:
-        print("The PDF contains handwritten text.")
-        print("Page analysis results:")
-        for page_num, confidence in page_results:
-            print(f"Page {page_num}: Confidence = {confidence:.2f}")
-    else:
-        print("No handwritten text detected in the PDF.")
+    print(f"PDF contains handwriting: {'Yes' if has_handwriting else 'No'}")
+    print("\nDetailed page analysis:")
+    for result in page_results:
+        print(f"\nPage {result['page']}:")
+        print(f"  Handwriting detected: {'Yes' if result['has_handwriting'] else 'No'}")
+        print(f"  Confidence: {result['confidence']:.2f}")
+        print("  Features:")
+        print(f"    Stroke Width - Mean: {result['features']['swt_mean']:.2f}, Std: {result['features']['swt_std']:.2f}, CV: {result['features']['swt_cv']:.2f}")
+        print(f"    Contour - Irregularity: {result['features']['contour_irregularity']:.2f}, Aspect Ratio: {result['features']['contour_aspect_ratio']:.2f}, Solidity: {result['features']['contour_solidity']:.2f}")
