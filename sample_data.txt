@@ -4,6 +4,19 @@ from pdf2image import convert_from_path
 import os
 import gc
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import json
+from PyPDF2 import PdfReader
+
+class NumpyEncoder(json.JSONEncoder):
+    """ Custom encoder for numpy data types """
+    def default(self, obj):
+        if isinstance(obj, (np.float32, np.float64)):
+            return float(obj)
+        elif isinstance(obj, (np.int32, np.int64)):
+            return int(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return json.JSONEncoder.default(self, obj)
 
 def preprocess_image(image):
     """Preprocess image for analysis with memory efficiency"""
@@ -39,8 +52,8 @@ def safe_swt(gray_img):
             chunk = edge_points[i:i + chunk_size]
             for x, y in chunk:
                 ray = []
-                step_x = gradients_x[x, y]
-                step_y = gradients_y[x, y]
+                step_x = float(gradients_x[x, y])
+                step_y = float(gradients_y[x, y])
                 
                 mag = max(1e-7, np.sqrt(step_x**2 + step_y**2))
                 step_x /= mag
@@ -64,7 +77,7 @@ def safe_swt(gray_img):
                         if (step_x * (opp_x/mag_opp) + step_y * (opp_y/mag_opp)) < -0.5:
                             length = np.sqrt((curr_x - x)**2 + (curr_y - y)**2)
                             for rx, ry in ray:
-                                swt[rx, ry] = length
+                                swt[rx, ry] = float(length)
                         break
                         
                     prev_x, prev_y = curr_x, curr_y
@@ -87,32 +100,32 @@ def analyze_contours(img, min_area=25):
         }
         
         for cnt in contours:
-            area = cv2.contourArea(cnt)
+            area = float(cv2.contourArea(cnt))
             if area < min_area:
                 continue
                 
-            perimeter = cv2.arcLength(cnt, True)
+            perimeter = float(cv2.arcLength(cnt, True))
             
             # Irregularity
             if perimeter > 0 and area > 0:
-                features['irregularity'].append((perimeter ** 2) / (4 * np.pi * area))
+                features['irregularity'].append(float((perimeter ** 2) / (4 * np.pi * area)))
             
             # Aspect ratio
             _, _, w, h = cv2.boundingRect(cnt)
             if h > 0:
-                features['aspect_ratio'].append(w / h)
+                features['aspect_ratio'].append(float(w / h))
             
             # Solidity
             hull = cv2.convexHull(cnt)
-            hull_area = cv2.contourArea(hull)
+            hull_area = float(cv2.contourArea(hull))
             if hull_area > 0:
-                features['solidity'].append(area / hull_area)
+                features['solidity'].append(float(area / hull_area))
         
         # Calculate averages
         avg_features = {}
         for key in features:
             if features[key]:
-                avg_features[key] = np.mean(features[key])
+                avg_features[key] = float(np.mean(features[key]))
             else:
                 avg_features[key] = 1.0  # Neutral value
         
@@ -139,9 +152,9 @@ def process_page(page_img, page_num):
         nonzero_swt = swt[swt > 0]
         
         if len(nonzero_swt) > 0:
-            sw_cv = np.std(nonzero_swt) / np.mean(nonzero_swt)
+            sw_cv = float(np.std(nonzero_swt) / np.mean(nonzero_swt))
         else:
-            sw_cv = 0
+            sw_cv = 0.0
         
         contour_features = analyze_contours(img)
         
@@ -151,7 +164,7 @@ def process_page(page_img, page_num):
             (contour_features['irregularity'] - 1) * 0.3 + 
             (1 - contour_features['solidity']) * 0.7)
         
-        combined_confidence = (sw_confidence * 0.6 + contour_confidence * 0.4)
+        combined_confidence = float(sw_confidence * 0.6 + contour_confidence * 0.4)
         
         # Clean up
         del img, gray, swt, nonzero_swt
@@ -170,7 +183,7 @@ def process_page(page_img, page_num):
             'page': page_num,
             'error': str(e),
             'has_handwriting': False,
-            'confidence': 0
+            'confidence': 0.0
         }
 
 def pdf_has_handwriting(pdf_path, pages_to_check=None, max_workers=2):
@@ -181,7 +194,6 @@ def pdf_has_handwriting(pdf_path, pages_to_check=None, max_workers=2):
     try:
         # Get page count if not specified
         if pages_to_check is None:
-            from PyPDF2 import PdfReader
             with open(pdf_path, 'rb') as f:
                 pages_to_check = len(PdfReader(f).pages)
         
@@ -246,8 +258,7 @@ if __name__ == "__main__":
     if output_dir:
         os.makedirs(output_dir, exist_ok=True)
         with open(os.path.join(output_dir, "results.json"), "w") as f:
-            import json
             json.dump({
                 "has_handwriting": has_hw,
                 "page_results": results
-            }, f, indent=2)
+            }, f, indent=2, cls=NumpyEncoder)
