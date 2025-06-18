@@ -2,214 +2,252 @@ import cv2
 import numpy as np
 from pdf2image import convert_from_path
 import os
+import gc
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 def preprocess_image(image):
-    """Preprocess the image for better analysis"""
-    # Convert to grayscale
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    """Preprocess image for analysis with memory efficiency"""
+    if len(image.shape) == 3:
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    else:
+        gray = image
     
-    # Apply adaptive thresholding
+    # Memory-efficient adaptive thresholding
     thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-                                 cv2.THRESH_BINARY_INV, 11, 2)
+                                  cv2.THRESH_BINARY_INV, 11, 2)
     
-    # Remove small noise
-    kernel = np.ones((3,3), np.uint8)
-    cleaned = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel, iterations=1)
+    # Clean small noise with minimal memory usage
+    kernel = np.ones((2, 2), np.uint8)
+    cleaned = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel)
     
+    del gray, thresh
     return cleaned
 
-def stroke_width_transform(image):
-    """Implement Stroke Width Transform for text analysis"""
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    edges = cv2.Canny(gray, 50, 150)
-    gradients_x = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=3)
-    gradients_y = cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=3)
-    
-    swt = np.zeros(gray.shape, dtype=np.float32)
-    rays = []
-    
-    # Find all edge pixels
-    edge_points = np.argwhere(edges > 0)
-    
-    for x, y in edge_points:
-        ray = []
-        ray.append((x, y))
-        step_x = gradients_x[x, y]
-        step_y = gradients_y[x, y]
+def safe_swt(gray_img):
+    """Memory-safe Stroke Width Transform implementation"""
+    try:
+        edges = cv2.Canny(gray_img, 50, 150)
+        gradients_x = cv2.Sobel(gray_img, cv2.CV_32F, 1, 0, ksize=3)
+        gradients_y = cv2.Sobel(gray_img, cv2.CV_32F, 0, 1, ksize=3)
         
-        mag = np.sqrt(step_x*step_x + step_y*step_y)
-        if mag == 0:
-            continue
-            
-        step_x /= mag
-        step_y /= mag
+        swt = np.zeros(gray_img.shape, dtype=np.float32)
+        edge_points = np.argwhere(edges > 0)
         
-        # Follow the ray
-        prev_x, prev_y = x, y
-        while True:
-            curr_x = int(prev_x + step_x)
-            curr_y = int(prev_y + step_y)
-            
-            if curr_x < 0 or curr_y < 0 or curr_x >= edges.shape[0] or curr_y >= edges.shape[1]:
-                break
+        # Process edges in chunks
+        chunk_size = 10000
+        for i in range(0, len(edge_points), chunk_size):
+            chunk = edge_points[i:i + chunk_size]
+            for x, y in chunk:
+                ray = []
+                step_x = gradients_x[x, y]
+                step_y = gradients_y[x, y]
                 
-            ray.append((curr_x, curr_y))
-            
-            if edges[curr_x, curr_y] > 0:
-                # Found another edge point
-                opposite_x = -gradients_x[curr_x, curr_y]
-                opposite_y = -gradients_y[curr_x, curr_y]
+                mag = max(1e-7, np.sqrt(step_x**2 + step_y**2))
+                step_x /= mag
+                step_y /= mag
                 
-                mag_opp = np.sqrt(opposite_x*opposite_x + opposite_y*opposite_y)
-                if mag_opp == 0:
-                    break
+                prev_x, prev_y = x, y
+                for _ in range(100):  # Limit ray length
+                    curr_x = int(prev_x + step_x)
+                    curr_y = int(prev_y + step_y)
                     
-                opposite_x /= mag_opp
-                opposite_y /= mag_opp
-                
-                # Check if gradient directions are opposite
-                if abs(step_x * opposite_x + step_y * opposite_y) < -0.5:
-                    # Valid stroke
-                    length = np.sqrt((curr_x - x)**2 + (curr_y - y)**2)
-                    for (rx, ry) in ray:
-                        swt[rx, ry] = length
-                    rays.append(ray)
-                break
-                
-            prev_x, prev_y = curr_x, curr_y
-    
-    return swt, rays
+                    if not (0 <= curr_x < edges.shape[0] and 0 <= curr_y < edges.shape[1]):
+                        break
+                        
+                    ray.append((curr_x, curr_y))
+                    
+                    if edges[curr_x, curr_y] > 0:
+                        opp_x = -gradients_x[curr_x, curr_y]
+                        opp_y = -gradients_y[curr_x, curr_y]
+                        mag_opp = max(1e-7, np.sqrt(opp_x**2 + opp_y**2))
+                        
+                        if (step_x * (opp_x/mag_opp) + step_y * (opp_y/mag_opp)) < -0.5:
+                            length = np.sqrt((curr_x - x)**2 + (curr_y - y)**2)
+                            for rx, ry in ray:
+                                swt[rx, ry] = length
+                        break
+                        
+                    prev_x, prev_y = curr_x, curr_y
+        
+        return swt
+    except Exception as e:
+        print(f"SWT error: {str(e)}")
+        return np.zeros(gray_img.shape, dtype=np.float32)
 
-def analyze_swt_features(swt):
-    """Analyze SWT results for handwriting characteristics"""
-    nonzero_swt = swt[swt > 0]
-    if len(nonzero_swt) == 0:
-        return 0.0, 0.0, 0.0
-    
-    # Calculate stroke width statistics
-    mean_sw = np.mean(nonzero_swt)
-    std_sw = np.std(nonzero_swt)
-    cv_sw = std_sw / mean_sw if mean_sw > 0 else 0  # Coefficient of variation
-    
-    return mean_sw, std_sw, cv_sw
-
-def analyze_contours(image):
-    """Analyze contours for handwriting-like features"""
-    preprocessed = preprocess_image(image)
-    contours, _ = cv2.findContours(preprocessed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    
-    if len(contours) == 0:
-        return 0.0, 0.0, 0.0
-    
-    irregularity_scores = []
-    aspect_ratios = []
-    solidities = []
-    
-    for contour in contours:
-        area = cv2.contourArea(contour)
-        if area < 50:  # Ignore very small contours
-            continue
+def analyze_contours(img, min_area=25):
+    """Memory-efficient contour analysis"""
+    try:
+        preprocessed = preprocess_image(img)
+        contours, _ = cv2.findContours(preprocessed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        
+        features = {
+            'irregularity': [],
+            'aspect_ratio': [],
+            'solidity': []
+        }
+        
+        for cnt in contours:
+            area = cv2.contourArea(cnt)
+            if area < min_area:
+                continue
+                
+            perimeter = cv2.arcLength(cnt, True)
             
-        perimeter = cv2.arcLength(contour, True)
+            # Irregularity
+            if perimeter > 0 and area > 0:
+                features['irregularity'].append((perimeter ** 2) / (4 * np.pi * area))
+            
+            # Aspect ratio
+            _, _, w, h = cv2.boundingRect(cnt)
+            if h > 0:
+                features['aspect_ratio'].append(w / h)
+            
+            # Solidity
+            hull = cv2.convexHull(cnt)
+            hull_area = cv2.contourArea(hull)
+            if hull_area > 0:
+                features['solidity'].append(area / hull_area)
         
-        # Irregularity measure (1 for perfect circle, >1 for more irregular)
-        if perimeter > 0 and area > 0:
-            irregularity = (perimeter ** 2) / (4 * np.pi * area)
-            irregularity_scores.append(irregularity)
+        # Calculate averages
+        avg_features = {}
+        for key in features:
+            if features[key]:
+                avg_features[key] = np.mean(features[key])
+            else:
+                avg_features[key] = 1.0  # Neutral value
         
-        # Aspect ratio
-        x, y, w, h = cv2.boundingRect(contour)
-        if h > 0:
-            aspect_ratio = float(w)/h
-            aspect_ratios.append(aspect_ratio)
-        
-        # Solidity (area / convex hull area)
-        hull = cv2.convexHull(contour)
-        hull_area = cv2.contourArea(hull)
-        if hull_area > 0:
-            solidity = float(area)/hull_area
-            solidities.append(solidity)
-    
-    # Calculate average features
-    avg_irregularity = np.mean(irregularity_scores) if irregularity_scores else 1.0
-    avg_aspect_ratio = np.mean(aspect_ratios) if aspect_ratios else 1.0
-    avg_solidity = np.mean(solidities) if solidities else 1.0
-    
-    return avg_irregularity, avg_aspect_ratio, avg_solidity
+        return avg_features
+    except Exception as e:
+        print(f"Contour error: {str(e)}")
+        return {'irregularity': 1.0, 'aspect_ratio': 1.0, 'solidity': 1.0}
 
-def detect_handwriting(image):
-    """Combine SWT and Contour analysis to detect handwriting"""
-    # Get SWT features
-    swt, _ = stroke_width_transform(image)
-    mean_sw, std_sw, cv_sw = analyze_swt_features(swt)
-    
-    # Get Contour features
-    avg_irregularity, avg_aspect_ratio, avg_solidity = analyze_contours(image)
-    
-    # Calculate confidence scores
-    swt_confidence = min(1.0, cv_sw * 2)  # More variation = more likely handwriting
-    contour_confidence = min(1.0, (avg_irregularity - 1) * 0.5 + (1 - avg_solidity) * 2)
-    
-    # Combine confidences (weighted average)
-    combined_confidence = (swt_confidence * 0.6 + contour_confidence * 0.4)
-    
-    return combined_confidence > 0.5, combined_confidence, {
-        'swt_mean': mean_sw,
-        'swt_std': std_sw,
-        'swt_cv': cv_sw,
-        'contour_irregularity': avg_irregularity,
-        'contour_aspect_ratio': avg_aspect_ratio,
-        'contour_solidity': avg_solidity
-    }
+def process_page(page_img, page_num):
+    """Process a single page with memory safety"""
+    try:
+        # Convert and downscale
+        img = cv2.cvtColor(np.array(page_img), cv2.COLOR_RGB2BGR)
+        h, w = img.shape[:2]
+        scale = min(1.0, 1024 / max(h, w))
+        if scale < 1.0:
+            img = cv2.resize(img, (int(w * scale), int(h * scale)))
+        
+        # Convert to grayscale for SWT
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        
+        # Get features
+        swt = safe_swt(gray)
+        nonzero_swt = swt[swt > 0]
+        
+        if len(nonzero_swt) > 0:
+            sw_cv = np.std(nonzero_swt) / np.mean(nonzero_swt)
+        else:
+            sw_cv = 0
+        
+        contour_features = analyze_contours(img)
+        
+        # Calculate confidence
+        sw_confidence = min(1.0, sw_cv * 1.5)
+        contour_confidence = min(1.0, 
+            (contour_features['irregularity'] - 1) * 0.3 + 
+            (1 - contour_features['solidity']) * 0.7)
+        
+        combined_confidence = (sw_confidence * 0.6 + contour_confidence * 0.4)
+        
+        # Clean up
+        del img, gray, swt, nonzero_swt
+        gc.collect()
+        
+        return {
+            'page': page_num,
+            'confidence': combined_confidence,
+            'has_handwriting': combined_confidence > 0.5,
+            'sw_cv': sw_cv,
+            'contour_features': contour_features
+        }
+    except Exception as e:
+        print(f"Error processing page {page_num}: {str(e)}")
+        return {
+            'page': page_num,
+            'error': str(e),
+            'has_handwriting': False,
+            'confidence': 0
+        }
 
-def pdf_has_handwriting(pdf_path, pages_to_check=5, output_dir=None):
-    """Check PDF for handwriting using combined SWT and Contour analysis"""
-    # Convert PDF pages to images
-    pages = convert_from_path(pdf_path, first_page=1, last_page=pages_to_check)
-    
+def pdf_has_handwriting(pdf_path, pages_to_check=None, max_workers=2):
+    """Main function to detect handwriting in PDF with memory management"""
     results = []
     has_handwriting = False
     
-    for i, page in enumerate(pages, start=1):
-        # Convert PIL image to OpenCV format
-        image = cv2.cvtColor(np.array(page), cv2.COLOR_RGB2BGR)
+    try:
+        # Get page count if not specified
+        if pages_to_check is None:
+            from PyPDF2 import PdfReader
+            with open(pdf_path, 'rb') as f:
+                pages_to_check = len(PdfReader(f).pages)
         
-        # Detect handwriting
-        detected, confidence, features = detect_handwriting(image)
-        results.append({
-            'page': i,
-            'has_handwriting': detected,
-            'confidence': confidence,
-            'features': features
-        })
-        
-        if detected:
-            has_handwriting = True
-        
-        # Optionally save analysis images
-        if output_dir:
-            os.makedirs(output_dir, exist_ok=True)
-            # Save original image
-            cv2.imwrite(os.path.join(output_dir, f'page_{i}_original.jpg'), image)
-            # Save preprocessed image
-            preprocessed = preprocess_image(image)
-            cv2.imwrite(os.path.join(output_dir, f'page_{i}_preprocessed.jpg'), preprocessed)
+        # Process in batches to avoid memory overload
+        batch_size = min(5, pages_to_check)
+        for batch_start in range(0, pages_to_check, batch_size):
+            batch_end = min(batch_start + batch_size, pages_to_check)
+            
+            # Convert batch of pages with reduced DPI
+            pages = convert_from_path(
+                pdf_path,
+                first_page=batch_start + 1,
+                last_page=batch_end,
+                dpi=200,
+                thread_count=1,
+                fmt='jpeg'
+            )
+            
+            # Process pages with thread pool (limited threads for memory)
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = [
+                    executor.submit(process_page, page, batch_start + i + 1)
+                    for i, page in enumerate(pages)
+                ]
+                
+                for future in as_completed(futures):
+                    result = future.result()
+                    results.append(result)
+                    if result.get('has_handwriting', False):
+                        has_handwriting = True
+            
+            # Explicit cleanup
+            del pages
+            gc.collect()
+    
+    except Exception as e:
+        print(f"PDF processing error: {str(e)}")
+        return False, [{'error': str(e)}]
     
     return has_handwriting, results
 
-# Example usage
 if __name__ == "__main__":
-    pdf_path = "sample.pdf"  # Replace with your PDF path
-    output_directory = "analysis_results"  # Optional: directory to save analysis images
+    # Directly specify your PDF path here
+    pdf_path = "sample.pdf"  # Replace with your PDF file path
+    pages_to_check = 5       # Set to None to check all pages
+    output_dir = "results"   # Set to None to skip saving results
     
-    has_handwriting, page_results = pdf_has_handwriting(pdf_path, output_dir=output_directory)
+    print(f"Analyzing PDF: {pdf_path}")
+    has_hw, results = pdf_has_handwriting(
+        pdf_path,
+        pages_to_check=pages_to_check
+    )
     
-    print(f"PDF contains handwriting: {'Yes' if has_handwriting else 'No'}")
-    print("\nDetailed page analysis:")
-    for result in page_results:
-        print(f"\nPage {result['page']}:")
-        print(f"  Handwriting detected: {'Yes' if result['has_handwriting'] else 'No'}")
-        print(f"  Confidence: {result['confidence']:.2f}")
-        print("  Features:")
-        print(f"    Stroke Width - Mean: {result['features']['swt_mean']:.2f}, Std: {result['features']['swt_std']:.2f}, CV: {result['features']['swt_cv']:.2f}")
-        print(f"    Contour - Irregularity: {result['features']['contour_irregularity']:.2f}, Aspect Ratio: {result['features']['contour_aspect_ratio']:.2f}, Solidity: {result['features']['contour_solidity']:.2f}")
+    print(f"\nFinal Result: {'HAS HANDWRITING' if has_hw else 'No handwriting detected'}")
+    print("\nPage Details:")
+    for res in results:
+        if 'error' in res:
+            print(f"Page {res.get('page', '?')}: ERROR - {res['error']}")
+        else:
+            print(f"Page {res['page']}: Confidence = {res['confidence']:.2f} - {'Handwriting' if res['has_handwriting'] else 'Printed'}")
+
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
+        with open(os.path.join(output_dir, "results.json"), "w") as f:
+            import json
+            json.dump({
+                "has_handwriting": has_hw,
+                "page_results": results
+            }, f, indent=2)
