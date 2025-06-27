@@ -1,64 +1,53 @@
-import os
-import re
-import pandas as pd
-from PyPDF2 import PdfReader
-
-# --- CONFIG ---
-INPUT_EXCEL_PATH = 'input_files.xlsx'      # Input Excel with filenames
-EXCEL_COLUMN_NAME = 'filename'             # Name of the column with filenames
-ROOT_FOLDER = 'pdf_folder'                 # Folder where PDFs are stored
-TEXT_OUTPUT_FOLDER = 'text_output'         # Folder to store .txt files
-OUTPUT_EXCEL_PATH = 'extracted_data.xlsx'  # Final Excel output path
-
-# Regex pattern to extract the clause
-TEXT_PATTERN = r'1\.2\s+Notwithstanding.*?(?:Table\s*1:.*?DSH(?:\s|$))'
-
-# --- FUNCTIONS ---
-def load_filenames(excel_path, column_name):
+def load_filepaths(excel_path, column_name):
     df = pd.read_excel(excel_path)
-    filenames = df[column_name].dropna().tolist()
-    return filenames
+    return df[column_name].dropna().tolist()
 
-def is_valid_pdf(filename):
-    return filename.lower().endswith('.pdf') and ('contract' in filename.lower() or 'amendment' in filename.lower())
+def is_valid_pdf_path(file_path):
+    fname = os.path.basename(file_path).lower()
+    return file_path.lower().endswith('.pdf') and ('contract' in fname or 'amendment' in fname)
 
-def extract_text_from_pdf(file_path, filename):
+def extract_text_from_pdf_ocr(file_path):
     extracted_data = []
+    fname = os.path.basename(file_path)
+
     try:
-        pdf_reader = PdfReader(file_path)
+        images = convert_from_path(file_path)
         file_extracted = False
-        for page_num, page in enumerate(pdf_reader.pages, start=1):
-            text = page.extract_text()
-            if text:
-                matches = re.findall(TEXT_PATTERN, text, re.IGNORECASE | re.DOTALL)
-                for match in matches:
-                    file_extracted = True
-                    cleaned_text = match.strip().replace(')', ' ')
-                    save_text_to_file(filename, page_num, cleaned_text)
-                    extracted_data.append({
-                        'filename': filename,
-                        'page_number': page_num,
-                        'extracted_text': cleaned_text,
-                        'extracted': True
-                    })
+
+        for page_num, image in enumerate(images, start=1):
+            text = pytesseract.image_to_string(image)
+            matches = re.findall(TEXT_PATTERN, text, re.IGNORECASE | re.DOTALL)
+            for match in matches:
+                file_extracted = True
+                cleaned_text = match.strip().replace(')', ' ')
+                save_text_to_file(fname, page_num, cleaned_text)
+                extracted_data.append({
+                    'filename': fname,
+                    'page_number': page_num,
+                    'extracted_text': cleaned_text,
+                    'extracted': True
+                })
+
         if not file_extracted:
             extracted_data.append({
-                'filename': filename,
+                'filename': fname,
                 'page_number': None,
                 'extracted_text': None,
                 'extracted': False
             })
+
     except Exception as e:
         extracted_data.append({
-            'filename': filename,
+            'filename': fname,
             'page_number': None,
             'extracted_text': f"Error: {str(e)}",
             'extracted': False
         })
+
     return extracted_data
 
-def save_text_to_file(filename, page_num, text):
-    base_name = os.path.splitext(filename)[0]
+def save_text_to_file(fname, page_num, text):
+    base_name = os.path.splitext(fname)[0]
     txt_filename = f"{base_name}_page_{page_num}.txt"
     txt_path = os.path.join(TEXT_OUTPUT_FOLDER, txt_filename)
     with open(txt_path, 'w', encoding='utf-8') as f:
@@ -68,19 +57,18 @@ def main():
     os.makedirs(TEXT_OUTPUT_FOLDER, exist_ok=True)
     all_extracted_data = []
 
-    filenames = load_filenames(INPUT_EXCEL_PATH, EXCEL_COLUMN_NAME)
+    filepaths = load_filepaths(INPUT_EXCEL_PATH, EXCEL_COLUMN_NAME)
 
-    for fname in filenames:
-        if not is_valid_pdf(fname):
+    for path in filepaths:
+        if not is_valid_pdf_path(path):
             continue
 
-        full_path = os.path.join(ROOT_FOLDER, fname)
-        if os.path.isfile(full_path):
-            results = extract_text_from_pdf(full_path, fname)
+        if os.path.isfile(path):
+            results = extract_text_from_pdf_ocr(path)
             all_extracted_data.extend(results)
         else:
             all_extracted_data.append({
-                'filename': fname,
+                'filename': os.path.basename(path),
                 'page_number': None,
                 'extracted_text': None,
                 'extracted': False
@@ -88,8 +76,4 @@ def main():
 
     df_output = pd.DataFrame(all_extracted_data)
     df_output.to_excel(OUTPUT_EXCEL_PATH, index=False)
-    print(f"Done. Output saved to {OUTPUT_EXCEL_PATH}")
-
-# --- RUN ---
-if __name__ == '__main__':
-    main()
+    print(f"✅ OCR-based extraction complete. Results saved to {OUTPUT_EXCEL_PATH}")
