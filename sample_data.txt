@@ -1,7 +1,38 @@
-for c1 in count1:
-    if "reply" in c1.lower():
-        mail_body += f'Reply OCR output file: "{c1}"\n'
-    elif "rts" in c1.lower():
-        mail_body += f'RTS OCR output file: "{c1}"\n'
-    else:
-        mail_body += f'Output file: "{c1}"\n'
+import os
+from openpyxl import Workbook
+
+# === CONFIGURATION ===
+root_folder = '/path/to/root/folder'  # ← Replace this with your actual root folder path
+
+# Only include these 9 folder names (must exist inside root_folder)
+target_folders = [
+    'folder1', 'folder2', 'folder3',
+    'folder4', 'folder5', 'folder6',
+    'folder7', 'folder8', 'folder9'
+]
+
+# === SETUP EXCEL ===
+wb = Workbook()
+ws = wb.active
+ws.title = "Files List"
+ws.append(["S.No", "Folder Name", "File Name"])
+
+serial_no = 1
+
+# === MAIN LOGIC ===
+for folder_name in target_folders:
+    folder_path = os.path.join(root_folder, folder_name)
+
+    if not os.path.isdir(folder_path):
+        print(f"Skipping '{folder_name}' – Not found in root folder.")
+        continue
+
+    for root, dirs, files in os.walk(folder_path):
+        for file in files:
+            ws.append([serial_no, folder_name, file])
+            serial_no += 1
+
+# === SAVE OUTPUT ===
+output_file = "files_list.xlsx"
+wb.save(output_file)
+print(f"\n✅ Excel file saved as '{output_file}' in current directory.")
