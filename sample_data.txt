@@ -1,15 +1,14 @@
-import pandas as pd
 import os
 
-# Load the Excel file
-df = pd.read_excel("your_file.xlsx")  # Change to your actual file path
+file_path = 'file.png'
 
-# Assuming the file paths are in a column named 'url'
-def check_file_exists(path):
-    return os.path.exists(path)
-
-# Apply the check to each row
-df['Comment'] = df['url'].apply(lambda x: 'File not found' if not check_file_exists(str(x)) else '')
-
-# Save the updated Excel file
-df.to_excel("updated_file.xlsx", index=False)
+if os.path.exists(file_path):
+    if os.access(file_path, os.W_OK):
+        try:
+            os.remove(file_path)
+        except OSError as e:
+            print(f"Error removing file: {e}")
+    else:
+        print(f"No write permissions for {file_path}")
+else:
+    print(f"File {file_path} does not exist")
