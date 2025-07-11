@@ -1,14 +1,86 @@
-import os
+# Step 1: Install sentence-transformers (run only once)
+# %pip install sentence-transformers PyPDF2 openpyxl
 
-file_path = 'file.png'
+# Step 2: Import libraries
+from PyPDF2 import PdfReader
+from sentence_transformers import SentenceTransformer
+import pandas as pd
+import uuid
+from databricks.vector_search.client import VectorSearchClient
+from pyspark.sql import SparkSession
+from pyspark.sql.types import StructType, StructField, StringType, ArrayType, FloatType
 
-if os.path.exists(file_path):
-    if os.access(file_path, os.W_OK):
-        try:
-            os.remove(file_path)
-        except OSError as e:
-            print(f"Error removing file: {e}")
-    else:
-        print(f"No write permissions for {file_path}")
-else:
-    print(f"File {file_path} does not exist")
+# Step 3: Load and extract PDF content
+pdf_path = "/dbfs/FileStore/my_docs/sample.pdf"  # Replace with your uploaded file path
+reader = PdfReader(pdf_path)
+
+texts = []
+for page in reader.pages:
+    text = page.extract_text()
+    if text:
+        texts.append(text)
+
+# Chunk into paragraphs
+chunks = [t.strip() for text in texts for t in text.split("\n\n") if (t := t.strip())]
+
+# Step 4: Generate embeddings
+model = SentenceTransformer("all-MiniLM-L6-v2")
+embeddings = model.encode(chunks).tolist()
+ids = [str(uuid.uuid4()) for _ in chunks]
+
+# Step 5: Create Spark DataFrame with text and embeddings
+spark = SparkSession.builder.getOrCreate()
+
+schema = StructType([
+    StructField("id", StringType(), False),
+    StructField("text", StringType(), False),
+    StructField("embedding", ArrayType(FloatType()), False)
+])
+
+data = list(zip(ids, chunks, embeddings))
+df = spark.createDataFrame(data, schema)
+df.write.mode("overwrite").saveAsTable("default.pdf_embeddings")
+
+# Step 6: Create vector index using Databricks Vector Search
+vs_client = VectorSearchClient()
+
+vs_client.create_vector_index(
+    index_name="default.pdf_index",
+    source_table_name="default.pdf_embeddings",
+    embedding_column="embedding",
+    id_column="id"
+)
+
+# Step 7: Define extraction queries
+queries = {
+    "tax_id": "extract the tax id",
+    "npi": "extract npi"
+}
+
+# Step 8: Search for each field
+extracted_data = []
+
+for field, prompt in queries.items():
+    query_embedding = model.encode([prompt])[0].tolist()
+    
+    results = vs_client.similarity_search(
+        index_name="default.pdf_index",
+        query_vector=query_embedding,
+        columns=["id", "text"],
+        num_results=3  # Feel free to adjust
+    )
+    
+    top_match = results['result'][0]['text'] if results['result'] else "Not found"
+    
+    extracted_data.append({
+        "field": field,
+        "prompt": prompt,
+        "matched_text": top_match
+    })
+
+# Step 9: Save results to Excel
+extracted_df = pd.DataFrame(extracted_data)
+excel_output = "/dbfs/FileStore/my_docs/extracted_fields.xlsx"
+extracted_df.to_excel(excel_output, index=False)
+
+print(f"✅ Extraction complete. Results saved to: {excel_output}")
