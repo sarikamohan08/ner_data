@@ -1,7 +1,7 @@
-# Step 1: Install sentence-transformers (run only once)
+# STEP 1: Install required libraries (run once)
 # %pip install sentence-transformers PyPDF2 openpyxl
 
-# Step 2: Import libraries
+# STEP 2: Import libraries
 from PyPDF2 import PdfReader
 from sentence_transformers import SentenceTransformer
 import pandas as pd
@@ -10,25 +10,26 @@ from databricks.vector_search.client import VectorSearchClient
 from pyspark.sql import SparkSession
 from pyspark.sql.types import StructType, StructField, StringType, ArrayType, FloatType
 
-# Step 3: Load and extract PDF content
-pdf_path = "/dbfs/FileStore/my_docs/sample.pdf"  # Replace with your uploaded file path
+# STEP 3: Extract text from PDF
+pdf_path = "/dbfs/FileStore/my_docs/sample.pdf"  # Upload this file manually
 reader = PdfReader(pdf_path)
 
+# Extract text
 texts = []
 for page in reader.pages:
-    text = page.extract_text()
-    if text:
-        texts.append(text)
+    content = page.extract_text()
+    if content:
+        texts.append(content)
 
-# Chunk into paragraphs
+# Chunk text (per paragraph)
 chunks = [t.strip() for text in texts for t in text.split("\n\n") if (t := t.strip())]
 
-# Step 4: Generate embeddings
+# STEP 4: Embed each chunk using SentenceTransformer
 model = SentenceTransformer("all-MiniLM-L6-v2")
 embeddings = model.encode(chunks).tolist()
 ids = [str(uuid.uuid4()) for _ in chunks]
 
-# Step 5: Create Spark DataFrame with text and embeddings
+# STEP 5: Create Spark DataFrame and store as Delta table
 spark = SparkSession.builder.getOrCreate()
 
 schema = StructType([
@@ -39,48 +40,54 @@ schema = StructType([
 
 data = list(zip(ids, chunks, embeddings))
 df = spark.createDataFrame(data, schema)
-df.write.mode("overwrite").saveAsTable("default.pdf_embeddings")
 
-# Step 6: Create vector index using Databricks Vector Search
+# Save to Unity Catalog or Hive metastore
+table_name = "default.pdf_embeddings_mosaic"
+df.write.mode("overwrite").saveAsTable(table_name)
+
+# STEP 6: Create Mosaic AI Vector Search Index
 vs_client = VectorSearchClient()
 
+index_name = "default.pdf_index_mosaic"
+
+# Only needs to be done once
 vs_client.create_vector_index(
-    index_name="default.pdf_index",
-    source_table_name="default.pdf_embeddings",
+    index_name=index_name,
+    source_table_name=table_name,
     embedding_column="embedding",
     id_column="id"
 )
 
-# Step 7: Define extraction queries
+# STEP 7: Query definitions (Tax ID and NPI)
 queries = {
     "tax_id": "extract the tax id",
     "npi": "extract npi"
 }
 
-# Step 8: Search for each field
-extracted_data = []
+# STEP 8: Search with Mosaic AI Vector Search
+results_list = []
 
-for field, prompt in queries.items():
-    query_embedding = model.encode([prompt])[0].tolist()
-    
+for field, query in queries.items():
+    query_embedding = model.encode([query])[0].tolist()
+
     results = vs_client.similarity_search(
-        index_name="default.pdf_index",
+        index_name=index_name,
         query_vector=query_embedding,
         columns=["id", "text"],
-        num_results=3  # Feel free to adjust
+        num_results=3  # You can increase for deeper search
     )
-    
-    top_match = results['result'][0]['text'] if results['result'] else "Not found"
-    
-    extracted_data.append({
+
+    top_result = results['result'][0]['text'] if results['result'] else "Not found"
+
+    results_list.append({
         "field": field,
-        "prompt": prompt,
-        "matched_text": top_match
+        "prompt": query,
+        "matched_text": top_result
     })
 
-# Step 9: Save results to Excel
-extracted_df = pd.DataFrame(extracted_data)
-excel_output = "/dbfs/FileStore/my_docs/extracted_fields.xlsx"
-extracted_df.to_excel(excel_output, index=False)
+# STEP 9: Save output to Excel
+df_result = pd.DataFrame(results_list)
+excel_path = "/dbfs/FileStore/my_docs/extracted_fields_mosaic.xlsx"
+df_result.to_excel(excel_path, index=False)
 
-print(f"✅ Extraction complete. Results saved to: {excel_output}")
+print(f"✅ Extracted fields saved to: {excel_path}")
