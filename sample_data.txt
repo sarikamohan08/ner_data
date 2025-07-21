@@ -1,1 +1,1 @@
-r'(?:Fed\s+)?Tax ID#?:?\s+(\d{2}-\d{7})'
+r"revenue code\s+((?:\d+(?:,\s*\d+)*)(?:\s*and\s*\d+)?)(?!\S)"
