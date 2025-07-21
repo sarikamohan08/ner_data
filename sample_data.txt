@@ -1,1 +1,1 @@
-Revenue codes\s+([\d,\s]+\d+)
+Revenue codes\s+(\d+(?:\s*,\s*\d+)*(?:\s+and\s+\d+)?)
