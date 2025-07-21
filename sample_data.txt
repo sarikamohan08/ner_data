@@ -1,1 +1,2 @@
-r"revenue code\s+((?:\d+(?:,\s*\d+)*)(?:\s*and\s*\d+)?)(?!\S)"
+# Pattern that matches all digits, commas, and optional 'and' number
+pattern = r"Revenue codes\s+((?:\d+,?\s*)+(?:and\s*\d+)?)"
