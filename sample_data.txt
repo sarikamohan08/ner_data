@@ -1,28 +1,15 @@
-import pandas as pd
+# Step 1: Filter 'payment basis' rows and create a multi-key dict
+payment_basis_df = df[df['service'] == 'payment basis']
+rate_dict = {
+    (row['provider_name'], row['healthplan']): row['rate']
+    for _, row in payment_basis_df.iterrows()
+}
 
-# Example DataFrame
-# df = pd.read_csv("your_file.csv")
+# Step 2: Define a function to fetch rate based on (provider_name, healthplan)
+def get_rate(row):
+    if row['service'] == 'catastrophic threshold':
+        return rate_dict.get((row['provider_name'], row['healthplan']), row['rate'])
+    return row['rate']  # Leave other rows unchanged
 
-# Initialize dictionary to store the latest rate for each provider
-rate_dict = {}
-
-# Iterate over the DataFrame by index
-for idx in df.index:
-    row = df.loc[idx]
-    
-    if "payment basis" in str(row["service"]).lower():
-        # Store provider_name and rate
-        provider = row["provider_name"]
-        rate = row["rate"]
-        if pd.notnull(provider) and pd.notnull(rate):
-            rate_dict[provider] = rate
-
-        # Backfill 'catastrophic threshold' rows above this point
-        for i in range(idx - 1, -1, -1):  # go upward
-            if "catastrophic threshold" in str(df.loc[i, "service"]).lower():
-                if df.loc[i, "provider_name"] == provider and pd.isnull(df.loc[i, "rate"]):
-                    df.loc[i, "rate"] = rate
-            elif "payment basis" in str(df.loc[i, "service"]).lower():
-                break  # stop at previous payment basis
-
-# df now has the filled rates for catastrophic threshold
+# Step 3: Apply function to the DataFrame
+df['rate'] = df.apply(get_rate, axis=1)
