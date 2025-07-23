@@ -1,1 +1,9 @@
-pattern = r'lesser\s+of\s+the\s+total\s+reimbursement'
+import pandas as pd
+
+# Step 1: Filter and create dict from 'payment basis' rows
+payment_basis_df = df[df['service'] == 'payment basis']
+rate_dict = dict(zip(payment_basis_df['provider_name'], payment_basis_df['rate']))
+
+# Step 2: Update 'rate' for 'catastrophic threshold' rows using that dict
+df.loc[df['service'] == 'catastrophic threshold', 'rate'] = \
+    df.loc[df['service'] == 'catastrophic threshold', 'provider_name'].map(rate_dict)
