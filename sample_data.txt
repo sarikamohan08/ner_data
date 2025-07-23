@@ -1,15 +1,25 @@
-# Step 1: Filter 'payment basis' rows and create a multi-key dict
+import pandas as pd
+
+# Step 1: Build rate dictionary from 'payment basis'
 payment_basis_df = df[df['service'] == 'payment basis']
 rate_dict = {
     (row['provider_name'], row['healthplan']): row['rate']
     for _, row in payment_basis_df.iterrows()
 }
 
-# Step 2: Define a function to fetch rate based on (provider_name, healthplan)
-def get_rate(row):
-    if row['service'] == 'catastrophic threshold':
-        return rate_dict.get((row['provider_name'], row['healthplan']), row['rate'])
-    return row['rate']  # Leave other rows unchanged
+# Step 2: Track which keys are used to fill 'catastrophic threshold'
+used_keys = set()
 
-# Step 3: Apply function to the DataFrame
-df['rate'] = df.apply(get_rate, axis=1)
+def fill_rate(row):
+    if row['service'] == 'catastrophic threshold':
+        key = (row['provider_name'], row['healthplan'])
+        if key in rate_dict:
+            used_keys.add(key)
+            return rate_dict[key]
+    return row['rate']
+
+df['rate'] = df.apply(fill_rate, axis=1)
+
+# Step 3: Drop matching 'payment basis' rows
+df = df[~((df['service'] == 'payment basis') & 
+          (df[['provider_name', 'healthplan']].apply(tuple, axis=1).isin(used_keys)))]
