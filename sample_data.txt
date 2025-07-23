@@ -1,9 +1,13 @@
-import pandas as pd
+# Step 1: Build the dict from 'payment basis' entries
+rate_dict = {
+    row['provider_name']: row['rate']
+    for row in df
+    if row['service'] == 'payment basis'
+}
 
-# Step 1: Filter and create dict from 'payment basis' rows
-payment_basis_df = df[df['service'] == 'payment basis']
-rate_dict = dict(zip(payment_basis_df['provider_name'], payment_basis_df['rate']))
-
-# Step 2: Update 'rate' for 'catastrophic threshold' rows using that dict
-df.loc[df['service'] == 'catastrophic threshold', 'rate'] = \
-    df.loc[df['service'] == 'catastrophic threshold', 'provider_name'].map(rate_dict)
+# Step 2: Update 'rate' for 'catastrophic threshold' using the dict
+for row in df:
+    if row['service'] == 'catastrophic threshold':
+        provider = row['provider_name']
+        if provider in rate_dict:
+            row['rate'] = rate_dict[provider]
