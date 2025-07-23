@@ -1,13 +1,28 @@
-# Step 1: Build the dict from 'payment basis' entries
-rate_dict = {
-    row['provider_name']: row['rate']
-    for row in df
-    if row['service'] == 'payment basis'
-}
+import pandas as pd
 
-# Step 2: Update 'rate' for 'catastrophic threshold' using the dict
-for row in df:
-    if row['service'] == 'catastrophic threshold':
-        provider = row['provider_name']
-        if provider in rate_dict:
-            row['rate'] = rate_dict[provider]
+# Example DataFrame
+# df = pd.read_csv("your_file.csv")
+
+# Initialize dictionary to store the latest rate for each provider
+rate_dict = {}
+
+# Iterate over the DataFrame by index
+for idx in df.index:
+    row = df.loc[idx]
+    
+    if "payment basis" in str(row["service"]).lower():
+        # Store provider_name and rate
+        provider = row["provider_name"]
+        rate = row["rate"]
+        if pd.notnull(provider) and pd.notnull(rate):
+            rate_dict[provider] = rate
+
+        # Backfill 'catastrophic threshold' rows above this point
+        for i in range(idx - 1, -1, -1):  # go upward
+            if "catastrophic threshold" in str(df.loc[i, "service"]).lower():
+                if df.loc[i, "provider_name"] == provider and pd.isnull(df.loc[i, "rate"]):
+                    df.loc[i, "rate"] = rate
+            elif "payment basis" in str(df.loc[i, "service"]).lower():
+                break  # stop at previous payment basis
+
+# df now has the filled rates for catastrophic threshold
