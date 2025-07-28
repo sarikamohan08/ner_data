@@ -1,25 +1,73 @@
+import os
+import pytesseract
+from pdf2image import convert_from_path
+from sentence_transformers import SentenceTransformer
+import chromadb
+from chromadb.config import Settings
 import pandas as pd
 
-# Step 1: Build rate dictionary from 'payment basis'
-payment_basis_df = df[df['service'] == 'payment basis']
-rate_dict = {
-    (row['provider_name'], row['healthplan']): row['rate']
-    for _, row in payment_basis_df.iterrows()
-}
+# === CONFIGURATION ===
+pdf_path = "./your_file.pdf"  # <-- Replace with your scanned PDF path
+chroma_dir = "./chroma_storage"
 
-# Step 2: Track which keys are used to fill 'catastrophic threshold'
-used_keys = set()
+# === INITIALIZATION ===
+ocr_lang = 'eng'
+embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
 
-def fill_rate(row):
-    if row['service'] == 'catastrophic threshold':
-        key = (row['provider_name'], row['healthplan'])
-        if key in rate_dict:
-            used_keys.add(key)
-            return rate_dict[key]
-    return row['rate']
+# Initialize ChromaDB
+client = chromadb.Client(Settings(chroma_db_impl="duckdb+parquet", persist_directory=chroma_dir))
+collection = client.get_or_create_collection(name="scanned_pdf_data")
 
-df['rate'] = df.apply(fill_rate, axis=1)
+# === STEP 1: OCR the PDF ===
+def extract_text_from_scanned_pdf(pdf_path):
+    print(f"OCR processing: {pdf_path}")
+    pages = convert_from_path(pdf_path)
+    full_text = ""
+    for i, page in enumerate(pages):
+        text = pytesseract.image_to_string(page, lang=ocr_lang)
+        full_text += f"\n--- Page {i+1} ---\n{text}"
+    return full_text
 
-# Step 3: Drop matching 'payment basis' rows
-df = df[~((df['service'] == 'payment basis') & 
-          (df[['provider_name', 'healthplan']].apply(tuple, axis=1).isin(used_keys)))]
+# === STEP 2: Embed and Store in Chroma ===
+def embed_and_store(text, doc_id):
+    print("Creating embeddings and storing in ChromaDB...")
+    chunks = [chunk.strip() for chunk in text.split("\n") if len(chunk.strip()) > 10]
+    embeddings = embedding_model.encode(chunks).tolist()
+    ids = [f"{doc_id}_{i}" for i in range(len(chunks))]
+    collection.add(documents=chunks, embeddings=embeddings, ids=ids, metadatas=[{"doc": doc_id}]*len(chunks))
+
+# === STEP 3: Prompt-Based Retrieval ===
+def retrieve_answer(prompt):
+    print(f"Retrieving for prompt: {prompt}")
+    query_embedding = embedding_model.encode(prompt).tolist()
+    results = collection.query(query_embeddings=[query_embedding], n_results=1)
+    return results['documents'][0][0] if results['documents'] else ""
+
+# === STEP 4: Main Processing Pipeline ===
+def process_pdf(pdf_path):
+    doc_id = os.path.basename(pdf_path)
+    text = extract_text_from_scanned_pdf(pdf_path)
+    embed_and_store(text, doc_id)
+
+    prompts = [
+        "extract effective date",
+        "extract tax id",
+        "extract npi"
+    ]
+
+    results = {}
+    for prompt in prompts:
+        answer = retrieve_answer(prompt)
+        results[prompt] = answer
+
+    return results
+
+# === STEP 5: Process and Save to Excel ===
+row = {"filename": os.path.basename(pdf_path)}
+row.update(process_pdf(pdf_path))
+
+df = pd.DataFrame([row])
+output_excel = "extracted_data.xlsx"
+df.to_excel(output_excel, index=False)
+
+print(f"\n✅ Done. Output saved to: {output_excel}")
