@@ -1,6 +1,9 @@
 import os
 import pytesseract
 from pdf2image import convert_from_path
+from sentence_transformers import SentenceTransformer
+import chromadb
+from chromadb.config import Settings
 import pandas as pd
 import openai
 from dotenv import load_dotenv
@@ -9,12 +12,19 @@ from dotenv import load_dotenv
 load_dotenv()
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
-# === Configuration ===
-pdf_path = "./your_file.pdf"  # <-- your scanned PDF file
+# === CONFIGURATION ===
+pdf_path = "./your_file.pdf"  # Change this
+chroma_dir = "./chroma_storage"
 ocr_lang = 'eng'
-output_excel = "extracted_data_llm.xlsx"
+output_excel = "extracted_data_rag.xlsx"
+embedding_model_name = "all-MiniLM-L6-v2"
 
-# === Step 1: OCR PDF ===
+# === INITIALIZATION ===
+embedding_model = SentenceTransformer(embedding_model_name)
+client = chromadb.Client(Settings(chroma_db_impl="duckdb+parquet", persist_directory=chroma_dir))
+collection = client.get_or_create_collection(name="scanned_pdf_data")
+
+# === STEP 1: OCR the PDF ===
 def extract_text_from_scanned_pdf(pdf_path):
     print(f"OCR processing: {pdf_path}")
     pages = convert_from_path(pdf_path)
@@ -24,15 +34,30 @@ def extract_text_from_scanned_pdf(pdf_path):
         full_text += f"\n--- Page {i+1} ---\n{text}"
     return full_text
 
-# === Step 2: Ask LLM ===
+# === STEP 2: Embed and Store Chunks ===
+def embed_and_store(text, doc_id):
+    print("Creating embeddings and storing in ChromaDB...")
+    chunks = [chunk.strip() for chunk in text.split("\n") if len(chunk.strip()) > 10]
+    embeddings = embedding_model.encode(chunks).tolist()
+    ids = [f"{doc_id}_{i}" for i in range(len(chunks))]
+    collection.add(documents=chunks, embeddings=embeddings, ids=ids, metadatas=[{"doc": doc_id}]*len(chunks))
+
+# === STEP 3: Retrieve Relevant Chunks ===
+def retrieve_context(prompt, top_k=3):
+    query_embedding = embedding_model.encode(prompt).tolist()
+    results = collection.query(query_embeddings=[query_embedding], n_results=top_k)
+    documents = results['documents'][0] if results['documents'] else []
+    return "\n".join(documents)
+
+# === STEP 4: Ask LLM with Retrieved Context ===
 def ask_llm(prompt, context):
     print(f"Asking LLM: {prompt}")
     try:
         response = openai.ChatCompletion.create(
             model="gpt-4",  # or "gpt-3.5-turbo"
             messages=[
-                {"role": "system", "content": "You are an expert document reader. Extract only the answer from the document text."},
-                {"role": "user", "content": f"Document Text:\n{context}\n\nQuestion: {prompt}\n\nOnly return the exact value or answer, nothing else."}
+                {"role": "system", "content": "You are an expert assistant that extracts precise answers from documents."},
+                {"role": "user", "content": f"Document context:\n{context}\n\nQuestion: {prompt}\n\nReturn only the answer."}
             ],
             temperature=0.0
         )
@@ -41,9 +66,11 @@ def ask_llm(prompt, context):
         print(f"Error: {e}")
         return "Error"
 
-# === Step 3: Process PDF ===
+# === STEP 5: Main RAG Pipeline ===
 def process_pdf(pdf_path):
+    doc_id = os.path.basename(pdf_path)
     text = extract_text_from_scanned_pdf(pdf_path)
+    embed_and_store(text, doc_id)
 
     prompts = [
         "extract effective date",
@@ -53,16 +80,17 @@ def process_pdf(pdf_path):
 
     results = {}
     for prompt in prompts:
-        answer = ask_llm(prompt, text)
+        context = retrieve_context(prompt)
+        answer = ask_llm(prompt, context)
         results[prompt] = answer
 
     return results
 
-# === Step 4: Run and Export ===
+# === STEP 6: Run & Save to Excel ===
 row = {"filename": os.path.basename(pdf_path)}
 row.update(process_pdf(pdf_path))
 
 df = pd.DataFrame([row])
 df.to_excel(output_excel, index=False)
 
-print(f"\n✅ Done. Results saved to {output_excel}")
+print(f"\n✅ Done. Output saved to {output_excel}")
