@@ -1,24 +1,20 @@
 import os
 import pytesseract
 from pdf2image import convert_from_path
-from sentence_transformers import SentenceTransformer
-import chromadb
-from chromadb.config import Settings
 import pandas as pd
+import openai
+from dotenv import load_dotenv
 
-# === CONFIGURATION ===
-pdf_path = "./your_file.pdf"  # <-- Replace with your scanned PDF path
-chroma_dir = "./chroma_storage"
+# === Load API Key ===
+load_dotenv()
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
-# === INITIALIZATION ===
+# === Configuration ===
+pdf_path = "./your_file.pdf"  # <-- your scanned PDF file
 ocr_lang = 'eng'
-embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+output_excel = "extracted_data_llm.xlsx"
 
-# Initialize ChromaDB
-client = chromadb.Client(Settings(chroma_db_impl="duckdb+parquet", persist_directory=chroma_dir))
-collection = client.get_or_create_collection(name="scanned_pdf_data")
-
-# === STEP 1: OCR the PDF ===
+# === Step 1: OCR PDF ===
 def extract_text_from_scanned_pdf(pdf_path):
     print(f"OCR processing: {pdf_path}")
     pages = convert_from_path(pdf_path)
@@ -28,26 +24,26 @@ def extract_text_from_scanned_pdf(pdf_path):
         full_text += f"\n--- Page {i+1} ---\n{text}"
     return full_text
 
-# === STEP 2: Embed and Store in Chroma ===
-def embed_and_store(text, doc_id):
-    print("Creating embeddings and storing in ChromaDB...")
-    chunks = [chunk.strip() for chunk in text.split("\n") if len(chunk.strip()) > 10]
-    embeddings = embedding_model.encode(chunks).tolist()
-    ids = [f"{doc_id}_{i}" for i in range(len(chunks))]
-    collection.add(documents=chunks, embeddings=embeddings, ids=ids, metadatas=[{"doc": doc_id}]*len(chunks))
+# === Step 2: Ask LLM ===
+def ask_llm(prompt, context):
+    print(f"Asking LLM: {prompt}")
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-4",  # or "gpt-3.5-turbo"
+            messages=[
+                {"role": "system", "content": "You are an expert document reader. Extract only the answer from the document text."},
+                {"role": "user", "content": f"Document Text:\n{context}\n\nQuestion: {prompt}\n\nOnly return the exact value or answer, nothing else."}
+            ],
+            temperature=0.0
+        )
+        return response['choices'][0]['message']['content'].strip()
+    except Exception as e:
+        print(f"Error: {e}")
+        return "Error"
 
-# === STEP 3: Prompt-Based Retrieval ===
-def retrieve_answer(prompt):
-    print(f"Retrieving for prompt: {prompt}")
-    query_embedding = embedding_model.encode(prompt).tolist()
-    results = collection.query(query_embeddings=[query_embedding], n_results=1)
-    return results['documents'][0][0] if results['documents'] else ""
-
-# === STEP 4: Main Processing Pipeline ===
+# === Step 3: Process PDF ===
 def process_pdf(pdf_path):
-    doc_id = os.path.basename(pdf_path)
     text = extract_text_from_scanned_pdf(pdf_path)
-    embed_and_store(text, doc_id)
 
     prompts = [
         "extract effective date",
@@ -57,17 +53,16 @@ def process_pdf(pdf_path):
 
     results = {}
     for prompt in prompts:
-        answer = retrieve_answer(prompt)
+        answer = ask_llm(prompt, text)
         results[prompt] = answer
 
     return results
 
-# === STEP 5: Process and Save to Excel ===
+# === Step 4: Run and Export ===
 row = {"filename": os.path.basename(pdf_path)}
 row.update(process_pdf(pdf_path))
 
 df = pd.DataFrame([row])
-output_excel = "extracted_data.xlsx"
 df.to_excel(output_excel, index=False)
 
-print(f"\n✅ Done. Output saved to: {output_excel}")
+print(f"\n✅ Done. Results saved to {output_excel}")
