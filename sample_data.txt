@@ -1,73 +1,66 @@
+import pdfplumber
 import openai
-import numpy as np
-import pandas as pd
-from sklearn.metrics.pairwise import cosine_similarity
+import time
 
-openai.api_key = "YOUR_OPENAI_API_KEY"
+openai.api_key = "YOUR_OPENAI_API_KEY"  # Replace with your actual key
 
 EMBED_MODEL = "text-embedding-3-small"
-GPT_MODEL = "gpt-4o"  # or "gpt-4o-mini"
 
-def load_embeddings(path='embeddings.txt'):
-    with open(path) as f:
-        return np.array([list(map(float, line.split())) for line in f])
+def extract_tables_as_text(pdf_path):
+    extracted_texts = []
+    with pdfplumber.open(pdf_path) as pdf:
+        for page_num, page in enumerate(pdf.pages):
+            tables = page.extract_tables()
+            for table_index, table in enumerate(tables):
+                if not table or not table[0]:
+                    continue
+                header = table[0]
+                for row in table[1:]:
+                    if len(row) != len(header):
+                        continue  # skip malformed rows
+                    row_dict = {header[i]: row[i] for i in range(len(header))}
+                    formatted = ", ".join(f"{k.strip()}: {v.strip()}" for k, v in row_dict.items() if v)
+                    extracted_texts.append(f"Page {page_num + 1}, Table {table_index + 1}: {formatted}")
+    return extracted_texts
 
-def load_texts(path='texts.txt'):
-    with open(path) as f:
-        return [line.strip() for line in f]
+def embed_texts(texts, model=EMBED_MODEL):
+    embeddings = []
+    for i, text in enumerate(texts):
+        try:
+            print(f"Embedding row {i+1}/{len(texts)}...")
+            response = openai.embeddings.create(input=text, model=model)
+            embeddings.append(response.data[0].embedding)
+        except Exception as e:
+            print(f"❌ Failed to embed row {i+1}: {e}")
+            embeddings.append([])
+        time.sleep(0.5)  # avoid rate limit
+    return embeddings
 
-def embed_query(query, model=EMBED_MODEL):
-    response = openai.embeddings.create(input=query, model=model)
-    return np.array(response.data[0].embedding)
+def save_embeddings(embeddings, filename='embeddings.txt'):
+    with open(filename, 'w') as f:
+        for vec in embeddings:
+            if vec:
+                f.write(' '.join(map(str, vec)) + '\n')
 
-def get_best_match(query, texts, vectors, top_k=1):
-    query_vec = embed_query(query)
-    sims = cosine_similarity([query_vec], vectors)[0]
-    top_indices = sims.argsort()[-top_k:][::-1]
-    return [(texts[i], sims[i]) for i in top_indices]
-
-def ask_gpt(query_instruction, context, model=GPT_MODEL):
-    system_msg = "You are an information extractor. Return only the exact value if possible."
-    user_msg = f"{query_instruction}\n\nContext:\n{context}"
-    
-    response = openai.chat.completions.create(
-        model=model,
-        messages=[
-            {"role": "system", "content": system_msg},
-            {"role": "user", "content": user_msg}
-        ],
-        temperature=0.2
-    )
-    return response.choices[0].message.content.strip()
-
-def run_queries_with_gpt(queries_dict):
-    texts = load_texts()
-    vectors = load_embeddings()
-    results = []
-
-    for field, query in queries_dict.items():
-        top_match, score = get_best_match(query, texts, vectors, top_k=1)[0]
-        extracted_value = ask_gpt(query, top_match)
-
-        results.append({
-            "field": field,
-            "query": query,
-            "extracted_value": extracted_value,
-            "similarity_score": score,
-            "matched_text_snippet": top_match[:300] + "..."  # for reference
-        })
-
-    return pd.DataFrame(results)
+def save_texts(texts, filename='texts.txt'):
+    with open(filename, 'w') as f:
+        for line in texts:
+            f.write(line + '\n')
 
 if __name__ == "__main__":
-    queries = {
-        "taxid": "Extract the tax ID number.",
-        "npi": "Extract the NPI number.",
-        "address": "Extract the full practice address.",
-        "phone": "Extract the phone number."
-    }
+    pdf_path = "your_file.pdf"  # 🔁 Replace with your actual PDF file
 
-    df = run_queries_with_gpt(queries)
-    print(df)
-    df.to_csv("structured_output.csv", index=False)
-    print("\n✅ Structured results saved to 'structured_output.csv'")
+    print("📄 Extracting tables from PDF...")
+    table_texts = extract_tables_as_text(pdf_path)
+    print(f"✅ Extracted {len(table_texts)} rows from tables.")
+
+    print("🧠 Generating embeddings...")
+    embeddings = embed_texts(table_texts)
+
+    print("💾 Saving embeddings and text rows...")
+    save_embeddings(embeddings)
+    save_texts(table_texts)
+
+    print("\n✅ Done! Files saved:")
+    print(" - embeddings.txt")
+    print(" - texts.txt")
