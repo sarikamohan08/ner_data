@@ -3,80 +3,80 @@ import openai
 import time
 
 openai.api_key = "YOUR_OPENAI_API_KEY"
-
 EMBED_MODEL = "text-embedding-3-small"
 
-def extract_tables_as_text(pdf_path):
-    structured_texts = []
+def extract_table_texts_with_headers(pdf_path):
+    table_texts = []
     with pdfplumber.open(pdf_path) as pdf:
         for page_num, page in enumerate(pdf.pages):
             tables = page.extract_tables()
             for table_index, table in enumerate(tables):
-                if not table or not table[0]:
-                    continue
-                header = table[0]
+                if not table or len(table) < 2:
+                    continue  # skip empty or header-only tables
+                header = [h.strip() if h else "" for h in table[0]]
                 for row in table[1:]:
-                    if len(row) != len(header):
+                    if not row or len(row) != len(header):
                         continue
-                    row_dict = {
-                        (header[i] or "").strip(): (row[i] or "").strip()
-                        for i in range(len(header))
-                    }
-                    formatted = ", ".join(f"{k}: {v}" for k, v in row_dict.items() if v)
-                    structured_texts.append(f"[Page {page_num+1} Table {table_index+1}] {formatted}")
-    return structured_texts
+                    cells = [cell.strip() if cell else "" for cell in row]
+                    row_dict = dict(zip(header, cells))
+                    formatted_row = ", ".join(f"{k}: {v}" for k, v in row_dict.items() if v)
+                    text = f"[Page {page_num+1} Table {table_index+1}] {formatted_row}"
+                    table_texts.append(text)
+    return table_texts
 
-def extract_regular_text(pdf_path):
+def extract_regular_page_text(pdf_path):
     page_texts = []
     with pdfplumber.open(pdf_path) as pdf:
-        for i, page in enumerate(pdf.pages):
+        for page_num, page in enumerate(pdf.pages):
             text = page.extract_text()
             if text:
-                cleaned = ' '.join(line.strip() for line in text.splitlines() if line.strip())
-                page_texts.append(f"[Page {i+1} Text] {cleaned}")
+                lines = [line.strip() for line in text.splitlines() if line.strip()]
+                if lines:
+                    joined = ' '.join(lines)
+                    page_texts.append(f"[Page {page_num+1} Text] {joined}")
     return page_texts
 
 def embed_texts(texts, model=EMBED_MODEL):
     vectors = []
     for i, text in enumerate(texts):
         try:
-            print(f"Embedding {i+1}/{len(texts)}...")
+            print(f"🔹 Embedding {i+1}/{len(texts)}")
             response = openai.embeddings.create(input=text, model=model)
             vectors.append(response.data[0].embedding)
         except Exception as e:
-            print(f"❌ Failed to embed text {i+1}: {e}")
+            print(f"❌ Embedding failed at index {i+1}: {e}")
             vectors.append([])
         time.sleep(0.5)
     return vectors
 
-def save_embeddings(embeddings, filename='embeddings.txt'):
+def save_embeddings(vectors, filename='embeddings.txt'):
     with open(filename, 'w') as f:
-        for vec in embeddings:
+        for vec in vectors:
             if vec:
                 f.write(' '.join(map(str, vec)) + '\n')
 
 def save_texts(texts, filename='texts.txt'):
     with open(filename, 'w') as f:
-        for line in texts:
-            f.write(line + '\n')
+        for text in texts:
+            f.write(text + '\n')
 
 if __name__ == "__main__":
-    pdf_path = "your_file.pdf"  # 🔁 Replace with your actual file
+    pdf_path = "your_file.pdf"  # Replace with actual PDF path
 
-    print("📄 Extracting tables...")
-    table_texts = extract_tables_as_text(pdf_path)
+    print("📄 Extracting regular text...")
+    page_texts = extract_regular_page_text(pdf_path)
 
-    print("📝 Extracting normal text...")
-    regular_texts = extract_regular_text(pdf_path)
+    print("📊 Extracting table rows (with headers)...")
+    table_texts = extract_table_texts_with_headers(pdf_path)
 
-    combined_texts = regular_texts + table_texts
-    print(f"✅ Total extracted chunks: {len(combined_texts)}")
+    all_texts = page_texts + table_texts
+    print(f"📦 Total chunks to embed: {len(all_texts)}")
 
-    print("🧠 Embedding texts...")
-    embeddings = embed_texts(combined_texts)
+    print("🧠 Generating embeddings...")
+    embeddings = embed_texts(all_texts)
 
-    print("💾 Saving...")
-    save_texts(combined_texts, 'texts.txt')
-    save_embeddings(embeddings, 'embeddings.txt')
+    print("💾 Saving outputs...")
+    save_texts(all_texts)
+    save_embeddings(embeddings)
 
-    print("\n✅ Done! Embedded both tables and text.")
+    print("✅ All done! Embedded regular and table content separately and clearly.")
