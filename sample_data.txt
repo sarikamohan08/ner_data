@@ -5,27 +5,40 @@ import time
 openai.api_key = "YOUR_OPENAI_API_KEY"
 EMBED_MODEL = "text-embedding-3-small"
 
-def extract_table_texts_with_headers(pdf_path):
-    table_texts = []
+def extract_table_rows_with_headings(pdf_path):
+    rows = []
     with pdfplumber.open(pdf_path) as pdf:
         for page_num, page in enumerate(pdf.pages):
+            lines = page.extract_text().splitlines() if page.extract_text() else []
+            cleaned_lines = [line.strip() for line in lines if line.strip()]
             tables = page.extract_tables()
+
+            line_index = 0
             for table_index, table in enumerate(tables):
                 if not table or len(table) < 2:
-                    continue  # skip empty or header-only tables
-                header = [h.strip() if h else "" for h in table[0]]
-                for row in table[1:]:
-                    if not row or len(row) != len(header):
-                        continue
-                    cells = [cell.strip() if cell else "" for cell in row]
-                    row_dict = dict(zip(header, cells))
-                    formatted_row = ", ".join(f"{k}: {v}" for k, v in row_dict.items() if v)
-                    text = f"[Page {page_num+1} Table {table_index+1}] {formatted_row}"
-                    table_texts.append(text)
-    return table_texts
+                    continue  # skip empty or malformed tables
 
-def extract_regular_page_text(pdf_path):
-    page_texts = []
+                # Guess heading line: last non-empty line before the table
+                heading_line = cleaned_lines[line_index - 1] if line_index > 0 else ""
+                header = [h.strip() if h else "" for h in table[0]]
+
+                for row in table[1:]:
+                    if len(row) != len(header):
+                        continue
+                    row_dict = {
+                        (header[i] or "").strip(): (row[i] or "").strip()
+                        for i in range(len(header))
+                    }
+                    formatted = ", ".join(f"{k}: {v}" for k, v in row_dict.items() if v)
+                    full_row = f"[Page {page_num + 1} Table {table_index + 1}] {heading_line} — {formatted}"
+                    rows.append(full_row)
+
+                # move line_index to after the table, if possible
+                line_index = min(len(cleaned_lines), line_index + 1)
+    return rows
+
+def extract_regular_text(pdf_path):
+    texts = []
     with pdfplumber.open(pdf_path) as pdf:
         for page_num, page in enumerate(pdf.pages):
             text = page.extract_text()
@@ -33,8 +46,8 @@ def extract_regular_page_text(pdf_path):
                 lines = [line.strip() for line in text.splitlines() if line.strip()]
                 if lines:
                     joined = ' '.join(lines)
-                    page_texts.append(f"[Page {page_num+1} Text] {joined}")
-    return page_texts
+                    texts.append(f"[Page {page_num + 1} Text] {joined}")
+    return texts
 
 def embed_texts(texts, model=EMBED_MODEL):
     vectors = []
@@ -44,39 +57,39 @@ def embed_texts(texts, model=EMBED_MODEL):
             response = openai.embeddings.create(input=text, model=model)
             vectors.append(response.data[0].embedding)
         except Exception as e:
-            print(f"❌ Embedding failed at index {i+1}: {e}")
+            print(f"❌ Failed embedding {i+1}: {e}")
             vectors.append([])
         time.sleep(0.5)
     return vectors
 
-def save_embeddings(vectors, filename='embeddings.txt'):
+def save_texts(texts, filename="texts.txt"):
+    with open(filename, 'w') as f:
+        for t in texts:
+            f.write(t + '\n')
+
+def save_embeddings(vectors, filename="embeddings.txt"):
     with open(filename, 'w') as f:
         for vec in vectors:
             if vec:
                 f.write(' '.join(map(str, vec)) + '\n')
 
-def save_texts(texts, filename='texts.txt'):
-    with open(filename, 'w') as f:
-        for text in texts:
-            f.write(text + '\n')
-
 if __name__ == "__main__":
-    pdf_path = "your_file.pdf"  # Replace with actual PDF path
+    pdf_path = "your_file.pdf"  # Replace with your file
 
-    print("📄 Extracting regular text...")
-    page_texts = extract_regular_page_text(pdf_path)
+    print("📋 Extracting regular text...")
+    text_blocks = extract_regular_text(pdf_path)
 
-    print("📊 Extracting table rows (with headers)...")
-    table_texts = extract_table_texts_with_headers(pdf_path)
+    print("📊 Extracting table rows with headings...")
+    table_rows = extract_table_rows_with_headings(pdf_path)
 
-    all_texts = page_texts + table_texts
+    all_texts = text_blocks + table_rows
     print(f"📦 Total chunks to embed: {len(all_texts)}")
 
     print("🧠 Generating embeddings...")
     embeddings = embed_texts(all_texts)
 
-    print("💾 Saving outputs...")
+    print("💾 Saving results...")
     save_texts(all_texts)
     save_embeddings(embeddings)
 
-    print("✅ All done! Embedded regular and table content separately and clearly.")
+    print("\n✅ Done! Table rows now include nearby heading text.")
