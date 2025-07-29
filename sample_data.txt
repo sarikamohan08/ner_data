@@ -5,6 +5,9 @@ from sklearn.metrics.pairwise import cosine_similarity
 
 openai.api_key = "YOUR_OPENAI_API_KEY"
 
+EMBED_MODEL = "text-embedding-3-small"
+GPT_MODEL = "gpt-4o"  # or "gpt-4o-mini"
+
 def load_embeddings(path='embeddings.txt'):
     with open(path) as f:
         return np.array([list(map(float, line.split())) for line in f])
@@ -13,41 +16,58 @@ def load_texts(path='texts.txt'):
     with open(path) as f:
         return [line.strip() for line in f]
 
-def embed_query(query, model="text-embedding-3-small"):
+def embed_query(query, model=EMBED_MODEL):
     response = openai.embeddings.create(input=query, model=model)
     return np.array(response.data[0].embedding)
 
-def get_best_match(query, texts, vectors):
+def get_best_match(query, texts, vectors, top_k=1):
     query_vec = embed_query(query)
-    similarities = cosine_similarity([query_vec], vectors)[0]
-    best_index = np.argmax(similarities)
-    return texts[best_index], similarities[best_index]
+    sims = cosine_similarity([query_vec], vectors)[0]
+    top_indices = sims.argsort()[-top_k:][::-1]
+    return [(texts[i], sims[i]) for i in top_indices]
 
-def run_structured_queries(queries_dict):
+def ask_gpt(query_instruction, context, model=GPT_MODEL):
+    system_msg = "You are an information extractor. Return only the exact value if possible."
+    user_msg = f"{query_instruction}\n\nContext:\n{context}"
+    
+    response = openai.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": system_msg},
+            {"role": "user", "content": user_msg}
+        ],
+        temperature=0.2
+    )
+    return response.choices[0].message.content.strip()
+
+def run_queries_with_gpt(queries_dict):
     texts = load_texts()
     vectors = load_embeddings()
-
     results = []
-    for key, query in queries_dict.items():
-        best_text, score = get_best_match(query, texts, vectors)
+
+    for field, query in queries_dict.items():
+        top_match, score = get_best_match(query, texts, vectors, top_k=1)[0]
+        extracted_value = ask_gpt(query, top_match)
+
         results.append({
-            "field": key,
+            "field": field,
             "query": query,
-            "match_text": best_text,
-            "similarity_score": score
+            "extracted_value": extracted_value,
+            "similarity_score": score,
+            "matched_text_snippet": top_match[:300] + "..."  # for reference
         })
 
     return pd.DataFrame(results)
 
 if __name__ == "__main__":
     queries = {
-        "taxid": "extract tax id",
-        "npi": "extract npi",
-        "address": "extract practice address",
-        "phone": "extract phone number"
+        "taxid": "Extract the tax ID number.",
+        "npi": "Extract the NPI number.",
+        "address": "Extract the full practice address.",
+        "phone": "Extract the phone number."
     }
 
-    df = run_structured_queries(queries)
+    df = run_queries_with_gpt(queries)
     print(df)
-    df.to_csv("extracted_fields.csv", index=False)
-    print("\n✅ Results saved to 'extracted_fields.csv'")
+    df.to_csv("structured_output.csv", index=False)
+    print("\n✅ Structured results saved to 'structured_output.csv'")
