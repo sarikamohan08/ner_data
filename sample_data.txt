@@ -2,42 +2,38 @@ import fitz  # PyMuPDF
 import openai
 import time
 
-openai.api_key = "YOUR_OPENAI_API_KEY"  # Replace with your API key
+openai.api_key = "YOUR_OPENAI_API_KEY"  # Replace with your key
 
-# Extract text from PDF pages
 def extract_text_from_pdf(pdf_path):
     doc = fitz.open(pdf_path)
-    texts = [page.get_text().strip() for page in doc if page.get_text().strip()]
-    return texts
+    return [page.get_text().strip() for page in doc if page.get_text().strip()]
 
-# Embed using OpenAI's text-embedding-3-small model
-def embed_texts_openai(texts, model="text-embedding-3-small"):
-    embeddings = []
+def embed_texts(texts, model="text-embedding-3-small"):
+    vectors = []
     for text in texts:
         try:
-            response = openai.embeddings.create(
-                input=text,
-                model=model
-            )
-            vector = response.data[0].embedding
-            embeddings.append(vector)
+            response = openai.embeddings.create(input=text, model=model)
+            vectors.append(response.data[0].embedding)
         except Exception as e:
-            print(f"Error embedding text: {e}")
-            embeddings.append([])
-        time.sleep(0.5)  # Be kind to the API (adjust if needed)
-    return embeddings
+            print(f"Error: {e}")
+            vectors.append([])
+        time.sleep(0.5)
+    return vectors
 
-# Save embeddings to text file
-def save_embeddings(embeddings, output_path='embeddings.txt'):
-    with open(output_path, 'w') as f:
+def save_embeddings(embeddings, path='embeddings.txt'):
+    with open(path, 'w') as f:
         for vec in embeddings:
-            if vec:  # skip empty embeddings
-                f.write(' '.join(map(str, vec)) + '\n')
+            f.write(' '.join(map(str, vec)) + '\n')
 
-# Run it
-pdf_path = 'your_file.pdf'  # Replace with actual file
-texts = extract_text_from_pdf(pdf_path)
-embeddings = embed_texts_openai(texts)
-save_embeddings(embeddings)
+def save_texts(texts, path='texts.txt'):
+    with open(path, 'w') as f:
+        for text in texts:
+            f.write(text.replace('\n', ' ') + '\n')
 
-print("✅ Embeddings saved to 'embeddings.txt'")
+if __name__ == "__main__":
+    pdf_path = "your_file.pdf"  # Replace with your file
+    texts = extract_text_from_pdf(pdf_path)
+    embeddings = embed_texts(texts)
+    save_embeddings(embeddings)
+    save_texts(texts)
+    print("✅ Saved 'embeddings.txt' and 'texts.txt'")
