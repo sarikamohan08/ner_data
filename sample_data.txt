@@ -1,39 +1,53 @@
-import fitz  # PyMuPDF
 import openai
-import time
+import numpy as np
+import pandas as pd
+from sklearn.metrics.pairwise import cosine_similarity
 
-openai.api_key = "YOUR_OPENAI_API_KEY"  # Replace with your key
+openai.api_key = "YOUR_OPENAI_API_KEY"
 
-def extract_text_from_pdf(pdf_path):
-    doc = fitz.open(pdf_path)
-    return [page.get_text().strip() for page in doc if page.get_text().strip()]
+def load_embeddings(path='embeddings.txt'):
+    with open(path) as f:
+        return np.array([list(map(float, line.split())) for line in f])
 
-def embed_texts(texts, model="text-embedding-3-small"):
-    vectors = []
-    for text in texts:
-        try:
-            response = openai.embeddings.create(input=text, model=model)
-            vectors.append(response.data[0].embedding)
-        except Exception as e:
-            print(f"Error: {e}")
-            vectors.append([])
-        time.sleep(0.5)
-    return vectors
+def load_texts(path='texts.txt'):
+    with open(path) as f:
+        return [line.strip() for line in f]
 
-def save_embeddings(embeddings, path='embeddings.txt'):
-    with open(path, 'w') as f:
-        for vec in embeddings:
-            f.write(' '.join(map(str, vec)) + '\n')
+def embed_query(query, model="text-embedding-3-small"):
+    response = openai.embeddings.create(input=query, model=model)
+    return np.array(response.data[0].embedding)
 
-def save_texts(texts, path='texts.txt'):
-    with open(path, 'w') as f:
-        for text in texts:
-            f.write(text.replace('\n', ' ') + '\n')
+def get_best_match(query, texts, vectors):
+    query_vec = embed_query(query)
+    similarities = cosine_similarity([query_vec], vectors)[0]
+    best_index = np.argmax(similarities)
+    return texts[best_index], similarities[best_index]
+
+def run_structured_queries(queries_dict):
+    texts = load_texts()
+    vectors = load_embeddings()
+
+    results = []
+    for key, query in queries_dict.items():
+        best_text, score = get_best_match(query, texts, vectors)
+        results.append({
+            "field": key,
+            "query": query,
+            "match_text": best_text,
+            "similarity_score": score
+        })
+
+    return pd.DataFrame(results)
 
 if __name__ == "__main__":
-    pdf_path = "your_file.pdf"  # Replace with your file
-    texts = extract_text_from_pdf(pdf_path)
-    embeddings = embed_texts(texts)
-    save_embeddings(embeddings)
-    save_texts(texts)
-    print("✅ Saved 'embeddings.txt' and 'texts.txt'")
+    queries = {
+        "taxid": "extract tax id",
+        "npi": "extract npi",
+        "address": "extract practice address",
+        "phone": "extract phone number"
+    }
+
+    df = run_structured_queries(queries)
+    print(df)
+    df.to_csv("extracted_fields.csv", index=False)
+    print("\n✅ Results saved to 'extracted_fields.csv'")
