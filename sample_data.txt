@@ -1,3 +1,30 @@
-clean_chunks = [chunk for chunk in chunks if isinstance(chunk, str) and chunk.strip()]
-    if not clean_chunks:
-        raise ValueError("All input chunks are empty or invalid.")
+# 1. Load and clean text file
+def load_text(file_path):
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            return f.read().replace('\n', ' ').strip()
+    except UnicodeDecodeError:
+        with open(file_path, 'r', encoding='latin-1') as f:
+            return f.read().replace('\n', ' ').strip()
+
+# 2. Split into chunks
+def chunk_text(text, max_words=200):
+    words = text.split()
+    chunks = [' '.join(words[i:i + max_words]) for i in range(0, len(words), max_words)]
+    return [chunk for chunk in chunks if chunk.strip()]  # remove empty ones
+
+# 3. Get OpenAI embeddings
+def get_embeddings(chunks):
+    if not chunks:
+        raise ValueError("No valid chunks to embed.")
+    response = openai.Embedding.create(
+        input=chunks,
+        model=MODEL_NAME
+    )
+    return [item["embedding"] for item in response["data"]]
+
+# 4. Save embeddings to a .txt file
+def save_embeddings_txt(embeddings, out_path):
+    with open(out_path, 'w') as f:
+        for vector in embeddings:
+            f.write(','.join(f'{x:.6f}' for x in vector) + '\n')
