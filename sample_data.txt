@@ -1,113 +1,52 @@
-import pdfplumber
 import openai
-import time
+import json
 
-openai.api_key = "YOUR_OPENAI_API_KEY"
-EMBED_MODEL = "text-embedding-3-small"
+# ========== CONFIGURATION ==========
+openai.api_key = "your-openai-api-key"  # <-- Replace with your OpenAI API key
+TXT_FILE_PATH = "your_text_file.txt"    # <-- Replace with your actual file path
+OUTPUT_JSON_PATH = "embeddings.json"    # Where to save the result
+WORDS_PER_CHUNK = 200                   # Adjust as needed (safe for OpenAI models)
+EMBEDDING_MODEL = "text-embedding-3-small"
+# ===================================
 
-def extract_table_rows_with_above_line(pdf_path):
-    rows = []
+# 1. Load the text file
+def load_text(file_path):
+    with open(file_path, 'r', encoding='utf-8') as f:
+        return f.read().replace('\n', ' ').strip()
 
-    with pdfplumber.open(pdf_path) as pdf:
-        for page_num, page in enumerate(pdf.pages):
-            tables = page.find_tables()
-            words = page.extract_words(x_tolerance=3, y_tolerance=3, keep_blank_chars=False, use_text_flow=True)
+# 2. Split text into chunks
+def chunk_text(text, max_words=200):
+    words = text.split()
+    return [' '.join(words[i:i + max_words]) for i in range(0, len(words), max_words)]
 
-            # Group words by lines using their y0 values
-            line_map = {}
-            for w in words:
-                y = round(w['top'], 1)
-                if y not in line_map:
-                    line_map[y] = []
-                line_map[y].append(w['text'])
+# 3. Get OpenAI embeddings (batched)
+def get_embeddings(chunks):
+    response = openai.Embedding.create(
+        input=chunks,
+        model=EMBEDDING_MODEL
+    )
+    return [item['embedding'] for item in response['data']]
 
-            sorted_lines = sorted(line_map.items(), key=lambda kv: -kv[0])  # top-to-bottom
-            line_texts = [(y, ' '.join(txts)) for y, txts in sorted_lines]
+# 4. Save embeddings to a JSON file
+def save_embeddings(embeddings, out_path):
+    with open(out_path, "w") as f:
+        json.dump(embeddings, f)
 
-            for table_index, table in enumerate(tables):
-                try:
-                    table_data = table.extract()
-                    if not table_data or len(table_data) < 2:
-                        continue
+# 5. Main flow
+def main():
+    print("📄 Loading text...")
+    text = load_text(TXT_FILE_PATH)
 
-                    # Get top Y of first table row (not header)
-                    table_top_y = table.bbox[1]  # ymin
+    print("✂️  Chunking text...")
+    chunks = chunk_text(text, WORDS_PER_CHUNK)
+    print(f"🔹 Total chunks: {len(chunks)}")
 
-                    # Find closest line above this Y
-                    above_line_text = ""
-                    for y, text in line_texts:
-                        if y > table_top_y:
-                            above_line_text = text
-                            break
+    print("📡 Sending to OpenAI for embeddings...")
+    embeddings = get_embeddings(chunks)
 
-                    header = [h.strip() if h else "" for h in table_data[0]]
-                    for row in table_data[1:]:
-                        if len(row) != len(header):
-                            continue
-                        row_dict = {
-                            (header[i] or "").strip(): (row[i] or "").strip()
-                            for i in range(len(header))
-                        }
-                        formatted = ", ".join(f"{k}: {v}" for k, v in row_dict.items() if v)
-                        full_text = f"[Page {page_num+1} Table {table_index+1}] {above_line_text} — {formatted}"
-                        rows.append(full_text)
-                except Exception as e:
-                    print(f"⚠️ Table extraction failed: {e}")
-                    continue
-
-    return rows
-
-def extract_page_text(pdf_path):
-    texts = []
-    with pdfplumber.open(pdf_path) as pdf:
-        for page_num, page in enumerate(pdf.pages):
-            text = page.extract_text()
-            if text:
-                cleaned = ' '.join(line.strip() for line in text.splitlines() if line.strip())
-                texts.append(f"[Page {page_num+1} Text] {cleaned}")
-    return texts
-
-def embed_texts(texts, model=EMBED_MODEL):
-    vectors = []
-    for i, text in enumerate(texts):
-        try:
-            print(f"🔹 Embedding {i+1}/{len(texts)}")
-            response = openai.embeddings.create(input=text, model=model)
-            vectors.append(response.data[0].embedding)
-        except Exception as e:
-            print(f"❌ Failed embedding {i+1}: {e}")
-            vectors.append([])
-        time.sleep(0.5)
-    return vectors
-
-def save_texts(texts, filename="texts.txt"):
-    with open(filename, 'w') as f:
-        for t in texts:
-            f.write(t + '\n')
-
-def save_embeddings(vectors, filename="embeddings.txt"):
-    with open(filename, 'w') as f:
-        for vec in vectors:
-            if vec:
-                f.write(' '.join(map(str, vec)) + '\n')
+    print(f"💾 Saving {len(embeddings)} embeddings to {OUTPUT_JSON_PATH}")
+    save_embeddings(embeddings, OUTPUT_JSON_PATH)
+    print("✅ Done!")
 
 if __name__ == "__main__":
-    pdf_path = "your_file.pdf"  # Replace with your PDF
-
-    print("📄 Extracting text...")
-    regular_texts = extract_page_text(pdf_path)
-
-    print("📊 Extracting table rows with above-line heading...")
-    table_texts = extract_table_rows_with_above_line(pdf_path)
-
-    all_texts = regular_texts + table_texts
-    print(f"📦 Total chunks: {len(all_texts)}")
-
-    print("🧠 Embedding...")
-    embeddings = embed_texts(all_texts)
-
-    print("💾 Saving...")
-    save_texts(all_texts)
-    save_embeddings(embeddings)
-
-    print("✅ Done! Table rows now include the text line directly above them.")
+    main()
