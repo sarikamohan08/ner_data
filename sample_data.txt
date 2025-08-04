@@ -1,30 +1,57 @@
-# 1. Load and clean text file
-def load_text(file_path):
-    try:
-        with open(file_path, 'r', encoding='utf-8') as f:
-            return f.read().replace('\n', ' ').strip()
-    except UnicodeDecodeError:
-        with open(file_path, 'r', encoding='latin-1') as f:
-            return f.read().replace('\n', ' ').strip()
+import openai
+import os
+import tiktoken
+import json
 
-# 2. Split into chunks
-def chunk_text(text, max_words=200):
-    words = text.split()
-    chunks = [' '.join(words[i:i + max_words]) for i in range(0, len(words), max_words)]
-    return [chunk for chunk in chunks if chunk.strip()]  # remove empty ones
+# Set your OpenAI API key
+openai.api_key = "your-api-key"  # Replace with your actual key
 
-# 3. Get OpenAI embeddings
-def get_embeddings(chunks):
-    if not chunks:
-        raise ValueError("No valid chunks to embed.")
-    response = openai.Embedding.create(
-        input=chunks,
-        model=MODEL_NAME
+# Load the plain text file (with markdown tables inside)
+with open("your_file.txt", "r", encoding="utf-8") as f:
+    raw_text = f.read()
+
+# Optional: Preprocess the text (you can customize this)
+cleaned_text = raw_text.strip()
+
+# Function to chunk text to fit token limit
+def chunk_text(text, model="text-embedding-3-small", max_tokens=8000):
+    enc = tiktoken.encoding_for_model(model)
+    paragraphs = text.split("\n\n")  # Splitting by paragraph or logical blocks
+    chunks = []
+    current_chunk = ""
+
+    for para in paragraphs:
+        test_chunk = current_chunk + "\n\n" + para if current_chunk else para
+        if len(enc.encode(test_chunk)) <= max_tokens:
+            current_chunk = test_chunk
+        else:
+            if current_chunk:
+                chunks.append(current_chunk.strip())
+            current_chunk = para
+
+    if current_chunk:
+        chunks.append(current_chunk.strip())
+
+    return chunks
+
+# Split the text into chunks
+chunks = chunk_text(cleaned_text)
+
+# Generate embeddings for each chunk
+embeddings = []
+for i, chunk in enumerate(chunks):
+    print(f"Embedding chunk {i + 1} of {len(chunks)}...")
+    response = openai.embeddings.create(
+        model="text-embedding-3-small",
+        input=chunk
     )
-    return [item["embedding"] for item in response["data"]]
+    embeddings.append({
+        "text": chunk,
+        "embedding": response.data[0].embedding
+    })
 
-# 4. Save embeddings to a .txt file
-def save_embeddings_txt(embeddings, out_path):
-    with open(out_path, 'w') as f:
-        for vector in embeddings:
-            f.write(','.join(f'{x:.6f}' for x in vector) + '\n')
+# Save embeddings to JSON
+with open("text_embeddings.json", "w", encoding="utf-8") as f:
+    json.dump(embeddings, f)
+
+print("✅ Embeddings saved to text_embeddings.json")
