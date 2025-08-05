@@ -1,57 +1,75 @@
-import openai
 import os
-import tiktoken
-import json
+from openpyxl import load_workbook
+from docx import Document
+from PyPDF2 import PdfReader
 
-# Set your OpenAI API key
-openai.api_key = "your-api-key"  # Replace with your actual key
 
-# Load the plain text file (with markdown tables inside)
-with open("your_file.txt", "r", encoding="utf-8") as f:
-    raw_text = f.read()
+class TextExtractor:
+    """Handles text extraction from various file types."""
 
-# Optional: Preprocess the text (you can customize this)
-cleaned_text = raw_text.strip()
-
-# Function to chunk text to fit token limit
-def chunk_text(text, model="text-embedding-3-small", max_tokens=8000):
-    enc = tiktoken.encoding_for_model(model)
-    paragraphs = text.split("\n\n")  # Splitting by paragraph or logical blocks
-    chunks = []
-    current_chunk = ""
-
-    for para in paragraphs:
-        test_chunk = current_chunk + "\n\n" + para if current_chunk else para
-        if len(enc.encode(test_chunk)) <= max_tokens:
-            current_chunk = test_chunk
+    def extract(self, file_path):
+        ext = os.path.splitext(file_path)[1].lower()
+        if ext == '.txt':
+            return self._extract_txt(file_path)
+        elif ext == '.docx':
+            return self._extract_docx(file_path)
+        elif ext == '.pdf':
+            return self._extract_pdf(file_path)
         else:
-            if current_chunk:
-                chunks.append(current_chunk.strip())
-            current_chunk = para
+            print(f"Unsupported file type: {ext}")
+            return None
 
-    if current_chunk:
-        chunks.append(current_chunk.strip())
+    def _extract_txt(self, file_path):
+        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+            return f.read()
 
-    return chunks
+    def _extract_docx(self, file_path):
+        doc = Document(file_path)
+        return '\n'.join([para.text for para in doc.paragraphs])
 
-# Split the text into chunks
-chunks = chunk_text(cleaned_text)
+    def _extract_pdf(self, file_path):
+        reader = PdfReader(file_path)
+        return '\n'.join([page.extract_text() for page in reader.pages if page.extract_text()])
 
-# Generate embeddings for each chunk
-embeddings = []
-for i, chunk in enumerate(chunks):
-    print(f"Embedding chunk {i + 1} of {len(chunks)}...")
-    response = openai.embeddings.create(
-        model="text-embedding-3-small",
-        input=chunk
+
+class CISFileProcessor:
+    def __init__(self, excel_file, search_folder):
+        self.excel_file = excel_file
+        self.search_folder = search_folder
+        self.cis_ids = []
+        self.extractor = TextExtractor()
+
+    def read_cis_ids(self):
+        workbook = load_workbook(self.excel_file)
+        sheet = workbook.active  # Use the first sheet
+        for row in sheet.iter_rows(min_row=1, min_col=1, max_col=1, values_only=True):
+            cis_id = row[0]
+            if cis_id:
+                self.cis_ids.append(str(cis_id).strip())
+
+    def find_and_process_files(self):
+        for root, _, files in os.walk(self.search_folder):
+            for file in files:
+                for cis_id in self.cis_ids:
+                    if cis_id in file:
+                        full_path = os.path.join(root, file)
+                        print(f"\nFound file for CIS ID {cis_id}: {full_path}")
+                        extracted_text = self.extractor.extract(full_path)
+                        if extracted_text:
+                            print(f"Extracted content (preview):\n{extracted_text[:300]}\n")
+                        else:
+                            print("No text extracted.")
+                        break  # Skip to next file after a match
+
+    def run(self):
+        self.read_cis_ids()
+        self.find_and_process_files()
+
+
+# --- Main ---
+if __name__ == "__main__":
+    processor = CISFileProcessor(
+        excel_file='cis_ids.xlsx',     # Your Excel file (only CIS IDs in column A)
+        search_folder='./documents'    # Folder to search files in
     )
-    embeddings.append({
-        "text": chunk,
-        "embedding": response.data[0].embedding
-    })
-
-# Save embeddings to JSON
-with open("text_embeddings.json", "w", encoding="utf-8") as f:
-    json.dump(embeddings, f)
-
-print("✅ Embeddings saved to text_embeddings.json")
+    processor.run()
