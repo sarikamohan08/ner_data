@@ -1,6 +1,24 @@
-{
-  "level": "Extract the level number (e.g., 'LEVEL 1', 'LEVEL 2', etc.) exactly as written.",
-  "reimbursement_amount": "Extract the exact dollar amount listed for this level, including the $ sign.",
-  "revenue_code": "Extract the numeric code listed after 'Revenue Code:'.",
-  "services": "Extract the complete list of services for this level, including all introductory text and bullet points/letters exactly as shown in the document. Preserve all punctuation, capitalization, and item labels (A., B., etc.)."
-}
+import difflib
+import pandas as pd
+
+def run_queries_with_gpt(queries_dict):
+    texts = load_texts()  # list of text strings
+    results = []
+
+    for field, query in queries_dict.items():
+        # Find the most similar text based on fuzzy matching
+        top_match = max(texts, key=lambda t: difflib.SequenceMatcher(None, query, t).ratio())
+        score = difflib.SequenceMatcher(None, query, top_match).ratio()
+
+        # Ask GPT to extract the value from that text
+        extracted_value = ask_gpt(query, top_match)
+
+        results.append({
+            "field": field,
+            "query": query,
+            "extracted_value": extracted_value,
+            "similarity_score": score,
+            "matched_text_snippet": top_match[:300] + "..."
+        })
+
+    return pd.DataFrame(results)
