@@ -1,1 +1,7 @@
-hi test file
+r"amendment\s+to\s+agreement\s+between",
+    r"amendment\s+to\s+hospital\s+participation\s+agreement"
+
+for pattern in patterns:
+    if re.search(pattern, text_lower, flags=re.IGNORECASE):
+        print("Match found:", extracted_text.strip())
+        break
