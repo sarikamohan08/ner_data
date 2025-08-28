@@ -1,7 +1,129 @@
-r"amendment\s+to\s+agreement\s+between",
-    r"amendment\s+to\s+hospital\s+participation\s+agreement"
+import openai
+import pandas as pd
 
-for pattern in patterns:
-    if re.search(pattern, text_lower, flags=re.IGNORECASE):
-        print("Match found:", extracted_text.strip())
-        break
+OPENAI_API_KEY = "sk-..."  # Replace with your key
+openai.api_key = OPENAI_API_KEY
+
+# Step 1: Extract text chunks from .txt file
+def extract_text_from_txt(txt_path, chunk_size=3000):
+    with open(txt_path, 'r', encoding='utf-8') as f:
+        full_text = f.read()
+    # Simple chunking to fit LLM prompt limits
+    text_chunks = []
+    for i in range(0, len(full_text), chunk_size):
+        chunk = full_text[i:i+chunk_size]
+        text_chunks.append({"chunk_num": i // chunk_size, "text": chunk.strip()})
+    return text_chunks
+
+# Step 2: Generate embeddings (optional)
+def get_embedding(text, model="text-embedding-3-small"):
+    response = openai.embeddings.create(input=[text], model=model)
+    return response.data.embedding
+
+# Step 3: LLM extraction using prompt
+def get_structured_json(text, cis_id):
+    prompt = f"""
+You are a Healthcare Contract Data Extraction Expert. 
+Your task is to read messy contract text (scanned OCR, tables, or paragraphs) 
+and convert it into a precise structured JSON.
+
+---
+## Rules:
+1. Always output strictly JSON list of objects.
+2. One JSON object = one service code OR service definition row.
+3. If codes are comma-separated → split into separate objects.
+4. If a field is missing → return "Missing" or null.
+5. Preserve ALL numeric values, IDs, and descriptions exactly.
+6. Extract from both tables and paragraphs.
+
+---
+## Required Fields
+### Provider / Contract:
+- provider_name
+- provider_type
+- tax_id
+- npi_id
+- lob
+- state
+- effective_date
+- end_date
+
+### Service Info:
+- contract_service_type
+- service_type
+- service_name
+- service_description
+
+### Codes:
+- code_type (CPT, DRG, HCPCS, Rev Code, Bill Type, ICD etc.)
+- code_value
+- and_or_logic
+- code_indicators: {{
+    drg: true/false,
+    apc: true/false,
+    cpt: true/false,
+    hcpcs: true/false,
+    rev_code: true/false,
+    bill_type: true/false,
+    icd9: true/false,
+    icd10: true/false,
+    case_rate: true/false
+}}
+
+### Reimbursement:
+- reimbursement_amount
+- reimbursement_rate
+- reimbursement_methodology
+- method_of_payment_code (N01–N04, P01–P05 if applicable)
+- rm_flag
+
+### Special Clauses:
+- stoploss_indicator
+- stoploss_description
+- transfer_indicator
+- transfer_description
+
+---
+## Instructions:
+- Normalize all dates to YYYY-MM-DD where possible.
+- Capture contract *logic wordings* exactly in service_description or clause fields.
+- Handle unusual case: if row says "All CPT codes" → represent as code_type="CPT", code_value="ALL".
+- If header-based logic only → still create JSON row with "Missing" codes.
+- Prioritize accuracy over brevity.
+
+---
+## Input Metadata:
+- CIS_ID: {cis_id}
+
+---
+## Contract Text (truncated to chunk limit):
+{text[:3000]}
+---
+Now, return only the JSON list.
+"""
+    completion = openai.chat.completions.create(
+        model="gpt-4o",
+        messages=[{"role": "user", "content": prompt}],
+        max_tokens=4096
+    )
+    output = completion.choices.message.content
+    try:
+        return pd.read_json(output)
+    except Exception:
+        return pd.DataFrame([{"raw_output": output, "source_text": text}])
+
+# Step 4: Main workflow
+def main(txt_path, cis_id, excel_out):
+    chunks = extract_text_from_txt(txt_path)
+    results = []
+    for chunk in chunks:
+        embedding = get_embedding(chunk["text"])  # Optional – for semantic workflows
+        df = get_structured_json(chunk["text"], cis_id)
+        df["chunk_num"] = chunk["chunk_num"]
+        results.append(df)
+    full_df = pd.concat(results, ignore_index=True)
+    full_df.to_excel(excel_out, index=False)
+    print(f"Saved extracted structured data to {excel_out}")
+
+# USAGE
+main("contract.txt", "CIS123456", "output.xlsx")
