@@ -1,50 +1,16 @@
-import openai
-import pandas as pd
-import ast
-
-# Set your OpenAI API key here or export it in your environment before running
-openai.api_key = "YOUR_OPENAI_API_KEY"
-
-def call_gpt4_extraction(text):
-    prompt = f"""
-You will be given a text document containing sections labeled Level 1, Level 2, Level 3, and Level 4. Each section has a reimbursement amount in dollars, a revenue code, and a list of services starting with capital letters (A, B, C, etc.).
-
-Please:
-
-1. Extract for each Level:
-   - The Level name (e.g., Level 1)
-   - Reimbursement amount (as integer dollars)
-   - Revenue code (as string)
-   - The list of all services content (each service is a line starting with a letter followed by a dot)
-
-2. Generate a complete Python list of dictionaries with keys: "Level", "Revenue Code", "Reimbursement Amount", "Services" (list of strings)
-
-3. Only output a Python list (do not add any extra explanation or text).
-
-Text:
-\"\"\"{text}\"\"\"
-"""
-    response = openai.ChatCompletion.create(
-        model="gpt-4",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0
+prompt = (
+        "You will be given a text document containing sections labeled Level 1, Level 2, Level 3, and Level 4. "
+        "Each section has a reimbursement amount in dollars, a revenue code, and a list of services starting "
+        "with capital letters (A, B, C, etc.).\n\n"
+        "Please:\n\n"
+        "1. Extract for each Level:\n"
+        "   - The Level name (e.g., Level 1)\n"
+        "   - Reimbursement amount (as integer dollars)\n"
+        "   - Revenue code (as string)\n"
+        "   - The list of all services content (each service is a line starting with a letter followed by a dot)\n\n"
+        "2. Generate a complete Python list of dictionaries with keys: \"Level\", \"Revenue Code\", "
+        "\"Reimbursement Amount\", \"Services\" (list of strings)\n\n"
+        "3. Only output a Python list (do not add any extra explanation or text).\n\n"
+        "Text:\n"
+        '"""' + text + '"""'
     )
-    return response['choices'][0]['message']['content']
-
-def parse_gpt_output_to_list(gpt_output):
-    # Safely convert string output to Python list
-    return ast.literal_eval(gpt_output)
-
-if __name__ == "__main__":
-    # Paste your document text here or load from a file before calling the function
-    text = """
-    (Paste the whole text content of your file here)
-    """
-    # Or load text from a file like this:
-    # with open("input.txt", "r") as f:
-    #     text = f.read()
-
-    gpt_output = call_gpt4_extraction(text)
-    extracted_data = parse_gpt_output_to_list(gpt_output)
-    df = pd.DataFrame(extracted_data)
-    print(df)
