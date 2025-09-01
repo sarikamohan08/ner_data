@@ -1,16 +1,6 @@
-prompt = (
-        "You will be given a text document containing sections labeled Level 1, Level 2, Level 3, and Level 4. "
-        "Each section has a reimbursement amount in dollars, a revenue code, and a list of services starting "
-        "with capital letters (A, B, C, etc.).\n\n"
-        "Please:\n\n"
-        "1. Extract for each Level:\n"
-        "   - The Level name (e.g., Level 1)\n"
-        "   - Reimbursement amount (as integer dollars)\n"
-        "   - Revenue code (as string)\n"
-        "   - The list of all services content (each service is a line starting with a letter followed by a dot)\n\n"
-        "2. Generate a complete Python list of dictionaries with keys: \"Level\", \"Revenue Code\", "
-        "\"Reimbursement Amount\", \"Services\" (list of strings)\n\n"
-        "3. Only output a Python list (do not add any extra explanation or text).\n\n"
-        "Text:\n"
-        '"""' + text + '"""'
-    )
+pattern = re.compile(r'(\[.*\])', re.DOTALL)
+    match = pattern.search(gpt_output)
+    if match:
+        gpt_output = match.group(1)
+    return ast.literal_eval(gpt_output)
+
