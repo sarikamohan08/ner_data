@@ -1,6 +1,16 @@
-pattern = re.compile(r'(\[.*\])', re.DOTALL)
-    match = pattern.search(gpt_output)
-    if match:
-        gpt_output = match.group(1)
-    return ast.literal_eval(gpt_output)
-
+def call_gpt4_for_inoutpatient(text):
+    prompt = (
+        "Extract service information from the provided text. For each service identify:\n"
+        "- service_type: ('inpatient' or 'outpatient')\n"
+        "- level: (e.g. 'Drugs & Biologicals', 'All other services', 'Standard Outpatient', 'Non-listed Outpatient')\n"
+        "- reimbursement_rate: (e.g. '100%', '70%', '50%')\n"
+        "- fee_schedule: (e.g. 'Humana’s 201-544 fee schedule', 'Humana’s 005-489 fee schedule', 'Provider’s usual charges')\n"
+        "Output a Python list of dictionaries—no explanations.\n\n"
+        "Text:\n" + text
+    )
+    response = openai.ChatCompletion.create(
+        model="gpt-4",
+        messages=[{"role":"user", "content":prompt}],
+        temperature=0
+    )
+    return response['choices'][0]['message']['content']
