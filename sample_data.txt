@@ -1,4 +1,34 @@
-"- provider_name: the name of the provider\n"
-    "- effective_date: the effective date of the document or coverage\n"
-    "- npi_id: the provider's NPI identification number\n"
-    "- tax_id: the provider's tax identification number\n"
+mop_mapping = {
+    "no1": "the allowed amount is the contracted rate, regardless of the charge",
+    "no2": "the allowed amount is either the contracted rate for the entire claim or total eligible billed charged, whichever is less",
+    "po3": "The allowed amount is either the contracted rate for the entire claim or the percent of total eligible billed charges, whichever is less",
+    "po5": "The allowed amount is either the contracted rate for the entire claim or the percent of total eligible billed charges, whichever is greater.",
+    "no4": "The allowed amount is either the contracted rate for the entire claim or total eligible billed charges, whichever is greater"
+}
+
+prompt = (
+    "You will receive text containing healthcare service and payment information. "
+    "For each service record, extract these fields:\n"
+    "- provider_name\n"
+    "- effective_date\n"
+    "- npi_id\n"
+    "- tax_id\n"
+    "- lob\n"
+    "- service_type\n"
+    "- level\n"
+    "- reimbursement_amount\n"
+    "- revenue_code\n"
+    "- services\n"
+    "- fee_schedule\n"
+    "- code\n"
+    "- mop (extract the mop code, e.g., 'no1', 'po3', etc.)\n"
+    "- mop_explanation (map the mop code to its explanation as per the table below)\n\n"
+    "Mop Code Explanation Table:\n"
+    "no1: the allowed amount is the contracted rate, regardless of the charge\n"
+    "no2: the allowed amount is either the contracted rate for the entire claim or total eligible billed charged, whichever is less\n"
+    "po3: The allowed amount is either the contracted rate for the entire claim or the percent of total eligible billed charges, whichever is less\n"
+    "po5: The allowed amount is either the contracted rate for the entire claim or the percent of total eligible billed charges, whichever is greater.\n"
+    "no4: The allowed amount is either the contracted rate for the entire claim or total eligible billed charges, whichever is greater\n\n"
+    "Output valid Python code with a list of dictionaries assigned to 'combined_data'. No extra text.\n"
+    "Text:\n\"\"\"" + text + "\"\"\""
+)
