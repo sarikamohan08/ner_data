@@ -1,1 +1,14 @@
-"- grouper: integer indicator, 1 if the word 'grouper' appears anywhere in the text related to the record, else 0\n\n"
+if not os.path.exists(output_excel_file):
+        # First time writing → include header
+        reshaped_final.to_excel(output_excel_file, index=False, engine="openpyxl")
+        print("1st time written to excel")
+    else:
+        # Load existing workbook
+        workbook = load_workbook(output_excel_file)
+        sheet = workbook.active
+        start_row = sheet.max_row  # last filled row
+
+        # Append new data without header
+        with pd.ExcelWriter(output_excel_file, engine="openpyxl", mode="a", if_sheet_exists="overlay") as writer:
+            reshaped_final.to_excel(writer, index=False, header=False, startrow=start_row)
+        print("Appended to excel")
