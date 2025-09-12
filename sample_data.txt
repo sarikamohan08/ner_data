@@ -1,19 +1,29 @@
 import os
 import zipfile
 
-input_dir = '/path/to/zips'
-output_dir = '/path/to/output_dir'
+def extract_and_rename_zip(folder_path):
+    # Loop through all files in folder
+    for file in os.listdir(folder_path):
+        if file.endswith(".zip"):
+            zip_path = os.path.join(folder_path, file)
+            zip_name = os.path.splitext(file)[0]  # Get zip filename without extension
 
-for zip_name in os.listdir(input_dir):
-    if zip_name.endswith('.zip'):
-        zip_base = os.path.splitext(zip_name)
-        zip_path = os.path.join(input_dir, zip_name)
-        with zipfile.ZipFile(zip_path, 'r') as z:
-            for member in z.namelist():
-                if not member.endswith('/'):
-                    file_base, ext = os.path.splitext(os.path.basename(member))
-                    new_name = f"{file_base}_{zip_base}{ext}"
-                    output_path = os.path.join(output_dir, new_name)
-                    with open(output_path, 'wb') as out_file:
-                        out_file.write(z.read(member))
-        os.remove(zip_path)  # Delete ZIP file after extraction
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                for member in zip_ref.namelist():
+                    # Extract file
+                    extracted_path = zip_ref.extract(member, folder_path)
+
+                    # Build new filename
+                    base, ext = os.path.splitext(member)
+                    new_name = f"{base}_{zip_name}{ext}"
+                    new_path = os.path.join(folder_path, new_name)
+
+                    # Rename extracted file
+                    os.rename(extracted_path, new_path)
+
+            # Delete the zip file after processing
+            os.remove(zip_path)
+            print(f"Processed and removed: {zip_path}")
+
+# Example usage
+extract_and_rename_zip("path/to/your/folder")
