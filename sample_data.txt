@@ -6,13 +6,13 @@ output_dir = '/path/to/output_dir'
 
 for zip_name in os.listdir(input_dir):
     if zip_name.endswith('.zip'):
+        zip_base = os.path.splitext(zip_name)  # Gets '3540656' from '3540656.zip'
         zip_path = os.path.join(input_dir, zip_name)
-        zip_base = os.path.splitext(zip_name)
         with zipfile.ZipFile(zip_path, 'r') as z:
             for member in z.namelist():
                 if not member.endswith('/'):
-                    filename, ext = os.path.splitext(os.path.basename(member))
-                    new_name = f"{filename}_{zip_base}{ext}"
-                    out_path = os.path.join(output_dir, new_name)
-                    with open(out_path, 'wb') as f:
-                        f.write(z.read(member))
+                    file_base, ext = os.path.splitext(os.path.basename(member))  # Gets 'cdskvn', '.pdf'
+                    new_name = f"{file_base}_{zip_base}{ext}"                   # 'cdskvn_3540656.pdf'
+                    output_path = os.path.join(output_dir, new_name)
+                    with open(output_path, 'wb') as out_file:
+                        out_file.write(z.read(member))
