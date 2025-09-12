@@ -1,14 +1,18 @@
-if not os.path.exists(output_excel_file):
-        # First time writing → include header
-        reshaped_final.to_excel(output_excel_file, index=False, engine="openpyxl")
-        print("1st time written to excel")
-    else:
-        # Load existing workbook
-        workbook = load_workbook(output_excel_file)
-        sheet = workbook.active
-        start_row = sheet.max_row  # last filled row
+import os
+import zipfile
 
-        # Append new data without header
-        with pd.ExcelWriter(output_excel_file, engine="openpyxl", mode="a", if_sheet_exists="overlay") as writer:
-            reshaped_final.to_excel(writer, index=False, header=False, startrow=start_row)
-        print("Appended to excel")
+input_dir = '/path/to/zips'
+output_dir = '/path/to/output_dir'
+
+for zip_name in os.listdir(input_dir):
+    if zip_name.endswith('.zip'):
+        zip_path = os.path.join(input_dir, zip_name)
+        zip_base = os.path.splitext(zip_name)
+        with zipfile.ZipFile(zip_path, 'r') as z:
+            for member in z.namelist():
+                if not member.endswith('/'):
+                    filename, ext = os.path.splitext(os.path.basename(member))
+                    new_name = f"{filename}_{zip_base}{ext}"
+                    out_path = os.path.join(output_dir, new_name)
+                    with open(out_path, 'wb') as f:
+                        f.write(z.read(member))
