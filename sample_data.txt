@@ -1,62 +1,6 @@
-Got it 👍 You want to:
-
-1. Take a list of IDs from your Excel file.
-
-
-2. Look into a root_folder (and possibly subfolders) to find files matching those IDs.
-
-
-3. Extract each file’s extension.
-
-
-4. Write the results back into Excel with a new column (file_extension).
-
-
-
-Here’s a Python script that does this using pandas and openpyxl:
-
-import os
-import pandas as pd
-
-# === Input files ===
-excel_file = "input.xlsx"       # Your Excel file with IDs
-id_column = "attachment_id"     # Change if your ID column name differs
-root_folder = "path/to/root"    # Update to your folder path
-
-# === Load Excel ===
-df = pd.read_excel(excel_file)
-
-# Ensure the ID column is string (to match filenames safely)
-df[id_column] = df[id_column].astype(str)
-
-# Dictionary to store extensions
-id_to_ext = {}
-
-# Walk through root folder
-for root, _, files in os.walk(root_folder):
-    for file in files:
-        fname, ext = os.path.splitext(file)
-        if fname in df[id_column].values:   # Match ID to file name
-            id_to_ext[fname] = ext.lstrip(".")  # Remove leading dot
-
-# Add new column with extensions (or blank if not found)
-df["file_extension"] = df[id_column].map(id_to_ext).fillna("Not Found")
-
-# Save result
-output_file = "output_with_extensions.xlsx"
-df.to_excel(output_file, index=False)
-
-print(f"✅ Done! File saved as {output_file}")
-
-
----
-
-⚡ Notes:
-
-This assumes your files are named exactly as the IDs (e.g., 12345.pdf).
-
-If filenames include prefixes/suffixes (e.g., 12345_contract.pdf), we’ll need a substring match instead of exact.
-
-
-👉 Do your filenames match the IDs exactly, or do they contain extra text?
-
+"Additionally, whenever a service is described within the text and includes a code in parentheses, such as "
+    "'covered services not listed with fee schedule (120-431)' or 'covered services rendered with fee schedule (120-432)', "
+    "extract the service as 'service' (full phrase before parentheses) and the code as 'code'. "
+    "Include these service/code pairs as additional rows in your output structure, with other fields empty or null if not provided."
+    "\nOnly output valid Python code assigning a list of dictionaries to 'combined_data'. No explanation or extra text.\n"
+    "Text:\n\"\"\"" + text + "\"\"\""
