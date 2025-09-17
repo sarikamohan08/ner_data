@@ -1,29 +1,62 @@
+Got it 👍 You want to:
+
+1. Take a list of IDs from your Excel file.
+
+
+2. Look into a root_folder (and possibly subfolders) to find files matching those IDs.
+
+
+3. Extract each file’s extension.
+
+
+4. Write the results back into Excel with a new column (file_extension).
+
+
+
+Here’s a Python script that does this using pandas and openpyxl:
+
 import os
-import zipfile
+import pandas as pd
 
-def extract_and_rename_zip(folder_path):
-    # Loop through all files in folder
-    for file in os.listdir(folder_path):
-        if file.endswith(".zip"):
-            zip_path = os.path.join(folder_path, file)
-            zip_name = os.path.splitext(file)[0]  # Get zip filename without extension
+# === Input files ===
+excel_file = "input.xlsx"       # Your Excel file with IDs
+id_column = "attachment_id"     # Change if your ID column name differs
+root_folder = "path/to/root"    # Update to your folder path
 
-            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-                for member in zip_ref.namelist():
-                    # Extract file
-                    extracted_path = zip_ref.extract(member, folder_path)
+# === Load Excel ===
+df = pd.read_excel(excel_file)
 
-                    # Build new filename
-                    base, ext = os.path.splitext(member)
-                    new_name = f"{base}_{zip_name}{ext}"
-                    new_path = os.path.join(folder_path, new_name)
+# Ensure the ID column is string (to match filenames safely)
+df[id_column] = df[id_column].astype(str)
 
-                    # Rename extracted file
-                    os.rename(extracted_path, new_path)
+# Dictionary to store extensions
+id_to_ext = {}
 
-            # Delete the zip file after processing
-            os.remove(zip_path)
-            print(f"Processed and removed: {zip_path}")
+# Walk through root folder
+for root, _, files in os.walk(root_folder):
+    for file in files:
+        fname, ext = os.path.splitext(file)
+        if fname in df[id_column].values:   # Match ID to file name
+            id_to_ext[fname] = ext.lstrip(".")  # Remove leading dot
 
-# Example usage
-extract_and_rename_zip("path/to/your/folder")
+# Add new column with extensions (or blank if not found)
+df["file_extension"] = df[id_column].map(id_to_ext).fillna("Not Found")
+
+# Save result
+output_file = "output_with_extensions.xlsx"
+df.to_excel(output_file, index=False)
+
+print(f"✅ Done! File saved as {output_file}")
+
+
+---
+
+⚡ Notes:
+
+This assumes your files are named exactly as the IDs (e.g., 12345.pdf).
+
+If filenames include prefixes/suffixes (e.g., 12345_contract.pdf), we’ll need a substring match instead of exact.
+
+
+👉 Do your filenames match the IDs exactly, or do they contain extra text?
+
