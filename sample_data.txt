@@ -1,6 +1,5 @@
-Return your results as Python code that:
-- Creates a pandas DataFrame with columns:
-  filename, extracted_para, ind, page_number, search_phrase
-- Prints the DataFrame
-
-Output ONLY valid, runnable Python code — no explanations or extra text.
+if df is not None:
+    df.to_excel('extracted_paragraphs.xlsx', index=False)
+    print("Excel file saved.")
+else:
+    print("DataFrame not found in executed code.")
