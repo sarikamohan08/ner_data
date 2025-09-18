@@ -1,3 +1,5 @@
-if code_str.startswith("``````"):
-    code_lines = code_str.split('\n')
-    code_str = '\n'.join(code_lines[1:-1])
+# Remove markdown code fences and language tags robustly
+code_str = re.sub(r"(^``````|\n```
+
+# Optional: remove non-ascii or invisible chars if needed
+code_str = ''.join(char for char in code_str if 32 <= ord(char) <= 126 or char in '\n\t\r')
