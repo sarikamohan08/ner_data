@@ -1,6 +1,6 @@
-code_str = response['choices'][0]['message']['content']
+Return your results as Python code that:
+- Creates a pandas DataFrame with columns:
+  filename, extracted_para, ind, page_number, search_phrase
+- Prints the DataFrame
 
-# Execute the returned code safely to get the DataFrame in 'df'
-local_vars = {}
-exec(code_str, {'pd': pd}, local_vars)
-df = local_vars.get('df')
+Output ONLY valid, runnable Python code — no explanations or extra text.
