@@ -1,17 +1,6 @@
-prompt = f"""
-Extract all paragraphs that contain or relate to either of these phrases:
-1) '{search_phrase1}'
-2) '{search_phrase2}'
+code_str = response['choices'][0]['message']['content']
 
-For each paragraph extracted, specify which phrase it matched in a 'search_phrase' field.
-
-Return your result as Python code creating a pandas DataFrame with these columns:
-filename, extracted_para, ind, page_number, search_phrase
-
-Each match should be a separate row with running indices.
-
-Output only Python code creating this DataFrame.
-
-Text:
-\"\"\"{text_content}\"\"\"
-"""
+# Execute the returned code safely to get the DataFrame in 'df'
+local_vars = {}
+exec(code_str, {'pd': pd}, local_vars)
+df = local_vars.get('df')
