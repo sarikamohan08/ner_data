@@ -1,6 +1,37 @@
-"Additionally, whenever a service is described within the text and includes a code in parentheses, such as "
-    "'covered services not listed with fee schedule (120-431)' or 'covered services rendered with fee schedule (120-432)', "
-    "extract the service as 'service' (full phrase before parentheses) and the code as 'code'. "
-    "Include these service/code pairs as additional rows in your output structure, with other fields empty or null if not provided."
-    "\nOnly output valid Python code assigning a list of dictionaries to 'combined_data'. No explanation or extra text.\n"
-    "Text:\n\"\"\"" + text + "\"\"\""
+import openai
+import pandas as pd
+
+filename = "your_text_file.txt"
+search_phrase = "If you are referring to the Google Generative AI Python SDK for interacting with models like Gemini"
+
+# Read the entire text file
+with open(filename, 'r', encoding='utf-8') as file:
+    text_content = file.read()
+
+# Prepare prompt for GPT-4
+prompt = f"""
+Extract the paragraph containing this phrase:
+'{search_phrase}'
+Return the result as a Python dictionary with fields:
+- filename
+- extracted_para
+- ind (index of the paragraph if multiple found)
+- page_number (assume 1 for a text file)
+Only output valid Python data structure, no explanations.
+Text content:
+{text_content}
+"""
+
+# Call GPT-4 with the prompt
+response = openai.ChatCompletion.create(
+    model="gpt-4",
+    messages=[{"role": "user", "content": prompt}],
+    max_tokens=512
+)
+
+# Evaluate GPT-4's response safely
+import ast
+para_dict = ast.literal_eval(response['choices'][0]['message']['content'])
+df = pd.DataFrame([para_dict])  # Wrap in list for DataFrame
+
+print(df)
