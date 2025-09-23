@@ -1,100 +1,13 @@
-import os
-import pandas as pd
-from openai import OpenAI
-
-# Initialize OpenAI client
-client = OpenAI(api_key="YOUR_API_KEY")
-
-# List of target paragraphs
-TARGET_PARAS = [
-    "If you are referring to the Google Generative AI Python SDK for interacting with models like Gemini, the correct package name is google-generativeai. You can install it using",
-    "<YOUR SECOND TARGET PARA>",
-    "<YOUR THIRD TARGET PARA>"
-]
-
-# Output Excel file
-OUTPUT_FILE = "results.xlsx"
-
-
-def split_pages(text):
-    """Split text into pages based on 'Page' markers."""
-    pages = {}
-    current_page = None
-    buffer = []
-
-    for line in text.splitlines():
-        line_stripped = line.strip()
-        if line_stripped.lower().startswith("page ") and line_stripped[5:].isdigit():
-            if current_page is not None:
-                pages[current_page] = "\n".join(buffer)
-                buffer = []
-            current_page = int(line_stripped.split()[1])
-        else:
-            buffer.append(line)
-
-    if current_page is not None:
-        pages[current_page] = "\n".join(buffer)
-
-    return pages
-
-
-def extract_paras_from_txt(txt_path):
-    """Extract target paragraphs from a text file with page numbers."""
-    with open(txt_path, "r", encoding="utf-8") as f:
-        content = f.read()
-
-    pages = split_pages(content)
-    row_data = {"filename": os.path.basename(txt_path)}
-    row_index = 1
-
-    # initialize all para fields as None
-    for i in range(1, len(TARGET_PARAS) + 1):
-        row_data[f"para{i}_extracted"] = None
-        row_data[f"para{i}_page_number"] = None
-        row_data[f"para{i}_ind"] = None
-
-    for page_num, text in pages.items():
-        for i, target in enumerate(TARGET_PARAS, start=1):
-            prompt = f"""
-            You are given text from a document page. Extract the following paragraph **exactly** if it exists:
-            Paragraph: "{target}"
-            Page text: {text}
-            """
-
-            response = client.chat.completions.create(
-                model="gpt-4",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0
-            )
-
-            extracted = response.choices[0].message.content.strip()
-            if target in extracted:
-                row_data[f"para{i}_extracted"] = extracted
-                row_data[f"para{i}_page_number"] = page_num
-                row_data[f"para{i}_ind"] = row_index
-                row_index += 1
-
-    return [row_data]
-
-
-def append_to_excel(data):
-    """Append extracted data to Excel file."""
-    df_new = pd.DataFrame(data)
-
-    if os.path.exists(OUTPUT_FILE):
-        df_existing = pd.read_excel(OUTPUT_FILE)
-        df_combined = pd.concat([df_existing, df_new], ignore_index=True)
-    else:
-        df_combined = df_new
-
-    df_combined.to_excel(OUTPUT_FILE, index=False)
-
-
-# Example usage
-txt_file = "sample.txt"  # replace with your text file
-results = extract_paras_from_txt(txt_file)
-if results:
-    append_to_excel(results)
-    print("✅ Extraction complete. Results appended to Excel.")
-else:
-    print("❌ No matching paragraph found.")
+prompt = (
+    "You will receive text describing healthcare coverage and reimbursement. For each service, extract a row with these fields:\n"
+    "- service: extract any of the following as a service name if present in the text:\n"
+    "    - Numbered or named levels such as 'Level 1', 'Level 2', etc.\n"
+    "    - Category groupings such as 'Drugs and Biologicals', 'All other services'\n"
+    "    - Any phrase like 'covered services...' that may include a parenthesis code, e.g. 'covered services not listed with fee schedule (120-431)'\n"
+    "    - Any other section, code, or grouping explicitly described as a service or level\n"
+    "- code: extract the associated code if present (e.g., '120-431', leave blank if not present)\n"
+    "For each row, extract all other required fields as usual.\n"
+    "Repeat for every matching service scenario found in the text.\n"
+    "Output only Python code assigning a list of dicts to 'combined_data'. No extra text.\n"
+    "Text:\n\"\"\"" + text + "\"\"\""
+)
