@@ -1,13 +1,1 @@
-prompt = (
-    "You will receive text describing healthcare coverage and reimbursement. For each service, extract a row with these fields:\n"
-    "- service: extract any of the following as a service name if present in the text:\n"
-    "    - Numbered or named levels such as 'Level 1', 'Level 2', etc.\n"
-    "    - Category groupings such as 'Drugs and Biologicals', 'All other services'\n"
-    "    - Any phrase like 'covered services...' that may include a parenthesis code, e.g. 'covered services not listed with fee schedule (120-431)'\n"
-    "    - Any other section, code, or grouping explicitly described as a service or level\n"
-    "- code: extract the associated code if present (e.g., '120-431', leave blank if not present)\n"
-    "For each row, extract all other required fields as usual.\n"
-    "Repeat for every matching service scenario found in the text.\n"
-    "Output only Python code assigning a list of dicts to 'combined_data'. No extra text.\n"
-    "Text:\n\"\"\"" + text + "\"\"\""
-)
+"Extract every distinct service or service category mentioned in the text, even if not tied to a specific scenario or patient type.\n"
