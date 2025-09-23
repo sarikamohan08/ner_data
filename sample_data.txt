@@ -1,1 +1,6 @@
-"Output only valid Python code assigning these lists to their respective variables. Do not add extra text or explanation.\n"
+"In particular, carefully scan ALL text forms for services, including:\n"
+    "• Named levels or tiers (e.g., Level 1, Level 2)\n"
+    "• Named categories (e.g., Drugs & Biologicals)\n"
+    "• Service phrases embedded in full sentences, e.g., 'covered services not listed with fee schedule (120-431)', 'covered services rendered with fee schedule (120-432)'\n"
+    "For each occurrence of a service phrase and code embedded in text, extract as a separate row with all fields as applicable.\n"
+    "Repeat provider metadata fields for every extracted row.\n\n"
