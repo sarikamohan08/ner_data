@@ -1,1 +1,1 @@
-"Extract every distinct service or service category mentioned in the text, even if not tied to a specific scenario or patient type.\n"
+"Output only valid Python code assigning these lists to their respective variables. Do not add extra text or explanation.\n"
