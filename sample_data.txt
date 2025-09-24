@@ -1,58 +1,22 @@
-import os
-from langchain.chat_models import ChatOpenAI
-from langchain.prompts import PromptTemplate
+from langchain.document_loaders import TextLoader
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain.embeddings import HuggingFaceEmbeddings
 
-# Set your OpenAI API key via environment variable or directly
-os.environ['OPENAI_API_KEY'] = "<YOUR_OPENAI_API_KEY>"
+# Load text file content
+loader = TextLoader("path/to/yourfile.txt")
+documents = loader.load()
+full_text = documents[0].page_content
 
-# Optionally set model name
-model_name = "gpt-4"
+# Split text into chunks with overlap to preserve context
+splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+chunks = splitter.split_text(full_text)
 
-# Prepare your contract text
-contract_text = """Paste the FULL contract text here."""
+# Initialize embeddings model
+embedding_model = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 
-# Prepare prompt as above (can use triple quotes for multi-line)
-contract_prompt = """
-You are an expert contract analyzer tasked with extracting detailed structured data from a healthcare provider reimbursement contract.
+# Create embeddings for text chunks
+embeddings = embedding_model.embed_documents(chunks)
 
-Your goal is to extract for EVERY relevant service or category mentioned in the contract text the following fields:
-- provider_name
-- effective_date
-- npi_id
-- tax_id
-- lob
-- service_type
-- level
-- reimbursement_amount
-- revenue_code
-- services
-- fee_schedule
-- code
-- mop
-- mop_explanation (use exact explanation matching mop code)
-- grouper (1 if word 'grouper' appears in context, else 0)
-
-In particular, carefully scan ALL text forms for services, including:
-• Named levels or tiers (e.g., Level 1, Level 2)
-• Named categories (e.g., Drugs & Biologicals)
-• Service phrases embedded in full sentences, e.g., 'covered services not listed with fee schedule (120-431)', 'covered services rendered with fee schedule (120-432)'
-For each occurrence of a service phrase and code embedded in text, extract as a separate row with all fields as applicable.
-Repeat provider metadata fields for every extracted row.
-
-Output ONLY valid Python code assigning a list of dictionaries to the variable 'combined_data'. Do not include explanations or formatting beyond proper Python.
-
-Here is the contract text for your analysis:
-\"\"\"{contract_text}\"\"\"
-"""
-
-# Build LangChain prompt template
-prompt = PromptTemplate(input_variables=["contract_text"], template=contract_prompt)
-
-# Instantiate LangChain LLM
-llm = ChatOpenAI(model_name=model_name, temperature=0)
-
-# Generate response
-output = llm(prompt.format(contract_text=contract_text))
-
-# Print result (Python code assigning combined_data)
-print(output)
+# embeddings now holds vector representations of each text chunk
+print(f"Number of chunks: {len(chunks)}")
+print(f"Embedding for first chunk: {embeddings[0]}")
