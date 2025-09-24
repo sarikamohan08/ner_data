@@ -1,22 +1,6 @@
-from langchain.document_loaders import TextLoader
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain.embeddings import HuggingFaceEmbeddings
-
-# Load text file content
-loader = TextLoader("path/to/yourfile.txt")
-documents = loader.load()
-full_text = documents[0].page_content
-
-# Split text into chunks with overlap to preserve context
-splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-chunks = splitter.split_text(full_text)
-
-# Initialize embeddings model
-embedding_model = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
-
-# Create embeddings for text chunks
-embeddings = embedding_model.embed_documents(chunks)
-
-# embeddings now holds vector representations of each text chunk
-print(f"Number of chunks: {len(chunks)}")
-print(f"Embedding for first chunk: {embeddings[0]}")
+vectorstore = Chroma.from_documents(
+    documents=chunks,
+    embedding=embedding_model,
+    persist_directory="./chroma_db",
+    collection_name="my_text_collection"
+)
