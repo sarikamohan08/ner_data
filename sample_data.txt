@@ -1,6 +1,12 @@
-vectorstore = Chroma.from_documents(
-    documents=chunks,
-    embedding=embedding_model,
-    persist_directory="./chroma_db",
-    collection_name="my_text_collection"
-)
+"SERVICES: Extract the exact service level, category name, or detailed service phrase from the text. Examples include but are not limited to: 'Level 1', 'Drugs & Biologicals', 'All other services', " \
+"'Covered Services rendered', 'Covered Services not listed', 'Covered Services provided', 'Long term care days', 'Home leave days', 'hospital leave days', 'SNF Level services'. " \
+"Also scan all narrative text and sentences to find any phrase matching the pattern 'covered services' or 'covered services ...' including instances like 'covered services rendered to Members, sixty-five percent (65%) of Humana's (005-335) fee schedule'. " \
+"For each such phrase, extract:\n" \
+"- SERVICES: the full service phrase exactly as it appears (e.g., 'Covered Services rendered')\n" \
+"- CODE: the numeric or alphanumeric code in parentheses that follows, if present (e.g., '005-335')\n" \
+"- REIMBURSEMENT_RATE: the percentage or amount related to the service, if present (e.g., '65%')\n" \
+"- REIMBURSEMENT_METHODOLOGY: textual description of the payment methodology (e.g., 'fee schedule', 'billed charges')\n" \
+"These extractions must cover all instances, even if the information is embedded in longer sentences or paragraphs. "\
+"Do not assume these will be in clean tables. "\
+"Output valid Python code assigning a list of dictionaries (one per matched phrase) to the variable named 'covered_services_extracted'. No extra text.\n" \
+"Text:\n\"\"\"" + text + "\"\"\""
