@@ -1,5 +1,21 @@
-"Additionally, scan all narrative text, sentences, and paragraphs for any mention of services matching:\n"
-    "'Covered Services rendered', 'Covered Services not listed', 'Covered Services provided', or similar phrases, "
-    "even if embedded within sentences that include reimbursement percentages and codes, for example:\n"
-    "\"Provider agrees to accept as payment in full from Humana for Covered Services rendered to Members, ninety percent (90%) of Humana's (005-270) Fee Schedule...\"\n"
-    "For each such service mention, extract a record with the following fields:\n"
+def assign_ind(extracted):
+    # extracted is expected to be a dictionary with all the keys
+    for key, value in extracted.items():
+        if isinstance(value, dict) or isinstance(value, list):
+            # Handles both dictionaries and lists of dictionaries
+            texts = []
+            if isinstance(value, list):
+                texts = [v.get('extracted text from pdf', '') for v in value]
+            else:
+                texts = [value.get('extracted text from pdf', '')]
+            ind_val = 1 if any(texts) else 0
+        else:
+            ind_val = 0
+        # Assign back the indicator
+        if isinstance(value, list):
+            for v in value:
+                v[f"{key}_ind"] = ind_val
+        elif isinstance(value, dict):
+            value[f"{key}_ind"] = ind_val
+        # If not dict or list, ignore
+    return extracted
