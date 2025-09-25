@@ -42,3 +42,14 @@ for key, value in input_dict.items():
         value[f"{key.lower()}_timeframe"] = tf
 
 print(input_dict)
+def dict_to_wide_df_with_extended_timestamps(data):
+    row = {}
+    for key, value in data.items():
+        val = value[0] if isinstance(value, list) else value
+        extracted_text = val.get('extracted text from pdf', '')
+        row[f"{key}_extracted_text"] = extracted_text
+        row[f"{key}_ind"] = val.get(f'{key}_ind', 0)
+        row[f"{key}_page"] = val.get(f'{key}_page', val.get('page', None))
+        # Extract extended timeframes from extracted text
+        row[f"{key}_timestamp"] = extract_timeframes_extended(extracted_text)
+    return pd.DataFrame([row])
