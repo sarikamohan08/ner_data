@@ -1,14 +1,30 @@
-def set_indicators(data):
-    for key, value in data.items():
-        # Handle case where value is a list of dicts
-        if isinstance(value, list):
-            for entry in value:
-                # Check if extracted text exists and is non-empty
-                extracted_text = entry.get('extracted text from pdf', '')
-                entry[f"{key}_ind"] = 1 if extracted_text else 0
-        # Handle case where value is a dict
-        elif isinstance(value, dict):
-            extracted_text = value.get('extracted text from pdf', '')
-            value[f"{key}_ind"] = 1 if extracted_text else 0
-        # For other types, optionally skip or handle as needed
-    return data
+import pandas as pd
+
+def dict_to_wide_df(data):
+    # Find the max length among list-values for row count
+    max_len = max([
+        len(v) if isinstance(v, list) else 1
+        for v in data.values()
+    ])
+
+    # Initialize each row as a dict for each record
+    rows = []
+    for i in range(max_len):
+        row = {}
+        for key, value in data.items():
+            if isinstance(value, list):
+                record = value[i] if i < len(value) else {}
+            else:
+                record = value if i == 0 else {}
+            # Fill columns for each key
+            row[f"{key}_extracted_text"] = record.get("extracted text from pdf", '')
+            row[f"{key}_ind"] = record.get(f"{key}_ind", 0)
+            # Page can be either custom key or generic
+            page_key = f"{key}_page"
+            row[page_key] = record.get(page_key, record.get("page", None))
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
+df = dict_to_wide_df(input_dict)
+print(df)
