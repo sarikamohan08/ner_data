@@ -1,4 +1,5 @@
-def add_timeframes_to_dict(input_dict):
+
+def add_timeframes_to_df(input_dict):
     PROMPT_TEMPLATE = """
     You are given extracted text: "{text}".
     From it, extract the timeframe if available.
@@ -19,13 +20,20 @@ def add_timeframes_to_dict(input_dict):
         )
         return response.choices[0].message.content.strip()
 
+    records = []
     for key, value in input_dict.items():
         if isinstance(value, list):
             for item in value:
                 timeframe = get_timeframe(item["extracted text from pdf"])
                 item[f"{key.lower()}_timeframe"] = timeframe
+                record = {"key": key}
+                record.update(item)
+                records.append(record)
         else:
             timeframe = get_timeframe(value["extracted text from pdf"])
             value[f"{key.lower()}_timeframe"] = timeframe
+            record = {"key": key}
+            record.update(value)
+            records.append(record)
 
-    return input_dict
+    return pd.DataFrame(records)
