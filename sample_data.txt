@@ -1,55 +1,31 @@
-from openai import OpenAI
+def add_timeframes_to_dict(input_dict):
+    PROMPT_TEMPLATE = """
+    You are given extracted text: "{text}".
+    From it, extract the timeframe if available.
+    - If there's a start and end time, return them as "start - end".
+    - If only one time/date is found, just return it.
+    - If no time is present, return "No timeframe".
 
-client = OpenAI(api_key="YOUR_API_KEY")
+    Only return the timeframe string.
+    """
 
-input_dict = {
-    "Deemer": {"extracted text from pdf": "Meeting at 14:30:10 on 2023-09-25.", "Deemer_page": 1, "Deemer_ind":1},
-    "new_product": {"extracted text from pdf": "Started at 8:45 AM, continued till noon.", "new_product_page": 2, "new_product_ind":1},
-    "DRG": [{"extracted text from pdf": "Procedure duration was 00:45 and finished by 15:00.", "DRG_page": 3, "DRG_ind":1}],
-    "TestKey": {"extracted text from pdf": "No timestamp here.", "TestKey_page": 2, "TestKey_ind":1},
-    "Choicecare": [{"extracted text from pdf": "Effective 03/2024, with review at 23:59:59.", "Choicecare_page": 4, "Choicecare_ind":1}]
-}
+    def get_timeframe(text: str) -> str:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "You are an assistant that extracts timeframes."},
+                {"role": "user", "content": PROMPT_TEMPLATE.format(text=text)}
+            ]
+        )
+        return response.choices[0].message.content.strip()
 
-# Prompt template
-PROMPT_TEMPLATE = """
-You are given extracted text: "{text}".
-From it, extract the timeframe if available.
-- If there's a start and end time, return them as "start - end".
-- If only one time/date is found, just return it.
-- If no time is present, return "No timeframe".
+    for key, value in input_dict.items():
+        if isinstance(value, list):
+            for item in value:
+                timeframe = get_timeframe(item["extracted text from pdf"])
+                item[f"{key.lower()}_timeframe"] = timeframe
+        else:
+            timeframe = get_timeframe(value["extracted text from pdf"])
+            value[f"{key.lower()}_timeframe"] = timeframe
 
-Only return the timeframe string.
-"""
-
-def get_timeframe(text: str) -> str:
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": "You are an assistant that extracts timeframes."},
-            {"role": "user", "content": PROMPT_TEMPLATE.format(text=text)}
-        ]
-    )
-    return response.choices[0].message.content.strip()
-
-# Process dictionary
-for key, value in input_dict.items():
-    if isinstance(value, list):
-        for item in value:
-            tf = get_timeframe(item["extracted text from pdf"])
-            item[f"{key.lower()}_timeframe"] = tf
-    else:
-        tf = get_timeframe(value["extracted text from pdf"])
-        value[f"{key.lower()}_timeframe"] = tf
-
-print(input_dict)
-def dict_to_wide_df_with_extended_timestamps(data):
-    row = {}
-    for key, value in data.items():
-        val = value[0] if isinstance(value, list) else value
-        extracted_text = val.get('extracted text from pdf', '')
-        row[f"{key}_extracted_text"] = extracted_text
-        row[f"{key}_ind"] = val.get(f'{key}_ind', 0)
-        row[f"{key}_page"] = val.get(f'{key}_page', val.get('page', None))
-        # Extract extended timeframes from extracted text
-        row[f"{key}_timestamp"] = extract_timeframes_extended(extracted_text)
-    return pd.DataFrame([row])
+    return input_dict
