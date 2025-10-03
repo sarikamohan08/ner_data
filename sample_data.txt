@@ -2,41 +2,48 @@ import cv2
 import numpy as np
 from PIL import Image
 
-# Read TIFF as an array
+# Load TIFF as an array
 pil_image = Image.open('image.tiff')
-image = np.array(pil_image)
+img = np.array(pil_image)
 
-# Handle 1-bit, grayscale, or color
-if image.dtype == np.bool_ or image.dtype == bool:
-    image = image.astype(np.uint8) * 255   # Convert bool to uint8
+# Ensure uint8 and grayscale
+if img.dtype == np.bool_ or img.dtype == bool:
+    img = img.astype(np.uint8) * 255
+if img.ndim == 3:
+    if img.shape[2] == 4:
+        img = cv2.cvtColor(img, cv2.COLOR_RGBA2BGR)
+    elif img.shape[2] == 3:
+        img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+else:
+    gray = img
 
-if image.ndim == 2:  # Grayscale
-    gray = image
-elif image.ndim == 3:
-    if image.shape[2] == 4:
-        image = cv2.cvtColor(image, cv2.COLOR_RGBA2BGR)
-    elif image.shape[2] == 3:
-        image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+# Denoising (optional, using a mild blur)
+denoised = cv2.medianBlur(gray, 3)
 
-# Gaussian blur
-blurred = cv2.GaussianBlur(gray, (3, 3), 0)
+# Increase contrast using histogram equalization
+equalized = cv2.equalizeHist(denoised)
 
-# Adaptive threshold
+# Strong adaptive threshold
 thresh = cv2.adaptiveThreshold(
-    blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-    cv2.THRESH_BINARY, 15, 6
+    equalized, 255, cv2.ADAPTIVE_THRESH_MEAN_C,
+    cv2.THRESH_BINARY_INV, 15, 10
 )
 
-# Morphology
-kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 1))
-morphed = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel, iterations=1)
+# Emphasize horizontal and vertical lines
+kernel_h = cv2.getStructuringElement(cv2.MORPH_RECT, (25, 1))
+horizontal = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel_h, iterations=1)
 
-# CLAHE (optional)
-clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-final = clahe.apply(morphed)
+kernel_v = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 25))
+vertical = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel_v, iterations=1)
 
-# Save
-cv2.imwrite('enhanced_output.tiff', final)
+# Combine lines with binary (stronger lines)
+table_mask = cv2.bitwise_or(horizontal, vertical)
+enhanced = cv2.bitwise_or(thresh, table_mask)
 
-print("Saved as 'enhanced_output.tiff'")
+# Optional: invert back if text is white on black
+final = cv2.bitwise_not(enhanced)
+
+# Save result
+cv2.imwrite('highly_enhanced_table.tiff', final)
+print("Highly enhanced table saved as 'highly_enhanced_table.tiff'")
