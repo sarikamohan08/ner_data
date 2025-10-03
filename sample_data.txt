@@ -1,3 +1,4 @@
-"Extract and format the contents of this healthcare form as structured text. "
-    "Preserve table headers, fields, and values, and keep the layout similar to the original image. "
-    "Use markdown tables for tabular sections, list all fields clearly, and format multi-section content in well-labeled blocks."
+messages=[
+        {"role": "system", "content": "You are an expert in OCR and document structure preservation."},
+        {"role": "user", "content": prompt, "images": [image_data]}  # Note: image sending method may vary
+    ]
