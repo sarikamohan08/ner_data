@@ -1,4 +1,37 @@
-messages=[
-        {"role": "system", "content": "You are an expert in OCR and document structure preservation."},
-        {"role": "user", "content": prompt, "images": [image_data]}  # Note: image sending method may vary
-    ]
+import cv2
+import numpy as np
+from PIL import Image
+
+# Open the TIFF image (single page)
+tiff_image = Image.open('image.tiff')
+
+# Convert to OpenCV format
+image = np.array(tiff_image)
+if image.ndim == 3 and image.shape[2] == 4:
+    image = cv2.cvtColor(image, cv2.COLOR_RGBA2BGR)
+elif image.ndim == 3:
+    image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+
+# Convert to grayscale
+gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+# Apply Gaussian blur to reduce noise
+blurred = cv2.GaussianBlur(gray, (3, 3), 0)
+
+# Adaptive thresholding for binarization
+thresh = cv2.adaptiveThreshold(
+    blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+    cv2.THRESH_BINARY, 15, 6
+)
+
+# Morphological operations to clean noise
+kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 1))
+morphed = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel, iterations=1)
+
+# (Optional) Apply CLAHE for contrast enhancement
+clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+final = clahe.apply(morphed)
+
+# Save the output (as TIFF or JPG)
+cv2.imwrite('enhanced_output.tiff', final)
+print("Enhanced image saved as 'enhanced_output.tiff'")
