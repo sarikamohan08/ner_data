@@ -1,49 +1,25 @@
-import cv2
-import numpy as np
-from PIL import Image
+import re
 
-# Load TIFF as an array
-pil_image = Image.open('image.tiff')
-img = np.array(pil_image)
+def clean_and_sanitize_text(text: str) -> str:
+    """
+    Clean text by removing special characters except basic punctuation,
+    and escape quotes and backslashes for safe embedding in prompts.
+    """
+    # Remove unwanted special characters, keep letters, digits, spaces, punctuation (.,!?-)
+    cleaned = re.sub(r"[^a-zA-Z0-9\s.,!?\-\"'\\]", "", text)
+    # Escape backslashes first
+    sanitized = cleaned.replace("\\", "\\\\")
+    # Escape double quotes
+    sanitized = sanitized.replace('"', '\\"')
+    # Escape single quotes
+    sanitized = sanitized.replace("'", "\\'")
+    # Replace newlines/tabs with space
+    sanitized = sanitized.replace("\n", " ").replace("\r", " ").replace("\t", " ")
+    # Collapse multiple spaces to single space
+    sanitized = re.sub(r"\s+", " ", sanitized).strip()
+    return sanitized
 
-# Ensure uint8 and grayscale
-if img.dtype == np.bool_ or img.dtype == bool:
-    img = img.astype(np.uint8) * 255
-if img.ndim == 3:
-    if img.shape[2] == 4:
-        img = cv2.cvtColor(img, cv2.COLOR_RGBA2BGR)
-    elif img.shape[2] == 3:
-        img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-else:
-    gray = img
-
-# Denoising (optional, using a mild blur)
-denoised = cv2.medianBlur(gray, 3)
-
-# Increase contrast using histogram equalization
-equalized = cv2.equalizeHist(denoised)
-
-# Strong adaptive threshold
-thresh = cv2.adaptiveThreshold(
-    equalized, 255, cv2.ADAPTIVE_THRESH_MEAN_C,
-    cv2.THRESH_BINARY_INV, 15, 10
-)
-
-# Emphasize horizontal and vertical lines
-kernel_h = cv2.getStructuringElement(cv2.MORPH_RECT, (25, 1))
-horizontal = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel_h, iterations=1)
-
-kernel_v = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 25))
-vertical = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel_v, iterations=1)
-
-# Combine lines with binary (stronger lines)
-table_mask = cv2.bitwise_or(horizontal, vertical)
-enhanced = cv2.bitwise_or(thresh, table_mask)
-
-# Optional: invert back if text is white on black
-final = cv2.bitwise_not(enhanced)
-
-# Save result
-cv2.imwrite('highly_enhanced_table.tiff', final)
-print("Highly enhanced table saved as 'highly_enhanced_table.tiff'")
+# Example usage:
+extracted_text = 'Hello! This is text with special chars: @#$%^&*() and "quotes" and \\backslashes\\.'
+clean_text = clean_and_sanitize_text(extracted_text)
+print(clean_text)
