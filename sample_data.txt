@@ -1,25 +1,90 @@
-import re
+prompt = """
+You will receive a text containing various healthcare services levels and types, including Skilled Nursing Facility Levels 1-4, covered services and Inpatient/Outpatient services. If there is multiple in the document provider name, effective date, npi, tax id add the first occurrence. For each service, extract the following fields:
 
-def clean_and_sanitize_text(text: str) -> str:
-    """
-    Clean text by removing special characters except basic punctuation,
-    and escape quotes and backslashes for safe embedding in prompts.
-    """
-    # Remove unwanted special characters, keep letters, digits, spaces, punctuation (.,!?-)
-    cleaned = re.sub(r"[^a-zA-Z0-9\s.,!?\-\"'\\]", "", text)
-    # Escape backslashes first
-    sanitized = cleaned.replace("\\", "\\\\")
-    # Escape double quotes
-    sanitized = sanitized.replace('"', '\\"')
-    # Escape single quotes
-    sanitized = sanitized.replace("'", "\\'")
-    # Replace newlines/tabs with space
-    sanitized = sanitized.replace("\n", " ").replace("\r", " ").replace("\t", " ")
-    # Collapse multiple spaces to single space
-    sanitized = re.sub(r"\s+", " ", sanitized).strip()
-    return sanitized
+PROVIDER NAME: the name of the provider
+EFFECTIVE FROM DATE: the effective date of the document or coverage
+NPI: the provider's NPI identification number
+Additionally, scan all narrative text, sentences, and paragraphs for any mention of services matching:
+TAX ID: the provider's tax identification number
+Covered Services rendered, Covered Services not listed, Covered Services provided, or similar phrases
+even if embedded within sentences that include reimbursement percentages and codes, for example:
+Provider agrees to accept as payment in full from Humana for Covered Services rendered to Members, ninety percent (90%) of Humana's (885-270) Fee Schedule...
 
-# Example usage:
-extracted_text = 'Hello! This is text with special chars: @#$%^&*() and "quotes" and \\backslashes\\.'
-clean_text = clean_and_sanitize_text(extracted_text)
-print(clean_text)
+For each such service mention, extract a record with the following fields:
+SERVICE TYPE: the category or type of service (e.g. 'inpatient', 'outpatient, inpatient services', 'outpatient services'). If it's inpatient part B then it's outpatient.
+
+Sample covered services scenario: (Provider agrees to accept as payment in full from Humana for Covered Services rendered to Members, sixty-five percent (65%) of Humana's (005-335) fee schedule, or Provider's billed charges, whichever is less, less any Copayments due from Members) here service - Covered Services, code (805-335) REIMBURSEMENT RATE -65%, REIMBURSEMENT METHODOLOGY fee schedule in. Eg Services: (e.g., 'Level 1', 'Drugs & Biologicals', 'All other services', 'Covered Services rendered', 'Covered Services not listed', 'Covered Services provided', 'Long term care days', 'Home Leave days', 'hospital leave days', 'SNF Level services', 'Services covered outside of Per Diem')
+
+Sample covered services scenario: (for any Covered Services not listed in Humana's (005-270) Fee Schedule, Provider agrees to accept as payment in full, fifty percent (58%) of Provider's usual and customary charges, less any Copayment due from Member.) here service Covered Services not listed, code (805-278) REIMBURSEMENT RATE -58%, REIMBURSEMENT METHODOLOGY fee schedule. Eg Services: (eg, 'Level 1', 'Drugs & Biologicals', 'All other services', 'Covered Services rendered', 'Covered Services not listed', 'Covered services provided', 'Long term care days', 'Home leave days', 'hospital leave days', 'SNF Level services', 'Services covered outside of Per Diem')
+
+Sample Medicaid or Medicare dual eligible services scenario: extract the whole table below the text Medicaid or Medicare Dual Eligible
+
+Revenue Code|Reimbursement Method | Reimbursement
+
+101 |Long-Term Care Days | 100% Medicaid Allowable
+182 | Home leave Days (Therapeutic leave days)| 100% Medicaid Allowable
+185 | Hospitals leave Days | 100% Medicaid Allowable
+
+Here extract this kind of table e.g. service reimbursement method column, code
+101 REIMBURSEMENT RATE -100%, REIMBURSEMENT METHODOLOGY Medicaid Allowable
+
+Here service reimbursement method column services ('Long term care days', 'Home leave days', 'hospital leave days'), code revenue code column 101,182,185 REIMBURSEMENT RATE -100%, REIMBURSEMENT METHODOLOGY Medicaid Allowable
+
+Sample Skilled Nursing Facility Services Reimbursement scenario: extract the whole table below the section Skilled Nursing Facility Services Reimbursement
+
+Revenue Code |Reimbursement Method | Reimbursement
+
+191 | Per Diem | 100% Medicaid Facility
+421 | Per Diem | $65.00 per PT discipline per day
+431 | Per Diem | $65.00 per OT discipline per day
+441 | Per Diem | $65.00 per ST discipline per day
+
+Here e.g. output service - Skilled Nursing Facility Services (same for all), code revenue code column 191,421,431,441 REIMBURSEMENT AMOUNT - $65.00 REIMBURSEMENT RATE - 100%, REIMBURSEMENT METHODOLOGY Reimbursement Method column similar for the entire table
+
+SERVICES: extract the service levels or category name or the services (e.g., 'Level 1', 'Level 2', 'Level 3', 'Level 4', 'LEVEL 1', 'LEVEL 2', 'LEVEL 3', 'LEVEL 4', 'Drugs & Biologicals', 'All other services', 'Covered Services rendered', 'Covered Services not listed', 'Covered Services provided', 'Long term care days', 'Home leave days', 'hospital leave days', 'SNF Level services'). Services are within sentences, extract its fee schedule code and rate: 'Drugs & Biologicals', 'All other services', 'Covered Services rendered', 'Covered Services not listed'.
+
+REIMBURSEMENT AMT: reimbursement value in dollars (integer) if available or reimbursement rate as a percentage string.
+REIMBURSEMENT RATE: reimbursement rate as a percentage string if available (include only the rate).
+SERVICE DESC: descriptions that is below each level and list of detailed service descriptions.
+CODES: revenue code string, fee schedule string, any numeric or alphanumeric code extracted from the fee schedule (include only codes not the string), otherwise empty.
+REVENUE CD IND: print 1 if the text contains revenue code else 0.
+DRG_CD_IND: print 1 if the text contains MS-DRG code else 0.
+CPT_IND: print 1 if the text contains CPT code else 0.
+HCPCS_IND: print 1 if the text contains HCPCS code else 0.
+ICD_CD_IND: print 1 if the text contains ICD code else 0.
+DIAGNOSIS CD_IND: print 1 if the text contains Diagnosis code else 0.
+MODIFIER_CD_IND: print 1 if the text contains modifier code else 0.
+LOB IND ("Medicare", "Medicaid", "Commercial"): word below skilled nursing services. If it contains more than one LOB print all the lob in comma separated format.
+REIMBURSEMENT METHODOLOGY: ('Per Diem', 'per procedure', 'per visit', 'per case', 'percent of charge', 'medicare allowable amount', 'all fixed rated', 'fee schedule', 'percent of line charge', 'poc').
+
+Extract for each record the following fields:
+METHOD_OF_PAYMENT: the code string (e.g., 'no1', 'po3') exactly as found in text.
+
+Do NOT paraphrase, abbreviate, or alter the explanation:
+
+Mop Code Explanation Table:
+no1: the allowed amount is the contracted rate, regardless of the charge.
+no2: the Provider's billed charges whichever is less, less any co-payments, coinsurance, deductibles or other cost-share amount due from such is either the contracted rate for the entire claim or the percent of total eligible billed charges, whichever is less.
+Members. or lesser of billed charges.
+po3: The allowed amount.
+pos: The allowed amount is either the contracted rate for the entire claim or the percent of total eligible billed charges, whichever is greater.
+no4: The allowed amount is either the contracted rate for the entire claim or total eligible billed charges, whichever is greater.
+
+AGE GROUP: integer indicator, 1 if the word 'Age group' appears anywhere in the text related or table to the record, else 0.
+GROUPER IND: integer indicator, 1 if the word 'grouper' appears anywhere in the text related to the record, else 0.
+GROUPER: Extract the grouper column if it's there in services or text or table.
+APC IND: integer indicator, 1 if the word 'APC' appears anywhere in the text related to the record, else 0.
+MSR IND: integer indicator, 1 if the word 'Multiple Surgery Logic' appears anywhere in the text related to the record as heading extract all its.
+BILETRAL PROCEDURE IND: integer indicator, 1 if the word 'bilateral procedures' appears anywhere in the text related to the record as heading services, rate, amount, methodology and append in respective columns else 0.
+PROVIDER SPECIALITY: Integer indicator, 1 if the word 'provider specialty' appears anywhere in the text related to the record as heading extract all its services, rate, amount, methodology and append in respective columns, else 0.
+EXCLUDE FROM TRANSFER IND: integer indicator, 1 if the heading 'transfers' or appears anywhere in the text related to the record as heading extract all its services, rate, amount, methodology and append in respective columns, else 0.
+TRANSFER CALCULATION: extract the text. Text is having heading transfer, 'Member is transferred from HOSPITAL' or 'calculated as follows, DRG Payment/Arithmetic LOS x number of inpatient days' or 'calculated as follows, DRG Payment/Geometric LOS x number of inpatient days'.
+EXCLUDE FROM STOPLOSS IND: integer indicator, 1 if the word 'stop loss threshold' appears anywhere in the text related to the record, else 0.
+OTHER FLAT FEE: integer indicator, 1 if the word 'flat fee' appears anywhere in the text related to the record, else 0.
+SURG FLAT FEE: integer indicator, 1 if the word 'flat surgical fee' or 'surgical fee' appears anywhere in the text related to the record, else 0.
+CASE RATE: Extract any text from the pdf that mentions case rate along with a duration in days. If it's not there, just leave as blank.
+
+Output only valid Python code assigning a single list of dictionaries to the variable 'combined_data'.
+
+HEALTH BENEFIT PLANS: extract health benefit plan which will be in table.
+"""
