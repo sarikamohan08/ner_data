@@ -1,10 +1,77 @@
-def read_specific_line(file_path, line_number=308):
-    with open(file_path, 'r') as f:
-        for current_line_number, line in enumerate(f, start=1):
-            if current_line_number == line_number:
-                return line.strip()  # Returns the text of line 308
-    return None  # If the file has fewer than 308 lines
+prompt = (
+    "You will receive a text containing various healthcare services levels and types, including Skilled Nursing Facility Levels 1–4, covered services and Inpatient/Outpatient services. "
+    "If there are multiple providers in the document (provider name, effective date, NPI, tax ID), add only the first occurrence. For each service, extract the following fields:\n\n"
 
-# Example usage:
-line_308 = read_specific_line('your_file.txt')
-print(line_308)
+    "PROVIDER NAME: the name of the provider\n"
+    "EFFECTIVE FROM DATE: the effective date of the document or coverage\n"
+    "NPI: the provider's NPI identification number\n"
+    "TAX ID: the provider's tax identification number\n\n"
+
+    "Additionally, scan all narrative text, sentences, and paragraphs for any mention of services matching 'Covered Services rendered', 'Covered Services not listed', 'Covered Services provided', or similar phrases, "
+    "even if embedded within sentences containing reimbursement percentages and codes. For example:\n"
+    "Provider agrees to accept as payment in full from Humana for Covered Services rendered to Members, ninety percent (90%) of Humana's (885-270) Fee Schedule.\n\n"
+
+    "Sample covered services scenarios:\n"
+    "(1) Provider agrees to accept as payment in full from Humana for Covered Services rendered to Members, sixty-five percent (65%) of Humana's (005-335) fee schedule, or Provider's billed charges, whichever is less, less any Copayments due from Members.\n"
+    "Here service: 'Covered Services', code: (805-335), REIMBURSEMENT RATE: 65%, REIMBURSEMENT METHODOLOGY: fee schedule. Example services include 'Level 1', 'Drugs & Biologicals', 'All other services', 'Covered Services rendered', 'Covered Services not listed', 'Covered Services provided', 'Long term care days', 'Home leave days', 'Hospital leave days', 'SNF Level services', 'Services covered outside of Per Diem'.\n\n"
+
+    "(2) For any Covered Services not listed in Humana's (005-270) Fee Schedule, Provider agrees to accept as payment in full, fifty-eight percent (58%) of Provider's usual and customary charges, less any Copayment due from Member.\n"
+    "Here service: 'Covered Services not listed', code: (805-278), REIMBURSEMENT RATE: 58%, REIMBURSEMENT METHODOLOGY: fee schedule. Example services include 'Level 1', 'Drugs & Biologicals', 'All other services', 'Covered Services rendered', 'Covered Services not listed', 'Covered Services provided', 'Long term care days', 'Home leave days', 'Hospital leave days', 'SNF Level services', 'Services covered outside of Per Diem'.\n\n"
+
+    "(3) Sample Medicaid or Medicare Dual Eligible services scenario: extract the whole table below the text 'Medicaid or Medicare Dual Eligible'.\n"
+    "Revenue Code | Reimbursement Method | Reimbursement\n"
+    "101 | Long-Term Care Days | 100% Medicaid Allowable\n"
+    "182 | Home leave Days (Therapeutic leave days) | 100% Medicaid Allowable\n"
+    "185 | Hospital leave Days | 100% Medicaid Allowable\n"
+    "Extract this kind of table with columns: Service (from the reimbursement method column), Code (from the revenue code column, e.g., 101, 182, 185), "
+    "REIMBURSEMENT RATE: 100%, REIMBURSEMENT METHODOLOGY: Medicaid Allowable.\n\n"
+
+    "(4) Sample Skilled Nursing Facility Services Reimbursement scenario: extract the whole table below the section 'Skilled Nursing Facility Services Reimbursement'.\n"
+    "Revenue Code | Reimbursement Method | Reimbursement\n"
+    "191 | Per Diem | 100% Medicaid Facility\n"
+    "421 | Per Diem | $65.00 per PT discipline per day\n"
+    "431 | Per Diem | $65.00 per OT discipline per day\n"
+    "441 | Per Diem | $65.00 per ST discipline per day\n"
+    "Example output: service - Skilled Nursing Facility Services (same for all rows), codes: 191, 421, 431, 441, REIMBURSEMENT AMOUNT: $65.00, "
+    "REIMBURSEMENT RATE: 100%, REIMBURSEMENT METHODOLOGY: Per Diem.\n\n"
+
+    "For each such service mention, extract a record with the following fields:\n"
+    "SERVICE TYPE: the category or type of service (e.g., 'inpatient', 'outpatient'); if it’s inpatient part B then mark as outpatient\n"
+    "REIMBURSEMENT AMT: reimbursement value in dollars (integer) if available, or reimbursement rate as a percentage string\n"
+    "REIMBURSEMENT RATE: reimbursement rate as a percentage string if available (include only the rate)\n"
+    "SERVICE DESC: detailed descriptions related to each service level\n"
+    "CODES: revenue code string, fee schedule string, or any numeric/alphanumeric code extracted from the fee schedule (include only codes, not descriptions)\n"
+    "REVENUE CD IND: 1 if text contains revenue code, else 0\n"
+    "DRG_CD_IND: 1 if text contains MS-DRG code, else 0\n"
+    "CPT_IND: 1 if text contains CPT code, else 0\n"
+    "HCPCS_IND: 1 if text contains HCPCS code, else 0\n"
+    "ICD_CD_IND: 1 if text contains ICD code, else 0\n"
+    "DIAGNOSIS_CD_IND: 1 if text contains Diagnosis code, else 0\n"
+    "MODIFIER_CD_IND: 1 if text contains Modifier code, else 0\n"
+    "LOB IND: extract line of business ('Medicare', 'Medicaid', 'Commercial'); if multiple, list all comma-separated\n"
+    "REIMBURSEMENT METHODOLOGY: one of ['Per Diem', 'Per procedure', 'Per visit', 'Per case', 'Percent of charge', 'Medicare allowable amount', 'Fee schedule', 'Percent of line charge', 'POC']\n"
+    "METHOD OF PAYMENT: the code string (e.g., 'no1', 'po3') exactly as found in text\n\n"
+
+    "MOP Code Explanation Table:\n"
+    "no1: the allowed amount is the contracted rate, regardless of the charge\n"
+    "no2: the allowed amount is the lesser of the contracted rate or the percent of total eligible billed charges\n"
+    "po3: the allowed amount is either the contracted rate or greater of percent of total eligible billed charges\n"
+    "no4: the allowed amount is either the contracted rate or total eligible billed charges, whichever is greater\n\n"
+
+    "AGE GROUP: 1 if the phrase 'Age group' appears anywhere in the text, else 0\n"
+    "GROUPER IND: 1 if 'grouper' appears anywhere, else 0\n"
+    "GROUPER: extract grouper details if present\n"
+    "APC IND: 1 if 'APC' appears anywhere, else 0\n"
+    "MSR IND: 1 if 'Multiple Surgery Logic' appears anywhere, else 0\n"
+    "BILATERAL PROCEDURE IND: 1 if 'bilateral procedures' appears anywhere, else 0\n"
+    "PROVIDER SPECIALITY: 1 if 'provider specialty' appears anywhere, else 0\n"
+    "EXCLUDE FROM TRANSFER IND: 1 if 'transfer' appears in the section, else 0\n"
+    "TRANSFER CALCULATION: extract formula text if 'transfer' or similar calculation terms appear (e.g., 'DRG Payment/Arithmetic LOS x inpatient days')\n"
+    "EXCLUDE FROM STOPLOSS IND: 1 if 'stop loss threshold' appears, else 0\n"
+    "OTHER FLAT FEE: 1 if 'flat fee' appears, else 0\n"
+    "SURG FLAT FEE: 1 if 'flat surgical fee' or 'surgical fee' appears, else 0\n"
+    "CASE RATE: extract any text mentioning 'case rate' with duration in days if present\n"
+    "HEALTH BENEFIT PLANS: extract any health benefit plan information present in tables\n\n"
+
+    "Output only valid Python code assigning a single list of dictionaries to the variable 'combined_data'."
+)
