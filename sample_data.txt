@@ -34,7 +34,7 @@ prompt = (
     "- DIAGNOSIS_CD_IND: Diagnosis codes present\n"
     "- MODIFIER_CD_IND: Modifier codes present (e.g., -25, -59)\n\n"
     
-    "STEP 5: EXTRACT ADDITIONAL FIELDS:\n"
+    "STEP 5: EXTRACT ADDITIONAL FIELDS (USE 0 IF NOT MENTIONED):\n"
     "- LOB_IND: 'Medicare', 'Medicaid', 'Commercial', 'Dual Eligible' (comma-separated if multiple)\n"
     "- AGE_GROUP: 1 if 'Age group', 'pediatric', 'geriatric', or age ranges mentioned, else 0\n"
     "- GROUPER_IND: 1 if 'grouper', 'DRG grouper', or 'APR-DRG' mentioned, else 0\n"
@@ -52,24 +52,27 @@ prompt = (
     "- HEALTH_BENEFIT_PLANS: Health benefit plan names from tables\n\n"
     
     "EXTRACTION RULES:\n"
-    "- For missing fields, use None or empty string\n"
+    "- For missing fields, use None or empty string for text fields\n"
+    "- For indicator fields (like BILATERAL_PROCEDURE_IND, PROVIDER_SPECIALTY), ALWAYS use 0 if not mentioned\n"
     "- Extract exact text values when possible\n"
     "- Infer SERVICE_TYPE from context when not explicitly stated\n"
     "- Look for codes in parentheses, tables, or adjacent to service descriptions\n"
-    "- Capture both percentage rates and dollar amounts when both are present\n\n"
+    "- Capture both percentage rates and dollar amounts when both are present\n"
+    "- ALL indicator fields must be included in every record with value 0 or 1\n\n"
     
     "EXAMPLES OF SERVICE EXTRACTION:\n"
     "Example 1: 'Provider agrees to accept 65% of Humana's (005-335) fee schedule for Covered Services rendered'\n"
-    "→ SERVICE_TYPE: 'outpatient', SERVICES: 'Covered Services rendered', REIMBURSEMENT_RATE: '65%', CODES: '005-335', REIMBURSEMENT_METHODOLOGY: 'Fee Schedule'\n\n"
+    "→ SERVICE_TYPE: 'outpatient', SERVICES: 'Covered Services rendered', REIMBURSEMENT_RATE: '65%', CODES: '005-335', REIMBURSEMENT_METHODOLOGY: 'Fee Schedule', BILATERAL_PROCEDURE_IND: 0, PROVIDER_SPECIALTY: 0\n\n"
     
     "Example 2: Table with '101 | Long-Term Care Days | 100% Medicaid Allowable'\n"
-    "→ SERVICES: 'Long term care days', CODES: '101', REIMBURSEMENT_RATE: '100%', REIMBURSEMENT_METHODOLOGY: 'Medicaid Allowable', SERVICE_TYPE: 'inpatient'\n\n"
+    "→ SERVICES: 'Long term care days', CODES: '101', REIMBURSEMENT_RATE: '100%', REIMBURSEMENT_METHODOLOGY: 'Medicaid Allowable', SERVICE_TYPE: 'inpatient', BILATERAL_PROCEDURE_IND: 0, PROVIDER_SPECIALTY: 0\n\n"
     
-    "Example 3: 'Skilled Nursing Facility Level 1 services reimbursed at $450 per diem'\n"
-    "→ SERVICES: 'Level 1', SERVICE_DESC: 'Skilled Nursing Facility', REIMBURSEMENT_AMT: '$450', REIMBURSEMENT_METHODOLOGY: 'Per Diem', SERVICE_TYPE: 'inpatient'\n\n"
+    "Example 3: 'Bilateral procedures are reimbursed at 150% of the fee schedule'\n"
+    "→ BILATERAL_PROCEDURE_IND: 1, REIMBURSEMENT_RATE: '150%', REIMBURSEMENT_METHODOLOGY: 'Fee Schedule'\n\n"
     
     "OUTPUT FORMAT:\n"
-    "Create a list of dictionaries where each dictionary represents one service record with all the above fields.\n"
+    "Create a list of dictionaries where each dictionary represents one service record with ALL fields listed above.\n"
+    "Include ALL indicator fields in every record (use 0 for false, 1 for true).\n"
     "Output only valid Python code assigning to variable 'combined_data'.\n"
-    "Use None for missing values and ensure proper string formatting.\n"
+    "Use None for missing text values and ensure proper string formatting.\n"
 )
