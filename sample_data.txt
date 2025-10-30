@@ -1,94 +1,95 @@
-prompt = (
-    "You will receive a text containing various healthcare services levels and types, including Skilled Nursing Facility Levels 1-4, covered services and Inpatient/Outpatient services. "
-    "If there are multiple providers in the document (provider name, effective date, NPI, tax ID), add only the first occurrence. For each service, extract the following fields:\n\n"
+You will receive a text containing various healthcare services levels and types, including "Skilled Nursing Facility Levels 1-4", "covered services", and "Inpatient/Outpatient services." If multiple PROVIDER_NAME, EFFECTIVE_FROM_DATE, NPI, or TAX_ID values occur in the document, add only the first occurrence for every record.
 
-    "PROVIDER NAME: the name of the provider\n"
-    "EFFECTIVE FROM DATE: the effective date of the document or coverage\n"
-    "NPI: the provider's NPI identification number\n"
-    "TAX ID: the provider's tax identification number\n\n"
+Scan all narrative text and tables for any service mention matching or including:
+- "Covered Services rendered"
+- "Covered Services not listed"
+- "Covered Services provided"
+- or similar phrases, including reimbursement percentages, codes, and methodologies.
 
-    "SERVICE EXTRACTION RULES:\n"
-    "Extract ANY service mention from narrative text, sentences, paragraphs, or tables that includes at least one of the following:\n"
-    "- A reimbursement rate (percentage)\n"
-    "- A reimbursement amount (dollar value)\n"
-    "- A code (revenue code, fee schedule code, CPT, HCPCS, DRG, etc.)\n\n"
-    
-    "Service mentions may include but are not limited to:\n"
-    "- 'Covered Services rendered', 'Covered Services not listed', 'Covered Services provided'\n"
-    "- Specific service levels (e.g., 'Level 1', 'SNF Level 2', 'SNF Level 3')\n"
-    "- Service categories (e.g., 'Drugs & Biologicals', 'All other services', 'Ancillary services')\n"
-    "- Time-based services (e.g., 'Long term care days', 'Home leave days', 'Hospital leave days')\n"
-    "- Specialty services (e.g., 'Physical Therapy', 'Occupational Therapy', 'Speech Therapy')\n"
-    "- Per diem services, per visit services, or any other reimbursement-based service descriptions\n"
-    "- Services covered outside of Per Diem or bundled payment arrangements\n\n"
+For each service mention, extract and structure a record with the following fields:
 
-    "Sample extraction scenarios:\n"
-    "(1) Narrative text with embedded service and rate:\n"
-    "Provider agrees to accept as payment in full from Humana for Covered Services rendered to Members, sixty-five percent (65%) of Humana's (005-335) fee schedule, or Provider's billed charges, whichever is less, less any Copayments due from Members.\n"
-    "Extract: SERVICE: 'Covered Services rendered', CODE: '005-335', REIMBURSEMENT RATE: '65%', REIMBURSEMENT METHODOLOGY: 'Fee schedule'\n\n"
+- PROVIDER_NAME: provider's name (first occurrence in document)
+- EFFECTIVE_FROM_DATE: effective date (first occurrence)
+- NPI: provider NPI number (first occurrence)
+- TAX_ID: provider tax id (first occurrence)
 
-    "(2) Services without explicit list:\n"
-    "For any Covered Services not listed in Humana's (005-270) Fee Schedule, Provider agrees to accept as payment in full, fifty-eight percent (58%) of Provider's usual and customary charges, less any Copayment due from Member.\n"
-    "Extract: SERVICE: 'Covered Services not listed', CODE: '005-270', REIMBURSEMENT RATE: '58%', REIMBURSEMENT METHODOLOGY: 'Fee schedule'\n\n"
+For each service, table, or narrative, extract (where present):
 
-    "(3) Table format - Medicaid or Medicare Dual Eligible:\n"
-    "Extract the entire table below any section heading containing 'Medicaid', 'Medicare Dual Eligible', or similar terms.\n"
-    "Revenue Code | Reimbursement Method | Reimbursement\n"
-    "101 | Long-Term Care Days | 100% Medicaid Allowable\n"
-    "182 | Home leave Days (Therapeutic leave days) | 100% Medicaid Allowable\n"
-    "185 | Hospital leave Days | 100% Medicaid Allowable\n"
-    "Extract each row with: SERVICE (from reimbursement method), CODE (from revenue code), REIMBURSEMENT RATE: '100%', REIMBURSEMENT METHODOLOGY: 'Medicaid Allowable'\n\n"
+- SERVICE_TYPE: e.g., 'inpatient', 'outpatient', 'inpatient services', 'outpatient services'. If "inpatient part B" appears, set as "outpatient".
+- SERVICE_DESC: any paragraph, row, or description below the service or associated with that service
+- SERVICES: service levels, categories, or named service groupings (examples: 'Level 1', 'Level 2', 'Drugs & Biologicals', 'Covered Services rendered', 'Long term care days', 'SNF Level Services', etc.)
+- REIMBURSEMENT_AMT: reimbursement in dollars (integer/string, e.g. "$2000"); otherwise blank
+- REIMBURSEMENT_RATE: reimbursement percent (string, e.g. "65%")
+- REIMBURSEMENT_METHODOLOGY: e.g. 'Per Diem', 'fee schedule', 'per procedure', 'Medicare allowable', etc. If "fee schedule" is mentioned, append its name/method.
+- CODES: revenue code, fee schedule code, or any relevant code (only the actual code values, not strings)
+- REVENUE_CD_IND: 1 if revenue code present, else 0
+- DRG_CD_IND: 1 if MS-DRG code present, else 0
+- CPT_IND: 1 if CPT code present, else 0
+- HCPCS_IND: 1 if HCPCS code present, else 0
+- ICD_CD_IND: 1 if ICD code present, else 0
+- DIAGNOSIS_CD_IND: 1 if diagnosis code present, else 0
+- MODIFIER_CD_IND: 1 if modifier code present, else 0
+- LOB_IND: comma-separated lines of business ("Medicare", "Medicaid", "Commercial") present below skilled nursing or in table
+- CASE_RATE: any mention of case rate with a duration, e.g. 'case rate for 30 days'; else blank
+- GROUPER_IND: 1 if word 'grouper' present, else 0
+- GROUPER: the value of any "grouper" column or mention, else blank
+- APC_IND: 1 if 'APC' found, else 0
+- EXCLUSION_IND: 1 if record relates to an exclusion, else 0
+- MSR_IND: 1 if "Multiple Surgery Logic" mentioned, else 0
+- BILETRAL_PROCEDURE_IND: 1 if "biletral procedures" in context, else 0
+- EXCLUDE_FROM_TRANSFER_IND: 1 if a heading or section named "transfer" is present, else 0
+- TRANSFER_CALCULATION: any "TRANSFER" calculation logic detailed in text
+- EXCLUDE_FROM_STOPLOSS_IND: 1 if "stop loss threshold" found, else 0
+- METHOD_OF_PAYMENT: code string as found (e.g. 'no1', 'po3'). Do NOT paraphrase or alter.
+- HEALTH_BENEFIT_PLANS: value as found in table (or blank)
+- ADDITIONAL_NOTES: any extra notes relating to this row, exception wording, limitations, or context from the extraction
+- AGE_GROUP: 1 if "Age group" appears anywhere in service-related text/table, else 0
+- PROVIDER_SPECIALITY: 1 if "provider speciality" appears in heading or record, else 0
+- OTHER_FLAT_FEE: 1 if "flat fee" mentioned, else 0
+- SURG_FLAT_FEE: 1 if "flat surg fee" or "surgical fee" mentions found, else 0
 
-    "(4) Table format - Skilled Nursing Facility Services:\n"
-    "Extract the entire table below section headings like 'Skilled Nursing Facility Services Reimbursement', 'SNF Services', or similar.\n"
-    "Revenue Code | Reimbursement Method | Reimbursement\n"
-    "191 | Per Diem | 100% Medicaid Facility\n"
-    "421 | Per Diem | $65.00 per PT discipline per day\n"
-    "431 | Per Diem | $65.00 per OT discipline per day\n"
-    "441 | Per Diem | $65.00 per ST discipline per day\n"
-    "Extract each row with: SERVICE (from reimbursement method or section heading), CODE (from revenue code), REIMBURSEMENT AMOUNT: '$65.00', REIMBURSEMENT RATE: '100%', REIMBURSEMENT METHODOLOGY: 'Per Diem'\n\n"
+Sample output for a Python DataFrame—return **only** the code:
 
-    "(5) Any other service with code, rate, or amount:\n"
-    "If text mentions any service type along with a code identifier, percentage rate, or dollar amount, extract it.\n"
-    "Examples: 'Ancillary services at 80% of (123-456) fee schedule', 'Level 3 SNF services $250 per day', 'Outpatient procedures 75% of billed charges'\n\n"
+combined_data = [
+    {
+        "PROVIDER_NAME": "",
+        "NPI": "",
+        "TAX_ID": "",
+        "EFFECTIVE_FROM_DATE": "",
+        "EFFECTIVE_TO_DATE": "",
+        "LOB_IND": "",
+        "SERVICE_TYPE": "",
+        "SERVICE_DESC": "",
+        "SERVICES": "",
+        "AGE_GROUP": 0,
+        "CODES": "",
+        "GROUPER": "",
+        "CASE_RATE": "",
+        "REVENUE_CD_IND": 0,
+        "DRG_CD_IND": 0,
+        "CPT_IND": 0,
+        "HCPCS_IND": 0,
+        "ICD_CD_IND": 0,
+        "DIAGNOSIS_CD_IND": 0,
+        "MODIFIER_CD_IND": 0,
+        "GROUPER_IND": 0,
+        "APC_IND": 0,
+        "EXCLUSION_IND": 0,
+        "MSR_IND": 0,
+        "BILETRAL_PROCEDURE_IND": 0,
+        "EXCLUDE_FROM_TRANSFER_IND": 0,
+        "TRANSFER_CALCULATION": "",
+        "EXCLUDE_FROM_STOPLOSS_IND": 0,
+        "REIMBURSEMENT_AMT": "",
+        "REIMBURSEMENT_RATE": "",
+        "REIMBURSEMENT_METHODOLOGY": "",
+        "METHOD_OF_PAYMENT": "",
+        "HEALTH_BENEFIT_PLANS": "",
+        "ADDITIONAL_NOTES": "",
+        "PROVIDER_SPECIALITY": 0,
+        "OTHER_FLAT_FEE": 0,
+        "SURG_FLAT_FEE": 0
+    }
+]
 
-    "For each service extracted, capture the following fields:\n"
-    "SERVICE TYPE: the category or type of service (e.g., 'inpatient', 'outpatient'); if it's inpatient part B then mark as outpatient\n"
-    "REIMBURSEMENT AMT: reimbursement value in dollars (integer) if available, or reimbursement rate as a percentage string\n"
-    "REIMBURSEMENT RATE: reimbursement rate as a percentage string if available (include only the rate)\n"
-    "SERVICE DESC: detailed descriptions related to each service level\n"
-    "CODES: revenue code string, fee schedule string, or any numeric/alphanumeric code extracted from the fee schedule (include only codes, not descriptions)\n"
-    "REVENUE CD IND: 1 if text contains revenue code, else 0\n"
-    "DRG_CD_IND: 1 if text contains MS-DRG code, else 0\n"
-    "CPT_IND: 1 if text contains CPT code, else 0\n"
-    "HCPCS_IND: 1 if text contains HCPCS code, else 0\n"
-    "ICD_CD_IND: 1 if text contains ICD code, else 0\n"
-    "DIAGNOSIS_CD_IND: 1 if text contains Diagnosis code, else 0\n"
-    "MODIFIER_CD_IND: 1 if text contains Modifier code, else 0\n"
-    "LOB IND: extract line of business ('Medicare', 'Medicaid', 'Commercial'); if multiple, list all comma-separated\n"
-    "REIMBURSEMENT METHODOLOGY: one of ['Per Diem', 'Per procedure', 'Per visit', 'Per case', 'Percent of charge', 'Medicare allowable amount', 'Fee schedule', 'Percent of line charge', 'POC']\n"
-    "METHOD OF PAYMENT: the code string (e.g., 'no1', 'po3') exactly as found in text\n\n"
-
-    "MOP Code Explanation Table:\n"
-    "no1: the allowed amount is the contracted rate, regardless of the charge\n"
-    "no2: the allowed amount is the lesser of the contracted rate or the percent of total eligible billed charges\n"
-    "po3: the allowed amount is either the contracted rate or greater of percent of total eligible billed charges\n"
-    "no4: the allowed amount is either the contracted rate or total eligible billed charges, whichever is greater\n\n"
-
-    "AGE GROUP: 1 if the phrase 'Age group' appears anywhere in the text, else 0\n"
-    "GROUPER IND: 1 if 'grouper' appears anywhere, else 0\n"
-    "GROUPER: extract grouper details if present\n"
-    "APC IND: 1 if 'APC' appears anywhere, else 0\n"
-    "MSR IND: 1 if 'Multiple Surgery Logic' appears anywhere, else 0\n"
-    "BILATERAL PROCEDURE IND: 1 if 'bilateral procedures' appears anywhere, else 0\n"
-    "PROVIDER SPECIALITY: 1 if 'provider specialty' appears anywhere, else 0\n"
-    "EXCLUDE FROM TRANSFER IND: 1 if 'transfer' appears in the section, else 0\n"
-    "TRANSFER CALCULATION: extract formula text if 'transfer' or similar calculation terms appear (e.g., 'DRG Payment/Arithmetic LOS x inpatient days')\n"
-    "EXCLUDE FROM STOPLOSS IND: 1 if 'stop loss threshold' appears, else 0\n"
-    "OTHER FLAT FEE: 1 if 'flat fee' appears, else 0\n"
-    "SURG FLAT FEE: 1 if 'flat surgical fee' or 'surgical fee' appears, else 0\n"
-    "CASE RATE: extract any text mentioning 'case rate' with duration in days if present\n"
-    "HEALTH BENEFIT PLANS: extract any health benefit plan information present in tables\n\n"
-
-    "Output only valid Python code assigning a single list of dictionaries to the variable 'combined_data'."
-)
+Return only syntactically-valid Python code assigning a fully populated list of dictionaries to the variable combined_data, so it can be directly loaded as a pandas DataFrame.
