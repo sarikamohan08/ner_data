@@ -1,95 +1,80 @@
-You will receive a text containing various healthcare services levels and types, including "Skilled Nursing Facility Levels 1-4", "covered services", and "Inpatient/Outpatient services." If multiple PROVIDER_NAME, EFFECTIVE_FROM_DATE, NPI, or TAX_ID values occur in the document, add only the first occurrence for every record.
+"""
+You will receive contract text containing various healthcare service levels and types, including Skilled Nursing Facility Levels 1-4, Covered Services, and Inpatient/Outpatient services.
 
-Scan all narrative text and tables for any service mention matching or including:
-- "Covered Services rendered"
-- "Covered Services not listed"
-- "Covered Services provided"
-- or similar phrases, including reimbursement percentages, codes, and methodologies.
+Instructions:
+- Extract **each occurrence** of services matching “Covered Services rendered”, “Covered Services not listed”, “Covered Services provided”, or similar phrases as **separate records**.
+- For these multiple service records in the same document, **attach the first instance** of PROVIDER_NAME, EFFECTIVE_FROM_DATE, NPI, and TAX_ID found anywhere in the document to each record.
+- Do not limit extraction to one record per document; each matched mention—within narrative text, tables, or paragraphs—should produce its own dictionary in combined_data.
+- Parse narrative and tabular sections for reimbursement codes, amounts, rates, methodologies, and any related context.
 
-For each service mention, extract and structure a record with the following fields:
+Field extraction rules:
+- PROVIDER_NAME: First occurrence in document
+- EFFECTIVE_FROM_DATE: First occurrence in document
+- NPI: First occurrence in document
+- TAX_ID: First occurrence in document
+- SERVICE_TYPE: e.g. inpatient, outpatient; if “inpatient part B” appears, set as “outpatient”
+- SERVICE_DESC: description below or related to service mentioned
+- SERVICES: service levels, categories, or named groupings (e.g., Level 1, Drugs & Biologicals, Covered Services rendered, Long term care days, SNF Level services)
+- REIMBURSEMENT_AMT: reimbursement in dollars (string or integer), else empty
+- REIMBURSEMENT_RATE: reimbursement percentage string
+- REIMBURSEMENT_METHODOLOGY: e.g. Per Diem, fee schedule (append full fee schedule name if present)
+- CODES: revenue code, fee schedule code, or any relevant numeric/alphanumeric code (only codes, no strings)
+- REVENUE_CD_IND: 1 if revenue code found, else 0
+- DRG_CD_IND, CPT_IND, HCPCS_IND, ICD_CD_IND, DIAGNOSIS_CD_IND, MODIFIER_CD_IND: 1 if found, else 0
+- LOB_IND: comma-separated lines of business (Medicare, Medicaid, Commercial) from context
+- CASE_RATE: any mention of case rate with duration, else empty
+- GROUPER_IND: 1 if 'grouper' mentioned, else 0
+- GROUPER: grouper value found, else empty
+- APC_IND, EXCLUSION_IND, MSR_IND, BILETRAL_PROCEDURE_IND, EXCLUDE_FROM_TRANSFER_IND, EXCLUDE_FROM_STOPLOSS_IND: 1 if present, else 0
+- TRANSFER_CALCULATION: text related to transfer payment calculation if found, else empty
+- METHOD_OF_PAYMENT: exact code strings as found (no paraphrasing)
+- HEALTH_BENEFIT_PLANS: plan names from tables or text, else empty
+- ADDITIONAL_NOTES: notes, exceptions, or extra context
+- AGE_GROUP, PROVIDER_SPECIALITY, OTHER_FLAT_FEE, SURG_FLAT_FEE: 1 if mentioned, else 0
 
-- PROVIDER_NAME: provider's name (first occurrence in document)
-- EFFECTIVE_FROM_DATE: effective date (first occurrence)
-- NPI: provider NPI number (first occurrence)
-- TAX_ID: provider tax id (first occurrence)
+Output only valid Python code assigning a fully populated list of dictionaries to the variable `combined_data`, ready for loading directly into a pandas DataFrame.
 
-For each service, table, or narrative, extract (where present):
-
-- SERVICE_TYPE: e.g., 'inpatient', 'outpatient', 'inpatient services', 'outpatient services'. If "inpatient part B" appears, set as "outpatient".
-- SERVICE_DESC: any paragraph, row, or description below the service or associated with that service
-- SERVICES: service levels, categories, or named service groupings (examples: 'Level 1', 'Level 2', 'Drugs & Biologicals', 'Covered Services rendered', 'Long term care days', 'SNF Level Services', etc.)
-- REIMBURSEMENT_AMT: reimbursement in dollars (integer/string, e.g. "$2000"); otherwise blank
-- REIMBURSEMENT_RATE: reimbursement percent (string, e.g. "65%")
-- REIMBURSEMENT_METHODOLOGY: e.g. 'Per Diem', 'fee schedule', 'per procedure', 'Medicare allowable', etc. If "fee schedule" is mentioned, append its name/method.
-- CODES: revenue code, fee schedule code, or any relevant code (only the actual code values, not strings)
-- REVENUE_CD_IND: 1 if revenue code present, else 0
-- DRG_CD_IND: 1 if MS-DRG code present, else 0
-- CPT_IND: 1 if CPT code present, else 0
-- HCPCS_IND: 1 if HCPCS code present, else 0
-- ICD_CD_IND: 1 if ICD code present, else 0
-- DIAGNOSIS_CD_IND: 1 if diagnosis code present, else 0
-- MODIFIER_CD_IND: 1 if modifier code present, else 0
-- LOB_IND: comma-separated lines of business ("Medicare", "Medicaid", "Commercial") present below skilled nursing or in table
-- CASE_RATE: any mention of case rate with a duration, e.g. 'case rate for 30 days'; else blank
-- GROUPER_IND: 1 if word 'grouper' present, else 0
-- GROUPER: the value of any "grouper" column or mention, else blank
-- APC_IND: 1 if 'APC' found, else 0
-- EXCLUSION_IND: 1 if record relates to an exclusion, else 0
-- MSR_IND: 1 if "Multiple Surgery Logic" mentioned, else 0
-- BILETRAL_PROCEDURE_IND: 1 if "biletral procedures" in context, else 0
-- EXCLUDE_FROM_TRANSFER_IND: 1 if a heading or section named "transfer" is present, else 0
-- TRANSFER_CALCULATION: any "TRANSFER" calculation logic detailed in text
-- EXCLUDE_FROM_STOPLOSS_IND: 1 if "stop loss threshold" found, else 0
-- METHOD_OF_PAYMENT: code string as found (e.g. 'no1', 'po3'). Do NOT paraphrase or alter.
-- HEALTH_BENEFIT_PLANS: value as found in table (or blank)
-- ADDITIONAL_NOTES: any extra notes relating to this row, exception wording, limitations, or context from the extraction
-- AGE_GROUP: 1 if "Age group" appears anywhere in service-related text/table, else 0
-- PROVIDER_SPECIALITY: 1 if "provider speciality" appears in heading or record, else 0
-- OTHER_FLAT_FEE: 1 if "flat fee" mentioned, else 0
-- SURG_FLAT_FEE: 1 if "flat surg fee" or "surgical fee" mentions found, else 0
-
-Sample output for a Python DataFrame—return **only** the code:
-
+Example output:
 combined_data = [
-    {
-        "PROVIDER_NAME": "",
-        "NPI": "",
-        "TAX_ID": "",
-        "EFFECTIVE_FROM_DATE": "",
-        "EFFECTIVE_TO_DATE": "",
-        "LOB_IND": "",
-        "SERVICE_TYPE": "",
-        "SERVICE_DESC": "",
-        "SERVICES": "",
-        "AGE_GROUP": 0,
-        "CODES": "",
-        "GROUPER": "",
-        "CASE_RATE": "",
-        "REVENUE_CD_IND": 0,
-        "DRG_CD_IND": 0,
-        "CPT_IND": 0,
-        "HCPCS_IND": 0,
-        "ICD_CD_IND": 0,
-        "DIAGNOSIS_CD_IND": 0,
-        "MODIFIER_CD_IND": 0,
-        "GROUPER_IND": 0,
-        "APC_IND": 0,
-        "EXCLUSION_IND": 0,
-        "MSR_IND": 0,
-        "BILETRAL_PROCEDURE_IND": 0,
-        "EXCLUDE_FROM_TRANSFER_IND": 0,
-        "TRANSFER_CALCULATION": "",
-        "EXCLUDE_FROM_STOPLOSS_IND": 0,
-        "REIMBURSEMENT_AMT": "",
-        "REIMBURSEMENT_RATE": "",
-        "REIMBURSEMENT_METHODOLOGY": "",
-        "METHOD_OF_PAYMENT": "",
-        "HEALTH_BENEFIT_PLANS": "",
-        "ADDITIONAL_NOTES": "",
-        "PROVIDER_SPECIALITY": 0,
-        "OTHER_FLAT_FEE": 0,
-        "SURG_FLAT_FEE": 0
-    }
+  {
+    "PROVIDER_NAME": "Smith Hospital",
+    "NPI": "1234567890",
+    "TAX_ID": "12-3456789",
+    "EFFECTIVE_FROM_DATE": "2025-01-01",
+    "EFFECTIVE_TO_DATE": "",
+    "LOB_IND": "Medicare,Commercial",
+    "SERVICE_TYPE": "Outpatient",
+    "SERVICE_DESC": "SNF Level 1 services description here",
+    "SERVICES": "SNF Level 1",
+    "AGE_GROUP": 0,
+    "CODES": "805-335",
+    "GROUPER": "",
+    "CASE_RATE": "",
+    "REVENUE_CD_IND": 1,
+    "DRG_CD_IND": 0,
+    "CPT_IND": 1,
+    "HCPCS_IND": 0,
+    "ICD_CD_IND": 0,
+    "DIAGNOSIS_CD_IND": 0,
+    "MODIFIER_CD_IND": 0,
+    "GROUPER_IND": 0,
+    "APC_IND": 0,
+    "EXCLUSION_IND": 0,
+    "MSR_IND": 0,
+    "BILETRAL_PROCEDURE_IND": 0,
+    "EXCLUDE_FROM_TRANSFER_IND": 0,
+    "TRANSFER_CALCULATION": "",
+    "EXCLUDE_FROM_STOPLOSS_IND": 0,
+    "REIMBURSEMENT_AMT": "$2000",
+    "REIMBURSEMENT_RATE": "65%",
+    "REIMBURSEMENT_METHODOLOGY": "Fee schedule – Medicare Based",
+    "METHOD_OF_PAYMENT": "no1",
+    "HEALTH_BENEFIT_PLANS": "HMO",
+    "ADDITIONAL_NOTES": "Apply copayment where noted",
+    "PROVIDER_SPECIALITY": 0,
+    "OTHER_FLAT_FEE": 0,
+    "SURG_FLAT_FEE": 0
+  },
+  # More records for each covered service occurrence...
 ]
-
-Return only syntactically-valid Python code assigning a fully populated list of dictionaries to the variable combined_data, so it can be directly loaded as a pandas DataFrame.
+"""
