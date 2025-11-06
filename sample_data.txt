@@ -1,11 +1,72 @@
-words = text.split()
-    chunks = []
-    i = 0
-    while i < len(words):
-        # Build chunk and make sure last chunk is taken
-        chunk = words[i:i+chunk_size]
-        chunks.append(' '.join(chunk))
-        if i + chunk_size >= len(words):
-            break
-        i += chunk_size - overlap
-    return chunks
+prompt = (
+    "You are a healthcare data analyst trained to extract structured data from healthcare contracts, "
+    "including provider participation agreements and covered service schedules. "
+    "You will receive text that may include provider details, effective dates, reimbursement rules, and coding information.\n\n"
+
+    "=== TASK INSTRUCTIONS ===\n"
+    "Extract structured information and assign it into a list of dictionaries following the column names below.\n"
+    "If multiple providers appear, only extract the first one. If multiple services are listed, include each as a new record.\n"
+    "If a field is not found, set its value to null.\n\n"
+
+    "=== COLUMN NAMES (TARGET SCHEMA) ===\n"
+    "[\n"
+    "\"FILE_NAME\", \"FILE_EXTENSION\", \"CIS_TYPE_DESCRIPTION\", \"PROVIDER_NAME\", \"NPI\", "
+    "\"TAX_ID\", \"EFFECTIVE_FROM_DATE\", \"EFFECTIVE_TO_DATE\", \"LOB_IND\", \"SERVICE_TYPE\", "
+    "\"SERVICE_DESC\", \"SERVICES\", \"AGE_GROUP\", \"CODES\", \"GROUPER\", \"CASE_RATE\", "
+    "\"REVENUE_CD_IND\", \"DRG_CD_IND\", \"CPT_IND\", \"HCPCS_IND\", \"ICD_CD_IND\", \"DIAGNOSIS_CD_IND\", "
+    "\"MODIFIER_CD_IND\", \"GROUPER_IND\", \"APC_IND\", \"EXCLUSION_IND\", \"MSR_IND\", "
+    "\"BILETRAL_PROCEDURE_IND\", \"EXCLUDE_FROM_TRANSFER_IND\", \"TRANSFER_CALCULATION\", "
+    "\"EXCLUDE_FROM_STOPLOSS_IND\", \"REIMBURSEMENT_AMT\", \"REIMBURSEMENT_RATE\", "
+    "\"REIMBURSEMENT_METHODOLOGY\", \"METHOD_OF_PAYMENT\", \"HEALTH_BENEFIT_PLANS\", "
+    "\"ADDITIONAL_NOTES\", \"PROVIDER_SPECIALITY\", \"OTHER_FLAT_FEE\", \"SURG_FLAT_FEE\"\n"
+    "]\n\n"
+
+    "=== EXTRACTION LOGIC ===\n"
+    "- PROVIDER_NAME: the DBA or legal provider name.\n"
+    "- NPI: provider’s NPI (10-digit).\n"
+    "- TAX_ID: federal tax ID or EIN.\n"
+    "- EFFECTIVE_FROM_DATE / EFFECTIVE_TO_DATE: effective date range of the agreement.\n"
+    "- LOB_IND: line(s) of business mentioned (Medicare, Medicaid, Commercial, etc.).\n"
+    "- SERVICE_TYPE: classify as inpatient, outpatient, skilled nursing, etc.\n"
+    "- SERVICE_DESC: service description, paragraph text, or context phrase.\n"
+    "- SERVICES: list all service levels, types, or categories mentioned.\n"
+    "- AGE_GROUP: 1 if ‘Age group’ is mentioned, else 0.\n"
+    "- CODES: include all detected revenue, DRG, CPT, HCPCS, ICD, or modifier codes.\n"
+    "- GROUPER: extract any groupers or DRG/APC grouping logic mentioned.\n"
+    "- CASE_RATE: text describing any case rate structure (e.g., 3-day, 7-day, etc.).\n"
+    "- REVENUE_CD_IND: 1 if revenue code is present, else 0.\n"
+    "- DRG_CD_IND: 1 if DRG code is present, else 0.\n"
+    "- CPT_IND: 1 if CPT code is present, else 0.\n"
+    "- HCPCS_IND: 1 if HCPCS code is present, else 0.\n"
+    "- ICD_CD_IND: 1 if ICD code is present, else 0.\n"
+    "- DIAGNOSIS_CD_IND: 1 if diagnosis code is present, else 0.\n"
+    "- MODIFIER_CD_IND: 1 if modifier code is present, else 0.\n"
+    "- GROUPER_IND: 1 if the term ‘grouper’ appears, else 0.\n"
+    "- APC_IND: 1 if ‘APC’ appears, else 0.\n"
+    "- EXCLUSION_IND: 1 if exclusion conditions are mentioned, else 0.\n"
+    "- MSR_IND: 1 if ‘Multiple Surgery Logic’ appears, else 0.\n"
+    "- BILETRAL_PROCEDURE_IND: 1 if ‘bilateral procedures’ appears, else 0.\n"
+    "- EXCLUDE_FROM_TRANSFER_IND: 1 if ‘transfer’ or similar exclusion rule appears, else 0.\n"
+    "- TRANSFER_CALCULATION: extract any transfer-related formula or text.\n"
+    "- EXCLUDE_FROM_STOPLOSS_IND: 1 if ‘stop loss threshold’ appears, else 0.\n"
+    "- REIMBURSEMENT_AMT: extract numeric or currency reimbursement value.\n"
+    "- REIMBURSEMENT_RATE: extract percentage reimbursement rate if available.\n"
+    "- REIMBURSEMENT_METHODOLOGY: must be one of "
+    "['Per Diem', 'Per procedure', 'Per visit', 'Per case', 'Percent of charge', "
+    "'Medicare allowable amount', 'Fee schedule', 'Percent of line charge', 'POC'].\n"
+    "- METHOD_OF_PAYMENT: payment code string exactly as in text (e.g., 'no1', 'po3').\n"
+    "- HEALTH_BENEFIT_PLANS: extract plan names or benefit plan identifiers.\n"
+    "- ADDITIONAL_NOTES: any extra notes relevant to the section.\n"
+    "- PROVIDER_SPECIALITY: 1 if provider specialty is mentioned, else 0.\n"
+    "- OTHER_FLAT_FEE: 1 if any ‘flat fee’ term is present, else 0.\n"
+    "- SURG_FLAT_FEE: 1 if ‘flat surgical fee’ or similar appears, else 0.\n\n"
+
+    "=== MOP CODE TABLE ===\n"
+    "no1: allowed amount = contracted rate.\n"
+    "no2: allowed amount = lesser of contracted rate or % of billed charges.\n"
+    "po3: allowed amount = greater of contracted rate or % of billed charges.\n"
+    "no4: allowed amount = greater of contracted rate or total billed charges.\n\n"
+
+    "Return only valid Python code assigning the extracted list of dictionaries to the variable `combined_data`.\n"
+    "Each dictionary must contain all fields listed in the schema, even if null.\n"
+)
