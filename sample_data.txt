@@ -1,25 +1,37 @@
-# LangChain extraction example that uses your exact prompt.
-# Purpose: send the prompt to the LLM, validate structured output with a Pydantic schema,
-# and assign the final list-of-dicts to the variable `combined_data`.
-#
-# Requirements:
-#   pip install langchain openai pydantic
-# Set your OpenAI API key in the environment: export OPENAI_API_KEY="sk-..."
-#
-# NOTE: this script expects to run with LangChain >=0.0.x APIs that provide:
-#   - langchain.OpenAI
-#   - langchain.PromptTemplate
-#   - langchain.LLMChain
-#   - langchain.output_parsers.PydanticOutputParser
-# Adapt imports if your LangChain version differs.
+"""
+Requirements:
+  pip install openai pydantic pandas
 
+Set your OpenAI API key in the environment:
+  export OPENAI_API_KEY="sk-..."
+
+Usage:
+  python extract_contracts_no_langchain.py
+"""
+
+import os
+import json
+import time
 from typing import List, Optional
-from pydantic import BaseModel
-from langchain import OpenAI, LLMChain, PromptTemplate
-from langchain.output_parsers import PydanticOutputParser
+from pydantic import BaseModel, ValidationError
+import pandas as pd
+
+# Use the new OpenAI Python client if available; fallback to `openai` package style if needed.
+try:
+    # New (recommended) client
+    from openai import OpenAI
+    client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+    def chat_completion_call(messages, model="gpt-4", temperature=0.0, max_tokens=4000):
+        return client.chat.completions.create(model=model, messages=messages, temperature=temperature, max_tokens=max_tokens)
+except Exception:
+    # Fallback to legacy openai package
+    import openai
+    openai.api_key = os.environ.get("OPENAI_API_KEY")
+    def chat_completion_call(messages, model="gpt-4", temperature=0.0, max_tokens=4000):
+        return openai.ChatCompletion.create(model=model, messages=messages, temperature=temperature, max_tokens=max_tokens)
 
 # ---------------------------
-# 1) Define Pydantic models
+# 1) Pydantic schema matching your target columns
 # ---------------------------
 class RowModel(BaseModel):
     FILE_NAME: Optional[str] = None
@@ -63,13 +75,14 @@ class RowModel(BaseModel):
     OTHER_FLAT_FEE: Optional[int] = None
     SURG_FLAT_FEE: Optional[int] = None
 
-class ExtractionModel(BaseModel):
-    combined_data: List[RowModel]
+# Helper - full list of keys for coverage/ordering
+SCHEMA_KEYS = list(RowModel.__fields__.keys())
 
 # ---------------------------
-# 2) Your prompt (exact)
+# 2) The prompt (your exact text) but instructing the model to return JSON only.
+# We ask the model to return an array of objects (JSON) with keys matching the schema.
 # ---------------------------
-user_prompt = (
+base_user_prompt = (
     "You are a healthcare data analyst trained to extract structured data from healthcare contracts, "
     "including provider participation agreements and covered service schedules. "
     "You will receive text that may include provider details, effective dates, reimbursement rules, and coding information.\n\n"
@@ -80,17 +93,7 @@ user_prompt = (
     "If a field is not found, set its value to null.\n\n"
 
     "=== COLUMN NAMES (TARGET SCHEMA) ===\n"
-    "[\n"
-    "\"FILE_NAME\", \"FILE_EXTENSION\", \"CIS_TYPE_DESCRIPTION\", \"PROVIDER_NAME\", \"NPI\", "
-    "\"TAX_ID\", \"EFFECTIVE_FROM_DATE\", \"EFFECTIVE_TO_DATE\", \"LOB_IND\", \"SERVICE_TYPE\", "
-    "\"SERVICE_DESC\", \"SERVICES\", \"AGE_GROUP\", \"CODES\", \"GROUPER\", \"CASE_RATE\", "
-    "\"REVENUE_CD_IND\", \"DRG_CD_IND\", \"CPT_IND\", \"HCPCS_IND\", \"ICD_CD_IND\", \"DIAGNOSIS_CD_IND\", "
-    "\"MODIFIER_CD_IND\", \"GROUPER_IND\", \"APC_IND\", \"EXCLUSION_IND\", \"MSR_IND\", "
-    "\"BILETRAL_PROCEDURE_IND\", \"EXCLUDE_FROM_TRANSFER_IND\", \"TRANSFER_CALCULATION\", "
-    "\"EXCLUDE_FROM_STOPLOSS_IND\", \"REIMBURSEMENT_AMT\", \"REIMBURSEMENT_RATE\", "
-    "\"REIMBURSEMENT_METHODOLOGY\", \"METHOD_OF_PAYMENT\", \"HEALTH_BENEFIT_PLANS\", "
-    "\"ADDITIONAL_NOTES\", \"PROVIDER_SPECIALITY\", \"OTHER_FLAT_FEE\", \"SURG_FLAT_FEE\"\n"
-    "]\n\n"
+    f"{json.dumps(SCHEMA_KEYS, indent=2)}\n\n"
 
     "=== EXTRACTION LOGIC ===\n"
     "- PROVIDER_NAME: the DBA or legal provider name.\n"
@@ -138,62 +141,145 @@ user_prompt = (
     "po3: allowed amount = greater of contracted rate or % of billed charges.\n"
     "no4: allowed amount = greater of contracted rate or total billed charges.\n\n"
 
-    "Return only valid Python code assigning the extracted list of dictionaries to the variable `combined_data`.\n"
-    "Each dictionary must contain all fields listed in the schema, even if null.\n"
+    "IMPORTANT:\n"
+    "Return ONLY a JSON array of objects. Each object must include all keys from the schema above; if a value is not found, use null.\n"
+    "Do NOT return any explanatory text or code fences. Example output (JSON):\n"
+    '[{"FILE_NAME": null, "FILE_EXTENSION": null, "CIS_TYPE_DESCRIPTION": null, ...}, { ... }]\n'
 )
 
 # ---------------------------
-# 3) Build LangChain prompt with format instructions
+# 3) Read the input document (replace path as needed)
 # ---------------------------
-parser = PydanticOutputParser(pydantic_object=ExtractionModel)
-format_instructions = parser.get_format_instructions()
-
-template = (
-    "{user_prompt}\n\n"
-    "ADDITIONAL INSTRUCTIONS FOR THE MODEL:\n"
-    "{format_instructions}\n\n"
-    "Now extract from the document below.\n\n"
-    "DOCUMENT:\n"
-    "{document}\n"
-)
-
-prompt = PromptTemplate(
-    input_variables=["user_prompt", "format_instructions", "document"],
-    template=template
-)
+INPUT_PATH = "input_document.txt"
+with open(INPUT_PATH, "r", encoding="utf-8") as fh:
+    document_text = fh.read()
 
 # ---------------------------
-# 4) Load the text you want to extract from
+# 4) Call the model, with simple retry logic
 # ---------------------------
-# Replace with how you read the file (txt, OCR output, etc.)
-with open("input_document.txt", "r", encoding="utf-8") as f:
-    document_text = f.read()
+system_message = {"role": "system", "content": "You are a deterministic data extraction assistant. Always follow instructions exactly."}
+user_message = {"role": "user", "content": base_user_prompt + "\n\nDOCUMENT:\n" + document_text}
+
+max_attempts = 3
+response_text = None
+for attempt in range(1, max_attempts + 1):
+    try:
+        resp = chat_completion_call(model="gpt-4", messages=[system_message, user_message], temperature=0.0, max_tokens=8000)
+        # adapt to response shape for both SDKs
+        if isinstance(resp, dict) and "choices" in resp:
+            content = resp["choices"][0]["message"]["content"]
+        else:
+            # new OpenAI client returns object-like with attributes
+            content = resp.choices[0].message["content"]
+        response_text = content.strip()
+        break
+    except Exception as e:
+        print(f"LLM call failed (attempt {attempt}): {e}")
+        if attempt < max_attempts:
+            time.sleep(1 + attempt * 2)
+        else:
+            raise
 
 # ---------------------------
-# 5) Run the chain (deterministic)
+# 5) Clean response: strip fences if model included them
 # ---------------------------
-llm = OpenAI(model_name="gpt-4", temperature=0.0)  # temperature=0 for deterministic extraction
-chain = LLMChain(llm=llm, prompt=prompt)
+def strip_code_fences(s: str) -> str:
+    # strip ```json ... ``` or ``` ... ```
+    if s.startswith("```"):
+        lines = s.splitlines()
+        # remove first and last fence lines if present
+        if lines[-1].strip().startswith("```"):
+            return "\n".join(lines[1:-1]).strip()
+    return s
 
-response = chain.run({
-    "user_prompt": user_prompt,
-    "format_instructions": format_instructions,
-    "document": document_text
-})
+if response_text is None:
+    raise RuntimeError("No response from LLM")
+
+cleaned = strip_code_fences(response_text)
 
 # ---------------------------
-# 6) Parse -> get typed object -> produce combined_data list-of-dicts
+# 6) Parse JSON. Model should have returned an array (list) of objects.
 # ---------------------------
-parsed: ExtractionModel = parser.parse(response)   # returns ExtractionModel instance
-combined_data = [row.dict() for row in parsed.combined_data]
+parsed_json = None
+try:
+    parsed_json = json.loads(cleaned)
+    # If the model by chance returned a dict with key 'combined_data', accept that too:
+    if isinstance(parsed_json, dict) and "combined_data" in parsed_json:
+        parsed_json = parsed_json["combined_data"]
+    if not isinstance(parsed_json, list):
+        raise ValueError("Model did not return a JSON array at top-level.")
+except Exception as e:
+    # Helpful debug info — but in production, consider fallback extraction path or retry with stricter instructions.
+    print("Failed to parse JSON from model response. Raw response:")
+    print(response_text[:2000])
+    raise
 
-# At this point `combined_data` is exactly what you requested:
-# a Python variable containing a list of dictionaries, each dictionary contains all schema fields (or null).
-# Example: print first item (if any)
+# ---------------------------
+# 7) Validate + normalize each item to ensure it has every schema key (None if missing)
+# ---------------------------
+validated_rows = []
+errors = []
+for idx, item in enumerate(parsed_json):
+    if not isinstance(item, dict):
+        errors.append((idx, "item not an object/dict"))
+        continue
+    # Ensure all keys exist; add missing keys with None
+    row_with_all_keys = {k: item.get(k, None) for k in SCHEMA_KEYS}
+    # For indicators that should be int (0/1), attempt coercion; leave as None if not parseable
+    int_fields = [
+        "AGE_GROUP", "REVENUE_CD_IND", "DRG_CD_IND", "CPT_IND", "HCPCS_IND", "ICD_CD_IND",
+        "DIAGNOSIS_CD_IND", "MODIFIER_CD_IND", "GROUPER_IND", "APC_IND", "EXCLUSION_IND",
+        "MSR_IND", "BILETRAL_PROCEDURE_IND", "EXCLUDE_FROM_TRANSFER_IND", "EXCLUDE_FROM_STOPLOSS_IND",
+        "PROVIDER_SPECIALITY", "OTHER_FLAT_FEE", "SURG_FLAT_FEE"
+    ]
+    for f in int_fields:
+        v = row_with_all_keys.get(f)
+        if v is None:
+            row_with_all_keys[f] = None
+        else:
+            try:
+                # Some models return "1" or "0" strings; coerce
+                row_with_all_keys[f] = int(v)
+            except Exception:
+                # leave as-is (will be validated by Pydantic)
+                pass
+    try:
+        validated = RowModel.parse_obj(row_with_all_keys)
+        validated_rows.append(validated)
+    except ValidationError as ve:
+        errors.append((idx, ve))
+
+if errors:
+    print("Some rows failed validation or normalization. Examples (first 5):")
+    for ex in errors[:5]:
+        print(ex)
+
+# Final combined_data: list of dicts matching your schema (all keys present)
+combined_data: List[dict] = [r.dict() for r in validated_rows]
+
+# Print summary
+print(f"Extracted {len(combined_data)} records.")
 if combined_data:
-    print("First extracted record keys:", list(combined_data[0].keys()))
-    print("First record preview:", combined_data[0])
-else:
-    print("No records extracted; combined_data is an empty list.")
+    print("First record preview (keys shown):")
+    print(list(combined_data[0].keys()))
+    print("First record values (trimmed):")
+    # show a trimmed view of values:
+    preview = {k: (v if v is None or (isinstance(v, (int,str)) and len(str(v))<200) else str(v)[:200]+"...") for k,v in combined_data[0].items()}
+    print(json.dumps(preview, indent=2))
 
-# You can now convert combined_data -> pandas.DataFrame and write to Databricks / Delta / Spark as needed.
+# ---------------------------
+# 8) OPTIONAL: convert to pandas DataFrame and / or write to Databricks / Spark
+# If you're running inside Databricks, use 'spark' available in the notebook. Example:
+#   df = pd.DataFrame(combined_data)
+#   spark_df = spark.createDataFrame(df)
+#   spark_df.write.mode("overwrite").saveAsTable("my_db.extracted_contracts")
+# Or to write as Delta outside Databricks you'll need delta-spark setup.
+# ---------------------------
+df = pd.DataFrame(combined_data)
+print("Pandas DataFrame shape:", df.shape)
+
+# Optionally save locally as CSV for quick inspection
+df.to_csv("extracted_contracts_preview.csv", index=False)
+print("Wrote extracted_contracts_preview.csv")
+
+# combined_data variable is now ready for downstream steps (Databricks write, DB insert, etc.)
