@@ -1,4 +1,75 @@
-prompt = (
+# LangChain extraction example that uses your exact prompt.
+# Purpose: send the prompt to the LLM, validate structured output with a Pydantic schema,
+# and assign the final list-of-dicts to the variable `combined_data`.
+#
+# Requirements:
+#   pip install langchain openai pydantic
+# Set your OpenAI API key in the environment: export OPENAI_API_KEY="sk-..."
+#
+# NOTE: this script expects to run with LangChain >=0.0.x APIs that provide:
+#   - langchain.OpenAI
+#   - langchain.PromptTemplate
+#   - langchain.LLMChain
+#   - langchain.output_parsers.PydanticOutputParser
+# Adapt imports if your LangChain version differs.
+
+from typing import List, Optional
+from pydantic import BaseModel
+from langchain import OpenAI, LLMChain, PromptTemplate
+from langchain.output_parsers import PydanticOutputParser
+
+# ---------------------------
+# 1) Define Pydantic models
+# ---------------------------
+class RowModel(BaseModel):
+    FILE_NAME: Optional[str] = None
+    FILE_EXTENSION: Optional[str] = None
+    CIS_TYPE_DESCRIPTION: Optional[str] = None
+    PROVIDER_NAME: Optional[str] = None
+    NPI: Optional[str] = None
+    TAX_ID: Optional[str] = None
+    EFFECTIVE_FROM_DATE: Optional[str] = None
+    EFFECTIVE_TO_DATE: Optional[str] = None
+    LOB_IND: Optional[str] = None
+    SERVICE_TYPE: Optional[str] = None
+    SERVICE_DESC: Optional[str] = None
+    SERVICES: Optional[str] = None
+    AGE_GROUP: Optional[int] = None
+    CODES: Optional[str] = None
+    GROUPER: Optional[str] = None
+    CASE_RATE: Optional[str] = None
+    REVENUE_CD_IND: Optional[int] = None
+    DRG_CD_IND: Optional[int] = None
+    CPT_IND: Optional[int] = None
+    HCPCS_IND: Optional[int] = None
+    ICD_CD_IND: Optional[int] = None
+    DIAGNOSIS_CD_IND: Optional[int] = None
+    MODIFIER_CD_IND: Optional[int] = None
+    GROUPER_IND: Optional[int] = None
+    APC_IND: Optional[int] = None
+    EXCLUSION_IND: Optional[int] = None
+    MSR_IND: Optional[int] = None
+    BILETRAL_PROCEDURE_IND: Optional[int] = None
+    EXCLUDE_FROM_TRANSFER_IND: Optional[int] = None
+    TRANSFER_CALCULATION: Optional[str] = None
+    EXCLUDE_FROM_STOPLOSS_IND: Optional[int] = None
+    REIMBURSEMENT_AMT: Optional[str] = None
+    REIMBURSEMENT_RATE: Optional[str] = None
+    REIMBURSEMENT_METHODOLOGY: Optional[str] = None
+    METHOD_OF_PAYMENT: Optional[str] = None
+    HEALTH_BENEFIT_PLANS: Optional[str] = None
+    ADDITIONAL_NOTES: Optional[str] = None
+    PROVIDER_SPECIALITY: Optional[int] = None
+    OTHER_FLAT_FEE: Optional[int] = None
+    SURG_FLAT_FEE: Optional[int] = None
+
+class ExtractionModel(BaseModel):
+    combined_data: List[RowModel]
+
+# ---------------------------
+# 2) Your prompt (exact)
+# ---------------------------
+user_prompt = (
     "You are a healthcare data analyst trained to extract structured data from healthcare contracts, "
     "including provider participation agreements and covered service schedules. "
     "You will receive text that may include provider details, effective dates, reimbursement rules, and coding information.\n\n"
@@ -70,3 +141,59 @@ prompt = (
     "Return only valid Python code assigning the extracted list of dictionaries to the variable `combined_data`.\n"
     "Each dictionary must contain all fields listed in the schema, even if null.\n"
 )
+
+# ---------------------------
+# 3) Build LangChain prompt with format instructions
+# ---------------------------
+parser = PydanticOutputParser(pydantic_object=ExtractionModel)
+format_instructions = parser.get_format_instructions()
+
+template = (
+    "{user_prompt}\n\n"
+    "ADDITIONAL INSTRUCTIONS FOR THE MODEL:\n"
+    "{format_instructions}\n\n"
+    "Now extract from the document below.\n\n"
+    "DOCUMENT:\n"
+    "{document}\n"
+)
+
+prompt = PromptTemplate(
+    input_variables=["user_prompt", "format_instructions", "document"],
+    template=template
+)
+
+# ---------------------------
+# 4) Load the text you want to extract from
+# ---------------------------
+# Replace with how you read the file (txt, OCR output, etc.)
+with open("input_document.txt", "r", encoding="utf-8") as f:
+    document_text = f.read()
+
+# ---------------------------
+# 5) Run the chain (deterministic)
+# ---------------------------
+llm = OpenAI(model_name="gpt-4", temperature=0.0)  # temperature=0 for deterministic extraction
+chain = LLMChain(llm=llm, prompt=prompt)
+
+response = chain.run({
+    "user_prompt": user_prompt,
+    "format_instructions": format_instructions,
+    "document": document_text
+})
+
+# ---------------------------
+# 6) Parse -> get typed object -> produce combined_data list-of-dicts
+# ---------------------------
+parsed: ExtractionModel = parser.parse(response)   # returns ExtractionModel instance
+combined_data = [row.dict() for row in parsed.combined_data]
+
+# At this point `combined_data` is exactly what you requested:
+# a Python variable containing a list of dictionaries, each dictionary contains all schema fields (or null).
+# Example: print first item (if any)
+if combined_data:
+    print("First extracted record keys:", list(combined_data[0].keys()))
+    print("First record preview:", combined_data[0])
+else:
+    print("No records extracted; combined_data is an empty list.")
+
+# You can now convert combined_data -> pandas.DataFrame and write to Databricks / Delta / Spark as needed.
