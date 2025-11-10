@@ -1,13 +1,54 @@
-9. **Method_of_Payment**
-   - Extract the code string (e.g., 'no2', 'po3', 'po5', 'no4', 'no1') exactly as found in the text.
-   - Do NOT paraphrase, abbreviate, or alter the explanation.
-   - Method of Payment can usually be found in a paragraph above the INPATIENT or OUTPATIENT section.
+ **Age_Group**
+- Integer indicator.
+- Set to `1` if the phrase “Age group” appears anywhere in the text or table associated with this record.
+- Else `0`.
 
-   METHOD_OF_PAYMENT Code Explanation Table:
-   no1: The allowed amount is the contracted rate, regardless of the charge.
-   no2: “The Providers billed charges whichever is less, less any co-payments, coinsurance, deductibles or other cost-share amount due from such Members.” or “lesser of billed charges”.
-   po3: The allowed amount is either the contracted rate for the entire claim or the percent of total eligible billed charges, whichever is less.
-   po5: The allowed amount is either the contracted rate for the entire claim or the percent of total eligible billed charges, whichever is greater.
-   no4: The allowed amount is either the contracted rate for the entire claim or total eligible billed charges, whichever is greater.
+9️⃣ **Grouper_Ind**
+- Integer indicator.
+- Set to `1` if the word “Grouper” appears anywhere in the record’s paragraph or table.
+- Else `0`.
 
-   - For each Inpatient or Outpatient section, assign the Method_of_Payment code that applies to that section.
+🔟 **Grouper**
+- Extract the specific “Grouper” value if mentioned in the service or table.
+  Examples: “Grouper 123”, “Grouper Code 004”, “MS-DRG Grouper 3.0”.
+- If no Grouper value found, leave blank.
+
+1️⃣1️⃣ **APC_Ind**
+- Integer indicator.
+- Set to `1` if “APC” appears anywhere in the record.
+- Else `0`.
+
+1️⃣2️⃣ **MSR_Ind (Multiple Surgery Logic)**
+- Integer indicator.
+- Set to `1` if the heading or text “Multiple Surgery Logic” appears near this service.
+- If `1`, extract all services, rates, amounts, and methodologies under that heading and include them as separate rows with MSR_Ind=1.
+- Else `0`.
+
+1️⃣3️⃣ **Bilateral_Procedure_Ind**
+- Integer indicator.
+- Set to `1` if the heading or text “Bilateral Procedures” appears near or above the service.
+- Extract all corresponding services, rates, and fee schedules under that section.
+- Else `0`.
+
+1️⃣4️⃣ **Provider_Speciality**
+- Integer indicator.
+- Set to `1` if “Provider Speciality” or “Provider Specialty” appears as a heading or phrase near this service.
+- If `1`, include all related service lines, rates, and methodology found under that heading.
+- Else `0`.
+
+===============================================================
+### EXTRACTION LOGIC & SCOPE
+===============================================================
+
+- Each service row should include **only one service** (no grouping multiple unrelated items).
+- Text relationships are local — treat nearby paragraphs, tables, or headings as part of the same record.
+- If a heading like “Bilateral Procedures”, “Multiple Surgery Logic”, or “Provider Speciality” applies to multiple rows below, assign the indicator (and shared details) to all those rows.
+
+===============================================================
+### OUTPUT RULES
+===============================================================
+
+- Output only valid JSON array — no markdown or commentary.
+- All numeric indicators must be strings: "1" or "0".
+- Missing or irrelevant fields should be empty strings "".
+- Include every row that contains any service, covered service, or reimbursement-related rate.
