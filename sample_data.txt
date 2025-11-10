@@ -1,115 +1,123 @@
-prompt = """
-You are a healthcare contract data extraction assistant specialized in payer–provider agreements.
-
-You will receive OCR text or scanned images from healthcare contracts 
-
-Your goal:
-Extract all relevant structured data into four clean pandas DataFrames — no markdown, no explanations.
-
-===============================================================
-### SECTION 1 — PROVIDER INFORMATION
-===============================================================
-Extract:
-["Provider_Name", "Effective_Date", "Termination_Date", "NPI_Number", "Tax_ID"]
-
-Guidelines:
-1. Include both Legal and DBA names if available.
-2. Convert dates to YYYY-MM-DD.
-3. One row per provider.
-4. Leave missing values blank.
-
-Example:
-   Provider_Name                                   Effective_Date  Termination_Date   NPI_Number   Tax_ID
-0  Southpoint Rehabilitation and Healthcare Center  2024-04-01      ""               1700525300  862327867
-
-
-===============================================================
-### SECTION 2 — SKILLED NURSING FACILITY (SNF) LEVEL REIMBURSEMENTS
-===============================================================
-Extract:
-["SNF_Level", "Revenue_Code", "Rate_Per_Day", "Description"]
-
-Guidelines:
-1. Identify Level 1, Level 2, Level 3, Level 4, etc.
-2. Extract revenue code, daily rate, and full text of services.
-3. Combine multi-line descriptions into one.
-4. Preserve the original wording.
-
-Example:
-   SNF_Level  Revenue_Code  Rate_Per_Day  Description
-0  Level 1    191           $395          "Room & board; 24-hour nursing; lab; radiology; therapy; wound care"
-1  Level 2    192           $465          "Telemetry; tracheostomy care; TPN; neurological rehab; wound care stage 3"
-2  Level 3    193           $640          "Ventilator care; dialysis; pulmonary rehab"
-3  Level 4    194           $740          "Extensive nursing; bariatric care; new organ transplant"
-
-
-===============================================================
-### SECTION 3 — PAYMENT TABLES (INPATIENT / OUTPATIENT)
-===============================================================
-Extract:
-["Section", "Service", "Reimbursement", "Notes"]
-
-Guidelines:
-1. Extract any reimbursement tables (Inpatient Part B, Outpatient, Drugs, Biologicals, etc.).
-2. Capture the section heading (like "Inpatient Part B").
-3. Include all rows from the table as text.
-4. Include column headers if visible.
-
-Example:
-   Section           Service              Reimbursement                           Notes
-0  Inpatient Part B  Drugs & Biologicals  100% of Humana's 201–544 fee schedule   ""
-1  Inpatient Part B  All other services   70% of Humana's 005–270 fee schedule    ""
-
-
-===============================================================
-### SECTION 4 — COVERED SERVICES METHODOLOGY
-===============================================================
-Extract:
-["Service_Type", "Rate", "Methodology"]
-
-Guidelines:
-1. Identify and extract any paragraph mentioning:
-   - "Covered Services rendered"
-   - "Covered Services provided"
-   - "Covered Services not listed"
-2. Parse the rate (e.g., “70% of Humana’s fee schedule” or “50% of Provider’s usual charges”).
-3. Extract the methodology or reference schedule (e.g., “Humana’s 005–270 Fee Schedule”).
-4. Use the paragraph text to determine the Service_Type (rendered / not listed / provided).
-
-Example:
-   Service_Type                 Rate                         Methodology
-0  Covered Services rendered     70%                         Humana’s 005–270 Fee Schedule
-1  Covered Services not listed   50%                         Provider’s usual and customary charges
-
-===============================================================
-### OUTPUT FORMAT
-===============================================================
-1. Return **four pandas DataFrames**, in this order:
-   - Provider_Info
-   - SNF_Levels
-   - Payment_Tables
-   - Covered_Services
-2. Each DataFrame should include only the specified columns.
-3. If a section is not found, return an empty DataFrame with headers only.
-4. No markdown, no prose, no explanations — just the raw DataFrames.
-
-Now extract all four DataFrames from the given input text or image(s).
-"""
-
 from openai import OpenAI
+import pandas as pd
+import json
+
+# Initialize OpenAI client (ensure OPENAI_API_KEY is set in environment)
 client = OpenAI()
 
+# =========================
+# 🧠 PROMPT
+# =========================
+prompt = """
+You are a healthcare contract data extraction assistant.
+
+You will receive a healthcare contract as plain text.
+Your task is to extract structured reimbursement data and return
+a single pandas DataFrame named **Reimbursement_Details**.
+
+Return ONLY the pandas DataFrame — no markdown, no prose.
+
+===============================================================
+### DATAFRAME — REIMBURSEMENT_DETAILS
+===============================================================
+Columns:
+[
+  "Provider_Name", "Effective_Date", "Termination_Date", "NPI_Number", "Tax_ID",
+  "Service_Type", "Service", "Reimbursement_Rate", "Reimbursement_Amount",
+  "Code", "Revenue_Code",
+  "Revenue_Ind", "DRG_Ind", "CPT_Ind", "HCPCS_Ind", "ICD_Ind",
+  "Description"
+]
+
+===============================================================
+### EXTRACTION RULES
+===============================================================
+
+1. **Provider Linkage**
+   - Each row must include provider details: Provider_Name, Effective_Date, Termination_Date, NPI_Number, Tax_ID.
+   - If multiple provider sections exist, link each service block to the correct provider.
+   - If a service block lacks provider info, reuse the last provider’s details.
+
+2. **Service_Type (Inpatient / Outpatient)**
+   - Detect “Inpatient” or “Outpatient” headings above service sections.
+   - Assign that to `Service_Type`.
+   - Leave blank for SNF or unlabeled sections.
+
+3. **Service**
+   - The line item or subsection name (“Level 1”, “Covered Services rendered”, etc.).
+   - “Covered Services rendered/provided/not listed” appear here — NOT under Service_Type.
+
+4. **Reimbursement_Rate**
+   - Percent or ratio values like “70%”, “100%”.
+
+5. **Reimbursement_Amount**
+   - Fixed dollar or per diem values like “$395”, “$740 per day”.
+
+6. **Code**
+   - DRG / CPT / HCPCS / ICD9/10 / Fee Schedule references.
+     Examples:
+     - “DRG 201–544”
+     - “HCPCS J3490”
+     - “Humana’s 005–270 Fee Schedule”
+
+7. **Revenue_Code**
+   - Numeric or text revenue code (“191”, “Rev 192”).
+
+8. **Indicators**
+   - Revenue_Ind = 1 if revenue code found.
+   - DRG_Ind = 1 if DRG present.
+   - CPT_Ind = 1 if CPT present.
+   - HCPCS_Ind = 1 if HCPCS present.
+   - ICD_Ind = 1 if ICD9 or ICD10 present.
+
+9. **Description**
+   - Include detailed service or coverage text exactly as written.
+
+===============================================================
+### OUTPUT RULES
+===============================================================
+1. Return a single pandas DataFrame named `Reimbursement_Details`.
+2. Include full provider info and inferred Service_Type for every row.
+3. Leave blanks where data is missing.
+4. Output ONLY the DataFrame — no markdown or explanations.
+"""
+
+# =========================
+# 🧩 MAIN EXECUTION
+# =========================
+
+# Step 1: Read your healthcare contract text file
+text_file = "contract.txt"  # 👈 Replace with your file path
+with open(text_file, "r", encoding="utf-8") as f:
+    contract_text = f.read()
+
+# Step 2: Send to GPT-4o
 response = client.chat.completions.create(
     model="gpt-4o",
+    temperature=0,
     messages=[
         {"role": "system", "content": "You are a precise healthcare contract data extraction model."},
         {"role": "user", "content": prompt},
-        {"role": "user", "content": [
-            {"type": "image_url", "image_url": "file://path/to/provider_page.png"},
-            {"type": "image_url", "image_url": "file://path/to/snf_page.png"},
-            {"type": "image_url", "image_url": "file://path/to/payment_page.png"}
-        ]}
+        {"role": "user", "content": contract_text}
     ]
 )
 
-print(response.choices[0].message.content)
+# Step 3: Parse response
+raw_output = response.choices[0].message.content.strip()
+print("\n=== RAW MODEL OUTPUT ===\n")
+print(raw_output)
+
+# Step 4: Try to convert JSON → DataFrame
+try:
+    df = pd.DataFrame(json.loads(raw_output))
+    df = df.reindex(columns=[
+        "Provider_Name", "Effective_Date", "Termination_Date", "NPI_Number", "Tax_ID",
+        "Service_Type", "Service", "Reimbursement_Rate", "Reimbursement_Amount",
+        "Code", "Revenue_Code",
+        "Revenue_Ind", "DRG_Ind", "CPT_Ind", "HCPCS_Ind", "ICD_Ind",
+        "Description"
+    ])
+    print("\n✅ Extracted DataFrame:\n")
+    print(df)
+except Exception:
+    print("\n⚠️ Could not parse JSON. Review model output above.\n")
