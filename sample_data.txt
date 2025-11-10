@@ -1,35 +1,11 @@
-columns = [
-    "Provider_Name",
-    "Effective_Date",
-    "Termination_Date",
-    "NPI_Number",
-    "Tax_ID",
-    "Service_Type",
-    "Service",
-    "Reimbursement_Rate",
-    "Reimbursement_Amount",
-    "Code",
-    "Revenue_Code",
-    "Revenue_Ind",
-    "DRG_Ind",
-    "CPT_Ind",
-    "HCPCS_Ind",
-    "ICD_Ind",
-    "Method_of_Payment",
-    "Description",
-    "Age_Group",
-    "Grouper_Ind",
-    "Grouper",
-    "APC_Ind",
-    "MSR_Ind",
-    "MSR_Type",
-    "Bilateral_Procedure_Ind",
-    "Provider_Speciality",
-    "Exclude_From_Transfer_Ind",
-    "Transfer_Calculation",
-    "Exclude_From_Stoploss_Ind",
-    "Other_Flat_Fee",
-    "Surg_Flat_Fee",
-    "Case_Rate",
-    "Health_Benefit_Plans"
-]
+1️⃣ **Provider Linkage**
+- Always include the provider’s identifying information for each record:
+  - Provider_Name → may appear in the text as “Provider Name”, “Legal Name”, “Doing Business As (DBA)”, “Facility Name”, or “Organization Name”.
+  - Effective_Date → from phrases like “Effective Date” or “Effective”.
+  - Termination_Date → from phrases like “Termination Date” or “End Date”.
+  - NPI_Number → the 9- or 10-digit National Provider Identifier.
+  - Tax_ID → the Tax Identification Number or EIN.
+- If both “Legal Name” and “DBA” are present, store them together as:
+  **“Legal Name (DBA <name>)”** in the Provider_Name field.
+- If only one appears, store that as Provider_Name.
+- If no provider name is found in this chunk, reuse the last seen provider details (the caller may handle continuity).
