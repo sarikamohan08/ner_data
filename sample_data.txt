@@ -1,15 +1,129 @@
-# Clean up any markdown fences if present
-if code_output.startswith("```"):
-    code_output = code_output.strip("`")
-    if code_output.lower().startswith("python"):
-        code_output = code_output[6:].strip()
+from openai import OpenAI
+import pandas as pd
+import json
 
-# Execute the DataFrame creation code
-local_vars = {}
-exec(code_output, {"pd": pd}, local_vars)
+# Initialize OpenAI client (make sure OPENAI_API_KEY is set)
+client = OpenAI()
 
-# Retrieve the DataFrame object
-df = local_vars.get("df")
+# ===============================
+# 🧠 PROMPT (Optimized for JSON-to-DF)
+# ===============================
+prompt = """
+You are a healthcare contract data extraction assistant.
 
-# Print as a real pandas DataFrame
-print(df)
+You will receive a healthcare contract as plain text.
+Extract structured reimbursement information and return it in **JSON format only**,
+which can be directly loaded into a pandas DataFrame.
+
+===============================================================
+### JSON OUTPUT FORMAT
+===============================================================
+Return a JSON array like this:
+[
+  {
+    "Provider_Name": "",
+    "Effective_Date": "",
+    "Termination_Date": "",
+    "NPI_Number": "",
+    "Tax_ID": "",
+    "Service_Type": "",
+    "Service": "",
+    "Reimbursement_Rate": "",
+    "Reimbursement_Amount": "",
+    "Code": "",
+    "Revenue_Code": "",
+    "Revenue_Ind": "",
+    "DRG_Ind": "",
+    "CPT_Ind": "",
+    "HCPCS_Ind": "",
+    "ICD_Ind": "",
+    "Description": ""
+  }
+]
+
+===============================================================
+### EXTRACTION RULES
+===============================================================
+1. **Provider Linkage**
+   - Include Provider_Name, Effective_Date, Termination_Date, NPI_Number, and Tax_ID in every row.
+   - If a section doesn’t have provider info, reuse the previous provider details.
+
+2. **Service_Type**
+   - Infer "Inpatient" or "Outpatient" from headings above the paragraph.
+   - Leave blank for SNF or unlabeled sections.
+
+3. **Service**
+   - e.g., “Covered Services rendered”, “Covered Services not listed”, “Level 1”, “All other services”.
+
+4. **Reimbursement_Rate**
+   - % values like “70%”, “100%”.
+
+5. **Reimbursement_Amount**
+   - Fixed amounts like “$395”, “$740 per day”.
+
+6. **Code**
+   - Extract DRG, CPT, HCPCS, ICD9/10, or Fee Schedule references.
+
+7. **Revenue_Code**
+   - Numeric or labeled revenue code (“191”, “Rev 192”).
+
+8. **Indicators**
+   - Revenue_Ind = 1 if revenue code found.
+   - DRG_Ind = 1 if DRG found.
+   - CPT_Ind = 1 if CPT found.
+   - HCPCS_Ind = 1 if HCPCS found.
+   - ICD_Ind = 1 if ICD9/10 found.
+
+9. **Description**
+   - Include full descriptive text; do not summarize.
+
+===============================================================
+### OUTPUT RULES
+===============================================================
+- Output ONLY valid JSON (no markdown, no commentary, no “pandas” syntax).
+- The JSON must represent the entire DataFrame.
+"""
+
+# ===============================
+# 🧩 MAIN EXECUTION
+# ===============================
+
+# Step 1: Read your healthcare contract text file
+text_file = "contract.txt"  # 👈 replace with your file path
+with open(text_file, "r", encoding="utf-8") as f:
+    contract_text = f.read()
+
+# Step 2: Send to GPT-4o for structured extraction
+response = client.chat.completions.create(
+    model="gpt-4o",
+    temperature=0,
+    messages=[
+        {"role": "system", "content": "You are a precise healthcare contract data extraction model."},
+        {"role": "user", "content": prompt},
+        {"role": "user", "content": contract_text}
+    ]
+)
+
+raw_output = response.choices[0].message.content.strip()
+
+# Step 3: Clean & parse JSON
+if raw_output.startswith("```json"):
+    raw_output = raw_output.replace("```json", "").replace("```", "").strip()
+
+try:
+    data = json.loads(raw_output)
+    df = pd.DataFrame(data)
+    # Ensure consistent column order
+    df = df.reindex(columns=[
+        "Provider_Name", "Effective_Date", "Termination_Date", "NPI_Number", "Tax_ID",
+        "Service_Type", "Service", "Reimbursement_Rate", "Reimbursement_Amount",
+        "Code", "Revenue_Code",
+        "Revenue_Ind", "DRG_Ind", "CPT_Ind", "HCPCS_Ind", "ICD_Ind",
+        "Description"
+    ])
+    print("\n✅ Extracted DataFrame:\n")
+    print(df.to_string(index=False))
+except Exception as e:
+    print("\n⚠️ JSON parsing failed. Here's the raw model output:\n")
+    print(raw_output)
+    print("\nError details:", e)
