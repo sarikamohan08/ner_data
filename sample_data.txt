@@ -95,3 +95,21 @@ Example:
 
 Now extract all four DataFrames from the given input text or image(s).
 """
+
+from openai import OpenAI
+client = OpenAI()
+
+response = client.chat.completions.create(
+    model="gpt-4o",
+    messages=[
+        {"role": "system", "content": "You are a precise healthcare contract data extraction model."},
+        {"role": "user", "content": prompt},
+        {"role": "user", "content": [
+            {"type": "image_url", "image_url": "file://path/to/provider_page.png"},
+            {"type": "image_url", "image_url": "file://path/to/snf_page.png"},
+            {"type": "image_url", "image_url": "file://path/to/payment_page.png"}
+        ]}
+    ]
+)
+
+print(response.choices[0].message.content)
