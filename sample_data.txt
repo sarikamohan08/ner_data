@@ -1,24 +1,97 @@
-def chunk_text(text, chunk_size=2000, overlap=200):
-    """
-    Splits text into overlapping chunks for LLM processing.
-    - text: Input string.
-    - chunk_size: Max token/word length per chunk (roughly, since it's word-based).
-    - overlap: Number of words overlapping between chunks (captures boundary entities).
-    Returns: List of text chunks.
-    """
-    words = text.split()
-    chunks = []
-    i = 0
-    while i < len(words):
-        # Build chunk and make sure last chunk is taken
-        chunk = words[i:i+chunk_size]
-        chunks.append(' '.join(chunk))
-        if i + chunk_size >= len(words):
-            break
-        i += chunk_size - overlap
-    return chunks
+prompt = """
+You are a healthcare contract data extraction assistant specialized in payer–provider agreements.
 
-# Example usage:
-full_contract_text = "..."  # your long contract text here
-chunks = chunk_text(full_contract_text, chunk_size=2000, overlap=200)
-print(f"Number of chunks: {len(chunks)}")
+You will receive OCR text or scanned images from healthcare contracts 
+
+Your goal:
+Extract all relevant structured data into four clean pandas DataFrames — no markdown, no explanations.
+
+===============================================================
+### SECTION 1 — PROVIDER INFORMATION
+===============================================================
+Extract:
+["Provider_Name", "Effective_Date", "Termination_Date", "NPI_Number", "Tax_ID"]
+
+Guidelines:
+1. Include both Legal and DBA names if available.
+2. Convert dates to YYYY-MM-DD.
+3. One row per provider.
+4. Leave missing values blank.
+
+Example:
+   Provider_Name                                   Effective_Date  Termination_Date   NPI_Number   Tax_ID
+0  Southpoint Rehabilitation and Healthcare Center  2024-04-01      ""               1700525300  862327867
+
+
+===============================================================
+### SECTION 2 — SKILLED NURSING FACILITY (SNF) LEVEL REIMBURSEMENTS
+===============================================================
+Extract:
+["SNF_Level", "Revenue_Code", "Rate_Per_Day", "Description"]
+
+Guidelines:
+1. Identify Level 1, Level 2, Level 3, Level 4, etc.
+2. Extract revenue code, daily rate, and full text of services.
+3. Combine multi-line descriptions into one.
+4. Preserve the original wording.
+
+Example:
+   SNF_Level  Revenue_Code  Rate_Per_Day  Description
+0  Level 1    191           $395          "Room & board; 24-hour nursing; lab; radiology; therapy; wound care"
+1  Level 2    192           $465          "Telemetry; tracheostomy care; TPN; neurological rehab; wound care stage 3"
+2  Level 3    193           $640          "Ventilator care; dialysis; pulmonary rehab"
+3  Level 4    194           $740          "Extensive nursing; bariatric care; new organ transplant"
+
+
+===============================================================
+### SECTION 3 — PAYMENT TABLES (INPATIENT / OUTPATIENT)
+===============================================================
+Extract:
+["Section", "Service", "Reimbursement", "Notes"]
+
+Guidelines:
+1. Extract any reimbursement tables (Inpatient Part B, Outpatient, Drugs, Biologicals, etc.).
+2. Capture the section heading (like "Inpatient Part B").
+3. Include all rows from the table as text.
+4. Include column headers if visible.
+
+Example:
+   Section           Service              Reimbursement                           Notes
+0  Inpatient Part B  Drugs & Biologicals  100% of Humana's 201–544 fee schedule   ""
+1  Inpatient Part B  All other services   70% of Humana's 005–270 fee schedule    ""
+
+
+===============================================================
+### SECTION 4 — COVERED SERVICES METHODOLOGY
+===============================================================
+Extract:
+["Service_Type", "Rate", "Methodology"]
+
+Guidelines:
+1. Identify and extract any paragraph mentioning:
+   - "Covered Services rendered"
+   - "Covered Services provided"
+   - "Covered Services not listed"
+2. Parse the rate (e.g., “70% of Humana’s fee schedule” or “50% of Provider’s usual charges”).
+3. Extract the methodology or reference schedule (e.g., “Humana’s 005–270 Fee Schedule”).
+4. Use the paragraph text to determine the Service_Type (rendered / not listed / provided).
+
+Example:
+   Service_Type                 Rate                         Methodology
+0  Covered Services rendered     70%                         Humana’s 005–270 Fee Schedule
+1  Covered Services not listed   50%                         Provider’s usual and customary charges
+
+===============================================================
+### OUTPUT FORMAT
+===============================================================
+1. Return **four pandas DataFrames**, in this order:
+   - Provider_Info
+   - SNF_Levels
+   - Payment_Tables
+   - Covered_Services
+2. Each DataFrame should include only the specified columns.
+3. If a section is not found, return an empty DataFrame with headers only.
+4. No markdown, no prose, no explanations — just the raw DataFrames.
+
+Now extract all four DataFrames from the given input text or image(s).
+"""
