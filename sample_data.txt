@@ -1,12 +1,110 @@
-- Always extract any line or paragraph containing these phrases as a separate service:
-     - “Covered Services rendered”
-     - “Covered Services provided”
-     - “Covered Services not listed”
-   - These must appear in the `Service` field.
-   - The reimbursement information (rate, amount, or schedule) appearing anywhere in that paragraph (same or next sentence) must be linked to that service.
-   - Example:
-     > Covered Services rendered at 70% of  005–270 Fee Schedule
-       → Service = "Covered Services rendered"
-       → Reimbursement_Rate = "70%"
-       → Code = "005–270 Fee Schedule"
-       → Description = full sentence text
+from openai import OpenAI
+import pandas as pd
+import json, re
+
+client = OpenAI()
+
+# ---------- PROMPT ----------
+prompt = """
+You are a healthcare contract data extraction assistant.
+
+You will receive text from a healthcare contract.
+Extract structured reimbursement information and return **valid JSON array only**,
+one object per service, following this schema:
+
+[
+  {
+    "Provider_Name": "",
+    "Effective_Date": "",
+    "Termination_Date": "",
+    "NPI_Number": "",
+    "Tax_ID": "",
+    "Service_Type": "",
+    "Service": "",
+    "Reimbursement_Rate": "",
+    "Reimbursement_Amount": "",
+    "Code": "",
+    "Revenue_Code": "",
+    "Revenue_Ind": "",
+    "DRG_Ind": "",
+    "CPT_Ind": "",
+    "HCPCS_Ind": "",
+    "ICD_Ind": "",
+    "Description": ""
+  }
+]
+
+Rules:
+- Always extract “Covered Services rendered/provided/not listed” even if in paragraph form.
+- Capture the associated rate, fee schedule, or methodology appearing near those phrases.
+- Include full provider details for every row (reuse previous if missing).
+- Return ONLY valid JSON array — no markdown, no explanations.
+"""
+
+# ---------- HELPERS ----------
+def clean_text(t: str) -> str:
+    t = re.sub(r'\s+', ' ', t)
+    t = t.replace("–", "-")
+    return t.strip()
+
+def chunk_text(text, max_chars=8000):
+    words = text.split()
+    chunks, chunk = [], []
+    length = 0
+    for w in words:
+        length += len(w) + 1
+        chunk.append(w)
+        if length > max_chars:
+            chunks.append(" ".join(chunk))
+            chunk, length = [], 0
+    if chunk:
+        chunks.append(" ".join(chunk))
+    return chunks
+
+def extract_from_chunk(chunk_text):
+    resp = client.chat.completions.create(
+        model="gpt-4o",
+        temperature=0,
+        messages=[
+            {"role": "system", "content": "You are a precise healthcare contract extractor."},
+            {"role": "user", "content": prompt},
+            {"role": "user", "content": chunk_text}
+        ]
+    )
+    raw = resp.choices[0].message.content.strip()
+    # Clean possible code fences
+    raw = re.sub(r"^```(?:json)?\s*", "", raw)
+    raw = re.sub(r"\s*```$", "", raw)
+    try:
+        data = json.loads(raw)
+        return data if isinstance(data, list) else []
+    except:
+        # try to extract array substring
+        m = re.search(r'\[.*\]', raw, re.DOTALL)
+        if m:
+            try:
+                return json.loads(m.group(0))
+            except:
+                return []
+        return []
+
+# ---------- MAIN ----------
+TEXT_FILE = "contract.txt"   # 👈 your 44-page text file
+with open(TEXT_FILE, "r", encoding="utf-8") as f:
+    full_text = clean_text(f.read())
+
+chunks = chunk_text(full_text, max_chars=8000)
+print(f"📄 Split into {len(chunks)} chunks.\n")
+
+all_rows = []
+for i, chunk in enumerate(chunks, 1):
+    print(f"🧩 Processing chunk {i}/{len(chunks)} ...")
+    rows = extract_from_chunk(chunk)
+    all_rows.extend(rows)
+
+if not all_rows:
+    print("⚠️ No data extracted. Check if text quality is poor or context too noisy.")
+else:
+    df = pd.DataFrame(all_rows)
+    print(f"\n✅ Extracted {len(df)} total rows.\n")
+    print(df[df['Service'].str.contains('Covered', case=False, na=False)].to_string(index=False))
