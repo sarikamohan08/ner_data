@@ -1,24 +1,19 @@
 from openai import OpenAI
 import pandas as pd
 import json
+import re
 
-# Initialize OpenAI client (make sure OPENAI_API_KEY is set)
+# Initialize OpenAI client (make sure OPENAI_API_KEY is set in env)
 client = OpenAI()
 
-# ===============================
-# 🧠 PROMPT (Optimized for JSON-to-DF)
-# ===============================
+# Prompt (JSON-only expected)
 prompt = """
 You are a healthcare contract data extraction assistant.
 
 You will receive a healthcare contract as plain text.
-Extract structured reimbursement information and return it in **JSON format only**,
-which can be directly loaded into a pandas DataFrame.
+Extract structured reimbursement information and return it in JSON array format only.
+Each array element must be an object with these exact fields:
 
-===============================================================
-### JSON OUTPUT FORMAT
-===============================================================
-Return a JSON array like this:
 [
   {
     "Provider_Name": "",
@@ -41,89 +36,138 @@ Return a JSON array like this:
   }
 ]
 
-===============================================================
-### EXTRACTION RULES
-===============================================================
-1. **Provider Linkage**
-   - Include Provider_Name, Effective_Date, Termination_Date, NPI_Number, and Tax_ID in every row.
-   - If a section doesn’t have provider info, reuse the previous provider details.
-
-2. **Service_Type**
-   - Infer "Inpatient" or "Outpatient" from headings above the paragraph.
-   - Leave blank for SNF or unlabeled sections.
-
-3. **Service**
-   - e.g., “Covered Services rendered”, “Covered Services not listed”, “Level 1”, “All other services”.
-
-4. **Reimbursement_Rate**
-   - % values like “70%”, “100%”.
-
-5. **Reimbursement_Amount**
-   - Fixed amounts like “$395”, “$740 per day”.
-
-6. **Code**
-   - Extract DRG, CPT, HCPCS, ICD9/10, or Fee Schedule references.
-
-7. **Revenue_Code**
-   - Numeric or labeled revenue code (“191”, “Rev 192”).
-
-8. **Indicators**
-   - Revenue_Ind = 1 if revenue code found.
-   - DRG_Ind = 1 if DRG found.
-   - CPT_Ind = 1 if CPT found.
-   - HCPCS_Ind = 1 if HCPCS found.
-   - ICD_Ind = 1 if ICD9/10 found.
-
-9. **Description**
-   - Include full descriptive text; do not summarize.
-
-===============================================================
-### OUTPUT RULES
-===============================================================
-- Output ONLY valid JSON (no markdown, no commentary, no “pandas” syntax).
-- The JSON must represent the entire DataFrame.
+Rules:
+- Return ONLY valid JSON (no markdown, no commentary).
+- Include full provider linkage on every row.
+- Infer Service_Type as "Inpatient" or "Outpatient" from headings above sections.
+- Put "Covered Services rendered/provided/not listed" in the Service field (not Service_Type).
+- Populate indicator fields with 1 or 0.
 """
 
-# ===============================
-# 🧩 MAIN EXECUTION
-# ===============================
+def clean_and_extract_json(raw: str) -> str:
+    """
+    Clean model output and extract the JSON array substring.
+    Attempts multiple common fixes: strip code fences, remove leading text,
+    find first '[' and last ']' and return that slice.
+    Returns the JSON string or raises ValueError if cannot find plausible JSON.
+    """
+    if not raw or raw.strip() == "":
+        raise ValueError("Empty model output")
 
-# Step 1: Read your healthcare contract text file
-text_file = "contract.txt"  # 👈 replace with your file path
-with open(text_file, "r", encoding="utf-8") as f:
-    contract_text = f.read()
+    s = raw.strip()
 
-# Step 2: Send to GPT-4o for structured extraction
-response = client.chat.completions.create(
-    model="gpt-4o",
-    temperature=0,
-    messages=[
-        {"role": "system", "content": "You are a precise healthcare contract data extraction model."},
-        {"role": "user", "content": prompt},
-        {"role": "user", "content": contract_text}
-    ]
-)
+    # Remove common surrounding code fences
+    s = re.sub(r"^```(?:json)?\s*", "", s, flags=re.IGNORECASE)
+    s = re.sub(r"\s*```$", "", s)
 
-raw_output = response.choices[0].message.content.strip()
+    # Some models include labels like "JSON:" before content - remove common labels
+    s = re.sub(r"^[A-Za-z\s]*JSON[:\s\-]*", "", s, flags=re.IGNORECASE)
 
-# Step 3: Clean & parse JSON
-if raw_output.startswith("```json"):
-    raw_output = raw_output.replace("```json", "").replace("```", "").strip()
+    # Attempt to locate the first [ and the matching last ] (naive but effective)
+    first_bracket = s.find('[')
+    last_bracket = s.rfind(']')
+    if first_bracket != -1 and last_bracket != -1 and last_bracket > first_bracket:
+        candidate = s[first_bracket:last_bracket+1]
+        # quick sanity check: must start with '[' and end with ']'
+        if candidate.strip().startswith('[') and candidate.strip().endswith(']'):
+            return candidate
 
-try:
-    data = json.loads(raw_output)
+    # If not found, try to remove any leading non-json text up to first '{'
+    first_obj = s.find('{')
+    last_obj_close = s.rfind('}')
+    if first_obj != -1 and last_obj_close != -1 and last_obj_close > first_obj:
+        maybe_array = s[first_obj:last_obj_close+1]
+        # wrap single object into array if appropriate
+        if maybe_array.strip().startswith('{') and maybe_array.strip().endswith('}'):
+            return "[" + maybe_array + "]"
+
+    # final fallback: try to find any JSON array using regex (non-greedy)
+    m = re.search(r'(\[.*\])', s, flags=re.DOTALL)
+    if m:
+        return m.group(1)
+
+    # nothing workable found
+    raise ValueError("Could not locate JSON array in model output")
+
+def extract_json_to_df(json_text: str) -> pd.DataFrame:
+    """
+    Convert a JSON array string into a pandas DataFrame with the expected column order.
+    """
+    data = json.loads(json_text)
+    if not isinstance(data, list):
+        raise ValueError("Parsed JSON is not a list/array")
     df = pd.DataFrame(data)
-    # Ensure consistent column order
-    df = df.reindex(columns=[
+    # Ensure exact column order (add missing columns if necessary)
+    cols = [
         "Provider_Name", "Effective_Date", "Termination_Date", "NPI_Number", "Tax_ID",
         "Service_Type", "Service", "Reimbursement_Rate", "Reimbursement_Amount",
         "Code", "Revenue_Code",
         "Revenue_Ind", "DRG_Ind", "CPT_Ind", "HCPCS_Ind", "ICD_Ind",
         "Description"
-    ])
-    print("\n✅ Extracted DataFrame:\n")
-    print(df.to_string(index=False))
-except Exception as e:
-    print("\n⚠️ JSON parsing failed. Here's the raw model output:\n")
-    print(raw_output)
-    print("\nError details:", e)
+    ]
+    for c in cols:
+        if c not in df.columns:
+            df[c] = ""  # fill missing columns with blank
+    df = df[cols]
+    return df
+
+def extract_reimbursement_details_from_textfile(text_file_path: str) -> pd.DataFrame:
+    # Read contract text
+    with open(text_file_path, "r", encoding="utf-8") as f:
+        contract_text = f.read()
+
+    # Send to model
+    response = client.chat.completions.create(
+        model="gpt-4o",
+        temperature=0,
+        messages=[
+            {"role": "system", "content": "You are a precise healthcare contract data extraction model."},
+            {"role": "user", "content": prompt},
+            {"role": "user", "content": contract_text}
+        ]
+    )
+
+    raw_output = response.choices[0].message.content
+    if raw_output is None:
+        raw_output = ""
+
+    raw_output = raw_output.strip()
+    # Debug: print small preview if very short
+    if len(raw_output) < 50:
+        print("DEBUG: GPT output preview (short):", repr(raw_output))
+
+    # Try to clean and extract JSON
+    try:
+        json_text = clean_and_extract_json(raw_output)
+    except Exception as e:
+        print("\n⚠️ Could not reliably extract JSON from model output.")
+        print("Raw model output (below):\n")
+        print(raw_output)
+        print("\nError while extracting JSON:", str(e))
+        raise
+
+    # Parse JSON to DataFrame
+    try:
+        df = extract_json_to_df(json_text)
+    except Exception as e:
+        print("\n⚠️ JSON was found but parsing to DataFrame failed.")
+        print("Extracted JSON (preview):\n")
+        print(json_text[:2000])  # print a chunk of JSON
+        print("\nError while parsing JSON:", str(e))
+        raise
+
+    return df
+
+if __name__ == "__main__":
+    # Replace with your text file
+    TEXT_FILE = "contract.txt"
+
+    try:
+        df = extract_reimbursement_details_from_textfile(TEXT_FILE)
+        print("\n✅ Extracted Reimbursement_Details DataFrame:\n")
+        # pretty print full dataframe
+        print(df.to_string(index=False))
+    except Exception as final_exc:
+        print("\n⛔ Extraction failed. See messages above for details.")
+        # optional: re-raise if you want stack trace
+        # raise
