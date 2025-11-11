@@ -1,8 +1,42 @@
-**Bilateral_Procedure_Ind**
-  - Set `"Bilateral_Procedure_Ind": "1"` if the text, paragraph, or heading includes:
-    • “Bilateral Procedure” or “Bilateral Procedures”
-    • “Bilateral Surgical Procedure”
-    • “Bilateral Indicator”
-    • “Modifier 50”
-    • “defined as bilateral” or “eligible for bilateral surgical payment”
-  - Otherwise set `"Bilateral_Procedure_Ind": "0"`.
+===================================================================
+### MULTIPLE SURGERY LOGIC (MSR) EXTRACTION (FINAL)
+===================================================================
+
+- **MSR_Ind**
+  - Set `"MSR_Ind": "1"` if the heading, table, or paragraph includes any of the following terms:
+    • "Multiple Surgery Logic"
+    • "Primary Surgery Logic"
+    • "Secondary Surgery Logic"
+    • "Tertiary Surgery Logic"
+    • "Multiple surgical procedures"
+  - Otherwise set `"MSR_Ind": "0"`.
+
+- **MSR_Type**
+  - If the text or table specifies "Primary", "Secondary", or "Tertiary", capture it exactly.
+  - If all tiers are described (Primary/Secondary/Tertiary), create **separate JSON records** for each with its specific rate.
+
+- **Reimbursement_Rate**
+  - Extract the numeric percentage value that applies to each surgical level (primary, secondary, tertiary).
+  - Examples:
+    - “Primary procedure shall be 100%” → `"Reimbursement_Rate": "100%"`
+    - “Secondary procedure shall be fifty percent (50%)” → `"Reimbursement_Rate": "50%"`
+    - “Third procedure shall be twenty-five percent (25%)” → `"Reimbursement_Rate": "25%"`
+  - Always include the percent sign in extracted values.
+  - If multiple percentages appear (100%, 50%, 25%), output separate JSON rows for each.
+  - Do **not** include any wording like “of rates identified” in the rate field — only the numeric or percentage value.
+
+- **Service**
+  - If the section or header includes “Multiple Surgery Logic”, set `"Service": "Multiple Surgery Logic"`.
+  - If nested under another category (e.g., “Outpatient Services”), you may append context: `"Outpatient – Multiple Surgery Logic"`.
+
+- **Description**
+  - Include the entire paragraph or table section describing payment logic for multiple surgeries, including all rate tiers and commercial applicability.
+
+- **Table Extraction**
+  - If multiple surgery logic appears as a table (e.g., “Procedure Level” vs “% of Payment”), extract each row with:
+    - `"MSR_Type"` from “Procedure Level”
+    - `"Reimbursement_Rate"` from “% of Payment”
+    - `"MSR_Ind": "1"`
+  - Each row becomes a distinct JSON record.
+
+Example Input:
