@@ -1,11 +1,13 @@
-1️⃣ **Provider Linkage**
-- Always include the provider’s identifying information for each record:
-  - Provider_Name → may appear in the text as “Provider Name”, “Legal Name”, “Doing Business As (DBA)”, “Facility Name”, or “Organization Name”.
-  - Effective_Date → from phrases like “Effective Date” or “Effective”.
-  - Termination_Date → from phrases like “Termination Date” or “End Date”.
-  - NPI_Number → the 9- or 10-digit National Provider Identifier.
-  - Tax_ID → the Tax Identification Number or EIN.
-- If both “Legal Name” and “DBA” are present, store them together as:
-  **“Legal Name (DBA <name>)”** in the Provider_Name field.
-- If only one appears, store that as Provider_Name.
-- If no provider name is found in this chunk, reuse the last seen provider details (the caller may handle continuity).
+**Line_of_Business (LOB)**
+- Extract from section heading or context above service list.
+- Valid values:
+  • "Commercial"
+  • "Medicare"
+  • "Medicaid"
+- Rules:
+  • If heading includes “COMMERCIAL”, “COMMERCIAL PLAN”, or “MARKETPLACE”, → `"Commercial"`.
+  • If heading includes “MEDICARE”, “MEDICARE ADVANTAGE”, → `"Medicare"`.
+  • If heading includes “MEDICAID”, “STATE MEDICAID”, → `"Medicaid"`.
+  • If “DUAL ELIGIBLE” appears, set `"Line_of_Business": "Medicare-Medicaid Dual"`.
+  • Inherit LOB for all following services until a new LOB heading appears.
+  • If not found, leave blank.
