@@ -1,100 +1,11 @@
-**Line_of_Business (LOB)**
-- Extract from section heading or context above service list.
-- Valid values:
-  • "Commercial"
-  • "Medicare"
-  • "Medicaid"
-- Rules:
-  • If heading includes “COMMERCIAL”, “COMMERCIAL PLAN”, or “MARKETPLACE”, → `"Commercial"`.
-  • If heading includes “MEDICARE”, “MEDICARE ADVANTAGE”, → `"Medicare"`.
-  • If heading includes “MEDICAID”, “STATE MEDICAID”, → `"Medicaid"`.
-  • If “DUAL ELIGIBLE” appears, set `"Line_of_Business": "Medicare-Medicaid Dual"`.
-  • Inherit LOB for all following services until a new LOB heading appears.
-  • If not found, leave blank.
-
-- Code → capture only valid billing codes, one per record:
-  • Revenue Codes (3–4 digits, e.g., “0450”)
-  • DRG/MS-DRG (e.g., “DRG 201”, “MS-DRG 469”)
-  • CPT (5-digit numeric, e.g., “99213”)
-  • HCPCS (letter + digits, e.g., “J3490”)
-  • ICD9/ICD10 (e.g., “ICD10 Z99.89”)
-  • Exclude text like “Fee Schedule”, “Per Diem”, “Customary Charge”.
-  • If multiple codes appear, output one JSON object per code.
-- Revenue_Code → If explicitly labeled (“Revenue Code 0450”), populate both Code and Revenue_Code.
-
-===================================================================
-### AUTOMATIC INDICATOR RULES (CONTEXT + CODE DETECTION)
-===================================================================
-
-Determine indicator flags (`Revenue_Ind`, `DRG_Ind`, `CPT_Ind`, `HCPCS_Ind`, `ICD_Ind`)
-from both explicit code patterns and contextual cues.
-
-1️⃣ **Revenue Codes**
-   - Code is 3–4 digits OR nearby text says “Revenue Code”, “Revenue Codes apply”, “based on Revenue Codes”.
-   - Set:
-     ```
-     "Revenue_Ind":"1","DRG_Ind":"0","CPT_Ind":"0","HCPCS_Ind":"0","ICD_Ind":"0"
-     ```
-
-2️⃣ **DRG / MS-DRG**
-   - Code contains “DRG”/“MS-DRG”, OR nearby text says “Diagnosis Related Group”, “DRG Grouper”, “per DRG basis”, “DRG-based reimbursement”.
-   - Set:
-     ```
-     "Revenue_Ind":"0","DRG_Ind":"1","CPT_Ind":"0","HCPCS_Ind":"0","ICD_Ind":"0"
-     ```
-
-3️⃣ **CPT**
-   - Code is 5-digit numeric OR text says “CPT”, “Current Procedural Terminology”, “CPT-based”.
-   - Set:
-     ```
-     "Revenue_Ind":"0","DRG_Ind":"0","CPT_Ind":"1","HCPCS_Ind":"0","ICD_Ind":"0"
-     ```
-
-4️⃣ **HCPCS**
-   - Code starts with a letter + digits OR text says “HCPCS”, “Healthcare Common Procedure Coding System”.
-   - Set:
-     ```
-     "Revenue_Ind":"0","DRG_Ind":"0","CPT_Ind":"0","HCPCS_Ind":"1","ICD_Ind":"0"
-     ```
-
-5️⃣ **ICD**
-   - Code starts with “ICD9” or “ICD10” OR text mentions “ICD-9”, “ICD-10”, “Diagnosis Code”.
-   - Set:
-     ```
-     "Revenue_Ind":"0","DRG_Ind":"0","CPT_Ind":"0","HCPCS_Ind":"0","ICD_Ind":"1"
-     ```
-
-6️⃣ **Context-Only Detection (for all types)**
-   - If no explicit code exists but the text implies a code type:
-     - “per DRG basis”, “DRG reimbursement” → `"DRG_Ind":"1"`
-     - “per CPT”, “CPT methodology” → `"CPT_Ind":"1"`
-     - “per HCPCS”, “HCPCS rate” → `"HCPCS_Ind":"1"`
-     - “based on ICD”, “ICD grouping” → `"ICD_Ind":"1"`
-     - “Revenue Codes apply” → `"Revenue_Ind":"1"`
-   - Apply multiple if both mentioned (e.g., “CPT and HCPCS”).
-
-7️⃣ **Default**
-   - If none apply, all indicators = "0".
-
 ===================================================================
 ### FEW-SHOT EXAMPLES
 ===================================================================
 
-Example 1:
-Input:
-"COMMERCIAL
-Provider: Southpoint Rehabilitation
-Effective Date: 04/01/2024
-NPI: 1700525300
-Tax ID: 862327867
-The allowed amount is the lesser of billed charges or the contracted rate (no2).
-INPATIENT SERVICES
-Covered Services rendered: 70% of Humana’s 005–270 Fee Schedule."
-
-Output:
+Example 1 — Commercial / Inpatient / Covered Services
 [
   {
-    "Provider_Name": "Southpoint Rehabilitation",
+    "Provider_Name": "Southpoint Rehabilitation (DBA Southpoint Rehab)",
     "Effective_Date": "2024-04-01",
     "Termination_Date": "",
     "NPI_Number": "1700525300",
@@ -127,19 +38,18 @@ Output:
     "Other_Flat_Fee": "0",
     "Surg_Flat_Fee": "0",
     "Case_Rate": "",
-    "Health_Benefit_Plans": ""
+    "Health_Benefit_Plans": "Humana PPO"
   }
 ]
 
-Example 2:
-Input:
-"MEDICARE
-OUTPATIENT SERVICES
-All outpatient services reimbursed based on CPT and HCPCS methodology at 80% of Fee Schedule."
-
-Output:
+Example 2 — Medicare / Outpatient / CPT + HCPCS
 [
   {
+    "Provider_Name": "",
+    "Effective_Date": "",
+    "Termination_Date": "",
+    "NPI_Number": "",
+    "Tax_ID": "",
     "Line_of_Business": "Medicare",
     "Service_Type": "Outpatient",
     "Service": "All outpatient services",
@@ -152,9 +62,30 @@ Output:
     "CPT_Ind": "1",
     "HCPCS_Ind": "0",
     "ICD_Ind": "0",
-    "Description": "All outpatient services reimbursed based on CPT and HCPCS methodology at 80% of Fee Schedule."
+    "Method_of_Payment": "",
+    "Description": "All outpatient services reimbursed based on CPT and HCPCS methodology at 80% of Fee Schedule.",
+    "Age_Group": "0",
+    "Grouper_Ind": "0",
+    "Grouper": "",
+    "APC_Ind": "0",
+    "MSR_Ind": "0",
+    "MSR_Type": "",
+    "Bilateral_Procedure_Ind": "0",
+    "Provider_Speciality": "0",
+    "Exclude_From_Transfer_Ind": "0",
+    "Transfer_Calculation": "",
+    "Exclude_From_Stoploss_Ind": "0",
+    "Other_Flat_Fee": "0",
+    "Surg_Flat_Fee": "0",
+    "Case_Rate": "",
+    "Health_Benefit_Plans": ""
   },
   {
+    "Provider_Name": "",
+    "Effective_Date": "",
+    "Termination_Date": "",
+    "NPI_Number": "",
+    "Tax_ID": "",
     "Line_of_Business": "Medicare",
     "Service_Type": "Outpatient",
     "Service": "All outpatient services",
@@ -167,7 +98,62 @@ Output:
     "CPT_Ind": "0",
     "HCPCS_Ind": "1",
     "ICD_Ind": "0",
-    "Description": "All outpatient services reimbursed based on CPT and HCPCS methodology at 80% of Fee Schedule."
+    "Method_of_Payment": "",
+    "Description": "All outpatient services reimbursed based on CPT and HCPCS methodology at 80% of Fee Schedule.",
+    "Age_Group": "0",
+    "Grouper_Ind": "0",
+    "Grouper": "",
+    "APC_Ind": "0",
+    "MSR_Ind": "0",
+    "MSR_Type": "",
+    "Bilateral_Procedure_Ind": "0",
+    "Provider_Speciality": "0",
+    "Exclude_From_Transfer_Ind": "0",
+    "Transfer_Calculation": "",
+    "Exclude_From_Stoploss_Ind": "0",
+    "Other_Flat_Fee": "0",
+    "Surg_Flat_Fee": "0",
+    "Case_Rate": "",
+    "Health_Benefit_Plans": ""
   }
 ]
 
+Example 3 — Medicaid / Transfers + Case Rate + Stop Loss + Surgical Flat Fee
+[
+  {
+    "Provider_Name": "Harmony Rehab Services",
+    "Effective_Date": "2023-10-01",
+    "Termination_Date": "",
+    "NPI_Number": "1234567893",
+    "Tax_ID": "12-3456789",
+    "Line_of_Business": "Medicaid",
+    "Service_Type": "Inpatient",
+    "Service": "Transfer Adjustment Service",
+    "Reimbursement_Rate": "",
+    "Reimbursement_Amount": "",
+    "Code": "",
+    "Revenue_Code": "",
+    "Revenue_Ind": "0",
+    "DRG_Ind": "1",
+    "CPT_Ind": "0",
+    "HCPCS_Ind": "0",
+    "ICD_Ind": "0",
+    "Method_of_Payment": "",
+    "Description": "Transfers: Member is transferred from HOSPITAL; calculation: DRG Payment/Arithmetic LOS x number of inpatient days.",
+    "Age_Group": "0",
+    "Grouper_Ind": "0",
+    "Grouper": "",
+    "APC_Ind": "0",
+    "MSR_Ind": "0",
+    "MSR_Type": "",
+    "Bilateral_Procedure_Ind": "0",
+    "Provider_Speciality": "0",
+    "Exclude_From_Transfer_Ind": "1",
+    "Transfer_Calculation": "DRG Payment/Arithmetic LOS x number of inpatient days",
+    "Exclude_From_Stoploss_Ind": "1",
+    "Other_Flat_Fee": "0",
+    "Surg_Flat_Fee": "1",
+    "Case_Rate": "Case Rate: $1200 per 3 days",
+    "Health_Benefit_Plans": "State Medicaid Plan A"
+  }
+]
