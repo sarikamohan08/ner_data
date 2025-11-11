@@ -1,58 +1,8 @@
-===================================================================
-### REIMBURSEMENT METHODOLOGY EXTRACTION (UPDATED)
-===================================================================
-
-- **Reimbursement_Methodology**
-  - Extract how reimbursement is calculated for each service, whether it appears in **text paragraphs or tables**.
-
-  - Common valid values (case-insensitive, normalize capitalization):
-    • "Per Diem"
-    • "Per Procedure"
-    • "Per Visit"
-    • "Per Case"
-    • "Percent of Charge" / "Percentage of Charges"
-    • "Medicare Allowable Amount"
-    • "Fixed Rate" / "All Fixed Rates"
-    • "Fee Schedule"
-    • "Percent of Line Charge"
-    • "POC" (Plan of Care)
-    • "Per Claim"
-    • "Per Occurrence"
-    • "Per Member Per Month"
-    • "Percent of Allowed"
-    • "Capitation"
-
-  - **Extraction Rules:**
-    1. Search both **paragraph text** and **tables** in the same context where the service, code, or reimbursement rate appears.
-       - If the table column header or nearby text includes "Methodology", "Basis", "Payment Type", or "Reimbursement Type", extract the value under that column.
-       - If a methodology word (e.g., "Per Diem") appears in a rate or service description, capture it from the text.
-    2. Normalize the extracted phrase to title case (e.g., “Percent of Charge” not “percent of charge”).
-    3. If multiple methodology types are mentioned (e.g., “Per Diem and Fee Schedule”), include both separated by commas.
-    4. If no methodology appears in text or tables, leave `"Reimbursement_Methodology": ""`.
-
-  - **In tables:**
-    - Look for headers like “Methodology”, “Payment Type”, “Basis”, “Reimb Type”, “Payment Method”.
-    - Extract the corresponding cell values (e.g., “Per Diem”, “Fee Schedule”, “Percent of Charge”).
-    - Associate each extracted value with the correct service in the same table row.
-
-  - **In text:**
-    - Detect phrases like:
-      - “reimbursed on a per diem basis”
-      - “payment per case”
-      - “percent of charge”
-      - “according to the Fee Schedule”
-      - “Medicare allowable amount applies”
-      - “fixed rate reimbursement”
-      - “per visit basis”
-      - “based on percent of line charge”
-      - “POC basis”
-    - Extract and normalize as above.
-
-  - **If found both in table and paragraph:**
-    - Use the most specific one (the table cell value takes priority).
-    - If both differ, include both (comma-separated).
-
-  - **Output Rule:**
-    - Include `"Reimbursement_Methodology"` in every JSON record for that service, populated with all relevant values.
-
-Example Input 1 (text):
+**Bilateral_Procedure_Ind**
+  - Set `"Bilateral_Procedure_Ind": "1"` if the text, paragraph, or heading includes:
+    • “Bilateral Procedure” or “Bilateral Procedures”
+    • “Bilateral Surgical Procedure”
+    • “Bilateral Indicator”
+    • “Modifier 50”
+    • “defined as bilateral” or “eligible for bilateral surgical payment”
+  - Otherwise set `"Bilateral_Procedure_Ind": "0"`.
