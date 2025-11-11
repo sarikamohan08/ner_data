@@ -1,13 +1,19 @@
-When you parse any text or table that includes “Health Benefit Plan”, “Health Benefits Plan”, “Product Participation List”, “Product Participation”, or similar heading —  
-extract **all plan names** listed under it, ignoring any checkmarks or indicators.
+- **Exclude_From_Stoploss_Ind**
+  - Set `"Exclude_From_Stoploss_Ind": "1"` if the text, paragraph, or heading includes the term “Stop Loss”, “Stop Loss Threshold”, “Stop-Loss amount”, or “Stop-Loss provision”.
+  - Set `"Exclude_From_Stoploss_Ind": "0"` otherwise.
 
-Rules:
-- Extract every plan name under headings like:
-  "Health Benefit Plan", "Health Benefits Plan (Check only those which apply)", "Product Participation List", "Benefit Plan Type".
-- Do **not** check for “X” or “✔” — just take every plan name in that list.
-- Clean each plan name (remove bullets, numbers, symbols; keep exact text label).
-- Combine all plan names into one comma-separated string, e.g.:
-  `"Medicare PPO Plans, Medicare POS Plans, Medicare Network PFFS Plans, Medicare HMO Plans"`.
-- Apply this string in the `"Health_Benefit_Plans"` field for **every record** you output in the same document or chunk.
-- If multiple plan sections exist, merge them (deduplicated, preserving order).
-- If no plan list appears, leave `"Health_Benefit_Plans": ""`.
+- **Stoploss_Amount**
+  - Extract the dollar value or monetary threshold directly associated with “Stop Loss”.
+  - Examples:
+    - “Stop Loss amount of $208,839 effective 10/1/2022–12/31/2022”
+    - “Stop Loss limit $215,104 effective 1/1/2023–12/31/2023”
+  - Capture only the numeric amount with currency symbol (e.g., `$208,839`, `$215,104`).
+  - If multiple amounts appear (for different date ranges), include the latest or most recent one in the chunk.
+
+- **Stoploss_Rate**
+  - Extract any percentage or rate associated with “Stop Loss” reimbursement, discount, or adjustment.
+  - Examples:
+    - “discount of 52% off billed charges”
+    - “Stop Loss rate increased by 5%”
+  - Capture as-is, including the percent sign (e.g., `52%`, `5%`).
+  - If both percentage and phrase appear, record the percent number only.
