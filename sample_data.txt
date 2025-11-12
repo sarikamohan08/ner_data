@@ -1,18 +1,13 @@
-- **Rate_Change**
-  - Purpose: Capture any numeric percentage(s) that describe a general "rate change", "rate increase", "rate escalation", or "annual increase".
-  - Detection rules:
-    1. Look for headings or phrases near the chunk like: "Rate Change", "Rate Changes", "rate increase", "annual increase", "rate adjustment", "escalation".
-    2. Extract the percentage(s) directly associated with these phrases (e.g., "three (3%) overall increase" → "3%").
-    3. If multiple rate changes are mentioned for different scopes (e.g., "inpatient 3%, outpatient 2%"), extract all as comma-separated values in the order found: `"3%, 2%"`.
-    4. Normalize numeric forms and words to percent with a percent sign. Accept numeric values with or without percent sign from text; convert "three (3%)" or "3 percent" → `"3%"`.
-    5. If the text states a cap (e.g., "capped at 5%") extract the cap as the `Rate_Change` value.
-    6. If no explicit percent is found near rate change phrases, leave `Rate_Change` empty.
+- "DRG Payment", "DRG Base Rate"
+- "Special Items", "Implantable Devices", "High-Cost Drugs", "Outpatient Cardiology"
+- "Metro Facilities", "Facility-Based Physicians"
+- "Measurement-Based Methodologies" such as "per unit", "per gram", "per RVU", "per session", "per visit"
 
-- **Charge_Master_Adjustment**
-  - Purpose: Capture percentage(s) describing charge master changes/adjustments (e.g., "Charge Master increase exceeds three (3%)").
-  - Detection rules:
-    1. Look for headings or phrases: "Charge Master", "Charge Master Adjustments", "Chargemaster increase", "Charge Master revision", "Charge Master adjustment".
-    2. Extract the percentage(s) tied to charge master language (e.g., "Charge Master Increase exceeds three (3%) percent" → `"3%"`).
-    3. If multiple adjustments appear (e.g., different effective years or services), return comma-separated values, preserving order.
-    4. Normalize number words and numeric forms to percent string (e.g., "three percent" or "3%" → `"3%"`).
-    5. If the Charge Master section gives an example (e.g., "if Charge Master increases by 4% then stop loss increases by 4%"), still extract the 4% for `Charge_Master_Adjustment`.
+Each service record must include rate, amount, methodology, and any method-of-payment code.
+
+Additional rules:
+- DRG Payment or DRG Base Rate must always appear in the **Service** column.
+- Each Special Item (Implantable Devices, High-Cost Drugs, Outpatient Cardiology) must appear as its own **Service** entry.
+- If a section references a group of facilities (e.g., Metro Facilities, Regional Hospitals), include the facility context in the **Service** column (e.g., “Metro Facilities – Outpatient Cardiology”).
+- If the methodology includes units or measurements (e.g., “per gram”, “per unit”, “per RVU”), record those details in **Reimbursement_Methodology**.
+- Tables containing these items should be parsed row by row, generating one record per service definition.
