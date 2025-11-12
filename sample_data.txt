@@ -1,13 +1,59 @@
-- "DRG Payment", "DRG Base Rate"
-- "Special Items", "Implantable Devices", "High-Cost Drugs", "Outpatient Cardiology"
-- "Metro Facilities", "Facility-Based Physicians"
-- "Measurement-Based Methodologies" such as "per unit", "per gram", "per RVU", "per session", "per visit"
+⚙️ TABLE CONTINUITY HANDLING (GENERIC MULTI-PAGE TABLE EXTRACTION)
+------------------------------------------------------------------
+When extracting services, reimbursement data, or any tabular section from the document, treat all tables as logical units that may extend across multiple pages. Many healthcare contracts split reimbursement tables over page breaks. To ensure accurate extraction:
 
-Each service record must include rate, amount, methodology, and any method-of-payment code.
+1. **Detect and Merge Continuations**
+   - If a table continues onto the next page (even if the header row or table title repeats partially or not at all), treat it as a single continuous table.
+   - Merge all rows from subsequent pages until a clear section boundary or new unrelated heading appears (for example: “Section”, “Attachment”, “Exhibit”, “Appendix”, “TABLE 2”, “SNF Levels”, etc.).
+   - Page numbers, footers (e.g., “Page 41 of 180”, “Humana PHO MS”), or headers are not part of the data and must be ignored.
 
-Additional rules:
-- DRG Payment or DRG Base Rate must always appear in the **Service** column.
-- Each Special Item (Implantable Devices, High-Cost Drugs, Outpatient Cardiology) must appear as its own **Service** entry.
-- If a section references a group of facilities (e.g., Metro Facilities, Regional Hospitals), include the facility context in the **Service** column (e.g., “Metro Facilities – Outpatient Cardiology”).
-- If the methodology includes units or measurements (e.g., “per gram”, “per unit”, “per RVU”), record those details in **Reimbursement_Methodology**.
-- Tables containing these items should be parsed row by row, generating one record per service definition.
+2. **Header Alignment Across Pages**
+   - If column headers such as “Description”, “Measurement”, “Rev Code(s)”, “DRG Code(s)”, “Reimbursement Rate”, or “Amount” appear only on the first page, reuse them for the continuation pages.
+   - If column names are abbreviated or slightly altered across pages, normalize them based on meaning (e.g., “Rate” → “Reimbursement Rate”, “Rev Code” → “Code”).
+
+3. **Combine Split Rows**
+   - If a row in a table is split across two pages, merge the fragments together into a single logical record before extraction.
+   - Maintain correct associations between fields: the description must not lose its corresponding code, rate, or measurement even if these occur on the next page.
+
+4. **Page Boundary Logic**
+   - Do not break extraction between pages unless:
+     a) A new section heading appears unrelated to the previous table (e.g., “Section 4: Rate Changes”).
+     b) The new page clearly begins a new table with a different structure.
+   - If the first row on the next page logically continues the previous list (e.g., “Rehabilitation”, “Psychiatric Care”, “Outpatient Surgery”), treat it as part of the ongoing table.
+
+5. **Output Consistency**
+   - Each extracted table row must generate one structured record with the following fields where applicable:
+     - `"Service"` → description of the row or service name
+     - `"Measurement"` → e.g., “Per Diem”, “Per Case”, “Per Procedure”
+     - `"Code"` or `"Revenue_Code"` → DRG/CPT/HCPCS/revenue codes from the table
+     - `"Reimbursement_Rate"` or `"Reimbursement_Amount"` → dollar or percent values
+     - `"Service_Type"` → derived from context (Inpatient / Outpatient)
+     - `"Line_of_Business"` → if LOB appears in or above the table
+     - `"Description"` → full original row text for traceability
+
+6. **Header Reuse and Context**
+   - Use the last seen table header, title, or section name to label the continuation rows if headers are missing.
+   - Example: if “TABLE 1 – INPATIENT SERVICES” starts on one page and continues without the title, preserve `"Service_Type": "Inpatient"` for all continuation rows.
+
+7. **Universality**
+   - Apply this logic to all tables regardless of their titles — including SNF Levels, Case Rates, DRG or APC Schedules, Outpatient Services, Ancillary Services, Special Items, Rate Changes, and Charge Master Adjustments.
+
+8. **Ignore Non-Data Elements**
+   - Do not capture section numbers, page numbers, formatting symbols, or duplicate headers.
+   - Combine only meaningful rows that describe actual services, reimbursement rates, or code mappings.
+
+9. **Example (Generic)**
+   If “TABLE 1” starts on one page and continues on the next:
+   - Page 1:
+     | Service | Rev Code(s) | Rate |
+     |----------|-------------|------|
+     | Inpatient Medical/Surgical | 110,111,112 | 1587 |
+   - Page 2:
+     | Service | Rev Code(s) | Rate |
+     |----------|-------------|------|
+     | Rehabilitation | 128,129 | 1724 |
+   → Treat both as one logical table:
+     [
+       {"Service":"Inpatient Medical/Surgical","Code":"110,111,112","Reimbursement_Amount":"1587"},
+       {"Service":"Rehabilitation","Code":"128,129","Reimbursement_Amount":"1724"}
+     ]
