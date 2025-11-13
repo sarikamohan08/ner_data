@@ -1,160 +1,160 @@
-import os
-import re
-import json
-import time
-import openai
-import pandas as pd
-from typing import List, Dict, Any
-
-# ================================================================
-# CONFIG
-# ================================================================
-openai.api_key = os.getenv("OPENAI_API_KEY")
-MODEL = "gpt-4o-mini"
-
-CHUNK_SIZE = 3500
-CHUNK_OVERLAP = 400
-MAX_RETRIES = 3
-
-
-# ================================================================
-# PROMPT-A (MAIN EXTRACTION)
-# ================================================================
-PROMPT_A = """
-<<< PLACE YOUR FULL PROMPT-A TEXT HERE >>>
-"""
-
-
-# ================================================================
-# PROMPT-B (INDICATOR EXTRACTION)
-# ================================================================
-PROMPT_B = """
-<<< PLACE YOUR FULL PROMPT-B TEXT HERE >>>
-"""
-
-
-# ================================================================
-# CHUNK SPLITTER
-# ================================================================
-def split_text(text: str, size=CHUNK_SIZE, overlap=CHUNK_OVERLAP) -> List[str]:
+# -------------------- UTIL: split text --------------------
+def split_text(text: str, size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) -> List[str]:
+    if len(text) <= size:
+        return [text]
     chunks = []
     start = 0
-
     while start < len(text):
         end = start + size
-        chunk = text[start:end]
-        chunks.append(chunk)
+        chunks.append(text[start:end])
         start = max(0, end - overlap)
-
         if start >= len(text):
             break
-
     return chunks
 
-
-# ================================================================
-# CALL LLM WITH RETRIES
-# ================================================================
-def call_llm(prompt: str, chunk: str) -> List[Dict]:
+# -------------------- STREAM HELPER --------------------
+async def stream_chat_completion(client: AsyncOpenAI, prompt: str, chunk: str, request_timeout: int = 120) -> str:
+    assembled = ""
     message = prompt + "\n\nTEXT:\n" + chunk
+    last_exception = None
 
-    for attempt in range(MAX_RETRIES):
+    for attempt in range(1, MAX_RETRIES + 1):
         try:
-            resp = openai.ChatCompletion.create(
+            response = await client.chat.completions.create(
                 model=MODEL,
                 messages=[{"role": "user", "content": message}],
-                temperature=0,
-                max_tokens=1200
+                temperature=0.0,
+                max_tokens=1200,
+                stream=True,
+                request_timeout=request_timeout,
+                extra_headers=EXTRA_HEADERS
             )
 
-            content = resp.choices[0].message.content.strip()
+            async for event in response:
+                try:
+                    ev = event
+                    # If event is an object with to_json, convert
+                    if hasattr(ev, "to_json"):
+                        raw = ev.to_json()
+                        parsed = json.loads(raw) if isinstance(raw, str) else raw
+                    elif isinstance(ev, (str, bytes)):
+                        parsed = {"raw_text": ev}
+                    else:
+                        parsed = ev
 
-            if content.startswith("```"):
-                content = content.replace("```json", "").replace("```", "").strip()
+                    content_piece = ""
+                    if isinstance(parsed, dict):
+                        choices = parsed.get("choices")
+                        if choices and isinstance(choices, list):
+                            first = choices[0]
+                            if isinstance(first, dict):
+                                delta = first.get("delta") or {}
+                                if isinstance(delta, dict):
+                                    content_piece = delta.get("content", "")
+                        if not content_piece:
+                            content_piece = parsed.get("text") or parsed.get("message") or parsed.get("raw_text", "")
+                    else:
+                        content_piece = str(parsed)
 
-            return json.loads(content)
+                    if content_piece:
+                        assembled += content_piece
+                except Exception:
+                    try:
+                        assembled += str(event)
+                    except Exception:
+                        pass
+
+            return assembled
 
         except Exception as e:
-            print(f"Retry {attempt+1} for LLM… Error:", str(e))
-            time.sleep(1)
+            last_exception = e
+            wait = 1.5 * attempt
+            print(f"Stream attempt {attempt} failed: {e}. Retrying in {wait:.1f}s...")
+            await asyncio.sleep(wait)
 
-    print("LLM failed after retries.")
-    return []
+    raise RuntimeError(f"Streaming failed after {MAX_RETRIES} attempts. Last error: {last_exception}")
 
+# -------------------- SAFE JSON PARSE --------------------
+def safe_json_load(s: str) -> Any:
+    text = s.strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.I)
+        text = re.sub(r"\s*```$", "", text, flags=re.I)
 
-# ================================================================
-# MERGE A + B RESULTS
-# ================================================================
-def merge_results(rows_a: List[Dict], rows_b: List[Dict]) -> List[Dict]:
-    merged = []
-    max_len = max(len(rows_a), len(rows_b))
+    first_br = text.find("[")
+    last_br = text.rfind("]")
+    if first_br != -1 and last_br != -1 and last_br > first_br:
+        json_text = text[first_br:last_br+1]
+    else:
+        json_text = text
 
-    for i in range(max_len):
-        base = rows_a[i] if i < len(rows_a) else {}
-        ind = rows_b[i] if i < len(rows_b) else {}
+    try:
+        return json.loads(json_text)
+    except json.JSONDecodeError as e:
+        debug_excerpt = json_text[:1000]
+        raise ValueError(f"Failed to parse JSON. Error: {e}\nJSON excerpt:\n{debug_excerpt}")
 
-        merged.append({**base, **ind})
+# -------------------- PROCESS CHUNK --------------------
+async def process_chunk(client: AsyncOpenAI, chunk_text: str, chunk_index: int) -> List[Dict[str, Any]]:
+    print(f"[chunk {chunk_index}] start")
+    raw = await stream_chat_completion(client, MASTER_PROMPT, chunk_text)
+    try:
+        rows = safe_json_load(raw)
+        if not isinstance(rows, list):
+            raise ValueError("Model did not return a JSON array.")
+    except Exception as e:
+        print(f"[chunk {chunk_index}] parse error: {e}")
+        rows = []
 
-    return merged
+    # add chunk index
+    for r in rows:
+        r["_chunk_index"] = chunk_index
 
+    print(f"[chunk {chunk_index}] done, rows: {len(rows)}")
+    return rows
 
-# ================================================================
-# PROCESS ONE CHUNK (Sequential)
-# ================================================================
-def process_chunk(chunk: str, index: int) -> List[Dict]:
-    print(f"Processing chunk {index}…")
+# -------------------- MAIN PROCESS --------------------
+async def process_document_async(text: str) -> pd.DataFrame:
+    # instantiate async client
+    if GATEWAY_URL:
+        client = AsyncOpenAI(api_key=API_KEY, base_url=GATEWAY_URL)
+    else:
+        client = AsyncOpenAI(api_key=API_KEY)
 
-    rows_a = call_llm(PROMPT_A, chunk)
-    rows_b = call_llm(PROMPT_B, chunk)
+    chunks = split_text(text)
+    print(f"Document split into {len(chunks)} chunks (size {CHUNK_SIZE}, overlap {CHUNK_OVERLAP})")
 
-    combined = merge_results(rows_a, rows_b)
-
-    # store order
-    for r in combined:
-        r["_chunk_index"] = index
-
-    print(f"Chunk {index}: {len(combined)} rows extracted")
-    return combined
-
-
-# ================================================================
-# PROCESS ENTIRE DOCUMENT (SEQUENTIAL)
-# ================================================================
-def process_document(full_text: str) -> List[Dict]:
-    chunks = split_text(full_text)
-    print(f"Total chunks: {len(chunks)}")
-
-    all_rows = []
-
+    all_rows: List[Dict[str, Any]] = []
     for i, chunk in enumerate(chunks):
-        rows = process_chunk(chunk, i)
-        all_rows.extend(rows)
+        try:
+            rows = await process_chunk(client, chunk, i)
+            all_rows.extend(rows)
+        except Exception as e:
+            print(f"Error processing chunk {i}: {e}")
+            # continue to next chunk
 
-    # Sort by chunk index
-    all_rows.sort(key=lambda x: x["_chunk_index"])
-    return all_rows
+    all_rows.sort(key=lambda x: x.get("_chunk_index", 0))
+    df = pd.DataFrame(all_rows) if all_rows else pd.DataFrame()
+    return df
 
+# -------------------- RUNNER --------------------
+def run_from_file(input_path: str = "input_text.txt"):
+    if not os.path.exists(input_path):
+        raise FileNotFoundError(f"Place your extracted text at {input_path}")
 
-# ================================================================
-# MAIN ENTRYPOINT
-# ================================================================
-if __name__ == "__main__":
-    input_file = "input_text.txt"
-
-    if not os.path.exists(input_file):
-        raise FileNotFoundError("Place your contract text in input_text.txt")
-
-    # Load file
-    with open(input_file, "r", encoding="utf-8") as f:
+    with open(input_path, "r", encoding="utf-8") as f:
         text = f.read()
 
-    # Process entire document
-    rows = process_document(text)
+    df = asyncio.run(process_document_async(text))
+    try:
+        from IPython.display import display
+        display(df)
+    except Exception:
+        print(df)
 
-    print("Total final rows:", len(rows))
+    return df
 
-    # Convert to DataFrame
-    df = pd.DataFrame(rows)
-
-    # Print final dataframe
-    display(df)  # Databricks-friendly
+# -------------------- ENTRYPOINT --------------------
+if __name__ == "__main__":
+    _df = run_from_file("input_text.txt")
+    print("Completed. Rows:", len(_df))
