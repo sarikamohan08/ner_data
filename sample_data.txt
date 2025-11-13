@@ -1,158 +1,160 @@
-You are a healthcare contract data extraction assistant.  
-You will receive a chunk of plain text (from a PDF converted to text). Your job is to extract structured service-level rows and related metadata and return ONLY a valid JSON array of objects. Do NOT include any commentary, markdown, or explanation — only the JSON array.
+import os
+import re
+import json
+import time
+import openai
+import pandas as pd
+from typing import List, Dict, Any
 
-IMPORTANT GLOBAL RULES (apply to every chunk)
-- OUTPUT: a JSON array. Each element MUST be an object containing the full schema listed below. If a value is missing, set it to an empty string `""`.
-- ONE ROW PER RECORD: produce one JSON object per logical service row or distinct service clause. Do NOT merge separate table rows into one object.
-- MULTI-PAGE TABLES: treat tables that are split across pages as continuous. If the chunk is a continuation, parse rows as if the table header persisted. Merge row fragments split by page breaks into the correct record.
-- PRESERVE ORDER: keep the order rows appear in the document.
-- DEDICATED KEYS: include all schema keys exactly (even if empty).
-- DETERMINISM: use literal extraction and minimal inference. Do not invent values.
+# ================================================================
+# CONFIG
+# ================================================================
+openai.api_key = os.getenv("OPENAI_API_KEY")
+MODEL = "gpt-4o-mini"
 
-SCHEMA (every JSON object must include these keys — order does not matter):
-[
-"Provider_Name","Effective_Date","Termination_Date","NPI_Number","Tax_ID","Provider_Linkage",
-"Service_Type","Service","Description","Code","Revenue_Code","Reimbursement_Methodology",
-"Reimbursement_Rate","Reimbursement_Amount","Method_of_Payment","Rate_Change","Charge_Master_Adjustment",
-"DRG_Base_Rate","Line_of_Business","Health_Benefit_Plans","Transfer_Calculation","Modifier_Code_Ind",
-"Diagnosis_Code_Ind","Revenue_Ind","DRG_Ind","CPT_Ind","HCPCS_Ind","ICD9/10_Ind","Age_Group_Ind",
-"Grouper_Ind","Grouper","APC_Ind","MSR_Ind","MSR_Type","Bilateral_Procedure_Ind","Provider_Speciality_Ind",
-"Exclude_From_Transfer_Ind","Exclude_From_Stoploss_Ind","Other_Flat_Fee_Ind","Surg_Flat_Fee_Ind","Case_Rate",
-"Stoploss_Amount","Stoploss_Rate"
-]
+CHUNK_SIZE = 3500
+CHUNK_OVERLAP = 400
+MAX_RETRIES = 3
 
-PARSING RULES (how to fill fields)
-1) Provider fields:
- - If provider info appears in the chunk, fill Provider_Name, Effective_Date, Termination_Date, NPI_Number, Tax_ID.
- - Always populate Provider_Linkage with a single concatenated string when data present (e.g., "Legal Name (DBA X) | NPI 123 | Tax ID 12-3456789 | Eff 01/01/2023").
- - If not present in chunk, return "".
 
-2) Table vs Paragraph rows:
- - If a table is present, create one object per logical table row.
- - If a paragraph defines a service or reimbursement clause, produce one object for that clause.
- - If a table row spans lines/pages, merge fragments into a single object.
+# ================================================================
+# PROMPT-A (MAIN EXTRACTION)
+# ================================================================
+PROMPT_A = """
+<<< PLACE YOUR FULL PROMPT-A TEXT HERE >>>
+"""
 
-3) Service and Service_Type:
- - Service must contain the service name (e.g., "Rehabilitation", "Medical/Surgical", "DRG Payment", "Special Item - Implantable Devices").
- - Service_Type should be "Inpatient" or "Outpatient" when explicit; otherwise "".
- - Covered Services, Special Items, DRG Payment, Rehab, Metro Facilities, SNF levels, Case Rate entries must be placed in Service.
 
-4) Codes & Indicators:
- - Put billing/revenue/drg/cpt/hcpcs/icd values into Code or Revenue_Code as applicable (comma-separated if multiple).
- - Set indicators to "1" or "0" (strings) based on detection:
-   • Modifier_Code_Ind = "1" if modifiers or hyphenated modifier patterns appear (e.g., "-50", "modifier 59").
-   • Diagnosis_Code_Ind = "1" if ICD code patterns present (ICD-9/ICD-10).
-   • Revenue_Ind, DRG_Ind, CPT_Ind, HCPCS_Ind, ICD9/10_Ind detect via code patterns or context phrases (set to "1" if present).
- - If the section references DRG logic but no explicit DRG code, set DRG_Ind = "1".
+# ================================================================
+# PROMPT-B (INDICATOR EXTRACTION)
+# ================================================================
+PROMPT_B = """
+<<< PLACE YOUR FULL PROMPT-B TEXT HERE >>>
+"""
 
-5) Reimbursement fields:
- - Reimbursement_Rate: percent values (e.g., "44%") — extract nearest percent related to the service row.
- - Reimbursement_Amount: currency ($...) or numeric amounts (no $ required but keep currency if present).
- - Reimbursement_Methodology: one or more of: "Per Diem", "Per Case", "Per Procedure", "Per Visit", "Percent of Charge", "Fee Schedule", "Medicare Allowable Amount", "Fixed Rate", "Per Unit", "Per Gram", "Per RVU", "Per Session". Include multiple values comma-separated when both appear.
 
-6) DRG specifics:
- - For any DRG clause, set Service = "DRG Payment" (or "DRG Payment - <context>") and DRG_Ind = "1".
- - Extract DRG_Base_Rate if a dollar amount is associated with DRG text.
- - If a DRG formula appears (e.g., "DRG Payment/Arithmetic LOS × inpatient days"), populate Transfer_Calculation with the exact formula text and also include it in Description.
+# ================================================================
+# CHUNK SPLITTER
+# ================================================================
+def split_text(text: str, size=CHUNK_SIZE, overlap=CHUNK_OVERLAP) -> List[str]:
+    chunks = []
+    start = 0
 
-7) Special Items:
- - For "Special Items" lists, create an individual Service record for each sub-item using normalized names:
-   e.g., "Special Item - Implantable Devices", "Special Item - Pharmaceuticals", "Special Item - Outpatient Cardiology".
- - Extract associated revenue codes into Code or Revenue_Code and any rates into Reimbursement_Rate/Amount.
+    while start < len(text):
+        end = start + size
+        chunk = text[start:end]
+        chunks.append(chunk)
+        start = max(0, end - overlap)
 
-8) Stop Loss, Rate Change, Charge Master:
- - If "Stop Loss" present: Exclude_From_Stoploss_Ind = "1", extract Stoploss_Amount ($...) and Stoploss_Rate (percent).
- - Rate_Change: extract percent tied to rate-change language.
- - Charge_Master_Adjustment: extract percent tied to charge master language.
+        if start >= len(text):
+            break
 
-9) Multiple Surgery Logic (MSR):
- - If MSR present, set MSR_Ind = "1" and create separate records per tier when text lists tiers: set MSR_Type to "Primary"/"Secondary"/"Tertiary" and Reimbursement_Rate accordingly (e.g., "100%", "50%", "25%").
+    return chunks
 
-10) Bilateral Procedures:
- - If bilateral logic or modifier 50 appears, set Bilateral_Procedure_Ind = "1" and extract related rate into Reimbursement_Rate.
 
-11) Health Benefit Plans:
- - Extract all plan names from "Health Benefit Plan" or "Product Participation" sections and put a comma-separated normalized string into Health_Benefit_Plans.
+# ================================================================
+# CALL LLM WITH RETRIES
+# ================================================================
+def call_llm(prompt: str, chunk: str) -> List[Dict]:
+    message = prompt + "\n\nTEXT:\n" + chunk
 
-12) Line of Business (LOB):
- - Detect "Medicare", "Medicaid", "Commercial", "Medicare-Medicaid Dual". If multiple LOBs apply to the same service, return them comma-separated in Line_of_Business (preserve first-seen order).
+    for attempt in range(MAX_RETRIES):
+        try:
+            resp = openai.ChatCompletion.create(
+                model=MODEL,
+                messages=[{"role": "user", "content": message}],
+                temperature=0,
+                max_tokens=1200
+            )
 
-13) Measurement-based methodology & facility groups:
- - If methodology is expressed as measurement (per unit/gram/RVU), include that phrase in Reimbursement_Methodology.
- - If service is associated with facility groups (e.g., "Metro Facilities"), include that context in Service (e.g., "Metro Facilities - Outpatient Cardiology").
+            content = resp.choices[0].message.content.strip()
 
-14) Output formatting rules:
- - Indicators must be strings "1" or "0".
- - Percent strings must include the percent sign (e.g., "3%").
- - Currency should preserve "$" (e.g., "$8,500").
- - Code lists should be comma-separated without extraneous words.
- - Description should contain the full original row/paragraph text (trim whitespace).
+            if content.startswith("```"):
+                content = content.replace("```json", "").replace("```", "").strip()
 
-FEW-SHOT EXAMPLES (follow EXACT output form)
---- EXAMPLE A ---
-Input chunk (table-like):
-"TABLE 1 – INPATIENT SERVICES
-Medical/Surgical | Per Diem | Rev Codes 110-153 | $1,587
-Cardiac | Per Diem | MS DRGs 215, 242–251 | 44% off billed charges
-Rehabilitation | Per Diem | DRG 128,129 | $1,724"
-Output JSON (array):
-[
-  {
-    "Provider_Name":"", "Effective_Date":"", "Termination_Date":"", "NPI_Number":"", "Tax_ID":"",
-    "Provider_Linkage":"", "Service_Type":"Inpatient", "Service":"Medical/Surgical", "Description":"Medical/Surgical | Per Diem | Rev Codes 110-153 | $1,587",
-    "Code":"110-153", "Revenue_Code":"", "Reimbursement_Methodology":"Per Diem", "Reimbursement_Rate":"", "Reimbursement_Amount":"$1,587",
-    "Method_of_Payment":"", "Rate_Change":"", "Charge_Master_Adjustment":"", "DRG_Base_Rate":"", "Line_of_Business":"", "Health_Benefit_Plans":"",
-    "Transfer_Calculation":"", "Modifier_Code_Ind":"0", "Diagnosis_Code_Ind":"0", "Revenue_Ind":"1", "DRG_Ind":"0", "CPT_Ind":"0", "HCPCS_Ind":"0", "ICD9/10_Ind":"0",
-    "Age_Group_Ind":"0", "Grouper_Ind":"0", "Grouper":"", "APC_Ind":"0", "MSR_Ind":"0", "MSR_Type":"", "Bilateral_Procedure_Ind":"0", "Provider_Speciality_Ind":"0",
-    "Exclude_From_Transfer_Ind":"0", "Exclude_From_Stoploss_Ind":"0", "Other_Flat_Fee_Ind":"0", "Surg_Flat_Fee_Ind":"0", "Case_Rate":"", "Stoploss_Amount":"", "Stoploss_Rate":""
-  },
-  {
-    "Provider_Name":"", "Effective_Date":"", "Termination_Date":"", "NPI_Number":"", "Tax_ID":"",
-    "Provider_Linkage":"", "Service_Type":"Inpatient", "Service":"Cardiac", "Description":"Cardiac | Per Diem | MS DRGs 215, 242–251 | 44% off billed charges",
-    "Code":"MS DRGs 215,242-251", "Revenue_Code":"", "Reimbursement_Methodology":"Per Diem, Percent Of Charge", "Reimbursement_Rate":"44%", "Reimbursement_Amount":"",
-    "Method_of_Payment":"", "Rate_Change":"", "Charge_Master_Adjustment":"", "DRG_Base_Rate":"", "Line_of_Business":"", "Health_Benefit_Plans":"",
-    "Transfer_Calculation":"", "Modifier_Code_Ind":"0", "Diagnosis_Code_Ind":"0", "Revenue_Ind":"1", "DRG_Ind":"1", "CPT_Ind":"0", "HCPCS_Ind":"0", "ICD9/10_Ind":"0",
-    "Age_Group_Ind":"0", "Grouper_Ind":"0", "Grouper":"", "APC_Ind":"0", "MSR_Ind":"0", "MSR_Type":"", "Bilateral_Procedure_Ind":"0", "Provider_Speciality_Ind":"0",
-    "Exclude_From_Transfer_Ind":"0", "Exclude_From_Stoploss_Ind":"0", "Other_Flat_Fee_Ind":"0", "Surg_Flat_Fee_Ind":"0", "Case_Rate":"", "Stoploss_Amount":"", "Stoploss_Rate":""
-  },
-  {
-    "Provider_Name":"", "Effective_Date":"", "Termination_Date":"", "NPI_Number":"", "Tax_ID":"",
-    "Provider_Linkage":"", "Service_Type":"Inpatient", "Service":"Rehabilitation", "Description":"Rehabilitation | Per Diem | DRG 128,129 | $1,724",
-    "Code":"DRG 128,129", "Revenue_Code":"", "Reimbursement_Methodology":"Per Diem", "Reimbursement_Rate":"", "Reimbursement_Amount":"$1,724",
-    "Method_of_Payment":"", "Rate_Change":"", "Charge_Master_Adjustment":"", "DRG_Base_Rate":"", "Line_of_Business":"", "Health_Benefit_Plans":"",
-    "Transfer_Calculation":"", "Modifier_Code_Ind":"0", "Diagnosis_Code_Ind":"0", "Revenue_Ind":"1", "DRG_Ind":"1", "CPT_Ind":"0", "HCPCS_Ind":"0", "ICD9/10_Ind":"0",
-    "Age_Group_Ind":"0", "Grouper_Ind":"0", "Grouper":"", "APC_Ind":"0", "MSR_Ind":"0", "MSR_Type":"", "Bilateral_Procedure_Ind":"0", "Provider_Speciality_Ind":"0",
-    "Exclude_From_Transfer_Ind":"0", "Exclude_From_Stoploss_Ind":"0", "Other_Flat_Fee_Ind":"0", "Surg_Flat_Fee_Ind":"0", "Case_Rate":"", "Stoploss_Amount":"", "Stoploss_Rate":""
-  }
-]
+            return json.loads(content)
 
---- EXAMPLE B ---
-Input chunk (paragraphs):
-"DRG Payment/Arithmetic LOS × inpatient days. DRG base rate $8,500. Charge Master increase 3%."
-Output:
-[
- {
-  "Provider_Name":"", "Effective_Date":"", "Termination_Date":"", "NPI_Number":"", "Tax_ID":"",
-  "Provider_Linkage":"", "Service_Type":"Inpatient", "Service":"DRG Payment", "Description":"DRG Payment/Arithmetic LOS × inpatient days. DRG base rate $8,500. Charge Master increase 3%.",
-  "Code":"", "Revenue_Code":"", "Reimbursement_Methodology":"DRG", "Reimbursement_Rate":"", "Reimbursement_Amount":"",
-  "Method_of_Payment":"", "Rate_Change":"", "Charge_Master_Adjustment":"3%", "DRG_Base_Rate":"$8,500", "Line_of_Business":"", "Health_Benefit_Plans":"",
-  "Transfer_Calculation":"DRG Payment/Arithmetic LOS × inpatient days", "Modifier_Code_Ind":"0", "Diagnosis_Code_Ind":"0", "Revenue_Ind":"0", "DRG_Ind":"1", "CPT_Ind":"0", "HCPCS_Ind":"0", "ICD9/10_Ind":"0",
-  "Age_Group_Ind":"0", "Grouper_Ind":"0", "Grouper":"", "APC_Ind":"0", "MSR_Ind":"0", "MSR_Type":"", "Bilateral_Procedure_Ind":"0", "Provider_Speciality_Ind":"0",
-  "Exclude_From_Transfer_Ind":"0", "Exclude_From_Stoploss_Ind":"0", "Other_Flat_Fee_Ind":"0", "Surg_Flat_Fee_Ind":"0", "Case_Rate":"", "Stoploss_Amount":"", "Stoploss_Rate":""
- }
-]
+        except Exception as e:
+            print(f"Retry {attempt+1} for LLM… Error:", str(e))
+            time.sleep(1)
 
---- EXAMPLE C ---
-Input chunk (special items):
-"Special Items - Implantable devices billed with revenue code 274,275,276,278. Pharmaceuticals billed with revenue code 636."
-Output:
-[
- {"Provider_Name":"", "Effective_Date":"", "Termination_Date":"", "NPI_Number":"", "Tax_ID":"", "Provider_Linkage":"",
-  "Service_Type":"", "Service":"Special Item - Implantable Devices", "Description":"Implantable devices billed with revenue code 274,275,276,278", "Code":"274,275,276,278", "Revenue_Code":"", "Reimbursement_Methodology":"", "Reimbursement_Rate":"", "Reimbursement_Amount":"",
-  "Method_of_Payment":"", "Rate_Change":"", "Charge_Master_Adjustment":"", "DRG_Base_Rate":"", "Line_of_Business":"", "Health_Benefit_Plans":"",
-  "Transfer_Calculation":"", "Modifier_Code_Ind":"0", "Diagnosis_Code_Ind":"0", "Revenue_Ind":"1", "DRG_Ind":"0", "CPT_Ind":"0", "HCPCS_Ind":"0", "ICD9/10_Ind":"0",
-  "Age_Group_Ind":"0", "Grouper_Ind":"0", "Grouper":"", "APC_Ind":"0", "MSR_Ind":"0", "MSR_Type":"", "Bilateral_Procedure_Ind":"0", "Provider_Speciality_Ind":"0",
-  "Exclude_From_Transfer_Ind":"0", "Exclude_From_Stoploss_Ind":"0", "Other_Flat_Fee_Ind":"0", "Surg_Flat_Fee_Ind":"0", "Case_Rate":"", "Stoploss_Amount":"", "Stoploss_Rate":""}
-]
+    print("LLM failed after retries.")
+    return []
 
-END OF PROMPT
+
+# ================================================================
+# MERGE A + B RESULTS
+# ================================================================
+def merge_results(rows_a: List[Dict], rows_b: List[Dict]) -> List[Dict]:
+    merged = []
+    max_len = max(len(rows_a), len(rows_b))
+
+    for i in range(max_len):
+        base = rows_a[i] if i < len(rows_a) else {}
+        ind = rows_b[i] if i < len(rows_b) else {}
+
+        merged.append({**base, **ind})
+
+    return merged
+
+
+# ================================================================
+# PROCESS ONE CHUNK (Sequential)
+# ================================================================
+def process_chunk(chunk: str, index: int) -> List[Dict]:
+    print(f"Processing chunk {index}…")
+
+    rows_a = call_llm(PROMPT_A, chunk)
+    rows_b = call_llm(PROMPT_B, chunk)
+
+    combined = merge_results(rows_a, rows_b)
+
+    # store order
+    for r in combined:
+        r["_chunk_index"] = index
+
+    print(f"Chunk {index}: {len(combined)} rows extracted")
+    return combined
+
+
+# ================================================================
+# PROCESS ENTIRE DOCUMENT (SEQUENTIAL)
+# ================================================================
+def process_document(full_text: str) -> List[Dict]:
+    chunks = split_text(full_text)
+    print(f"Total chunks: {len(chunks)}")
+
+    all_rows = []
+
+    for i, chunk in enumerate(chunks):
+        rows = process_chunk(chunk, i)
+        all_rows.extend(rows)
+
+    # Sort by chunk index
+    all_rows.sort(key=lambda x: x["_chunk_index"])
+    return all_rows
+
+
+# ================================================================
+# MAIN ENTRYPOINT
+# ================================================================
+if __name__ == "__main__":
+    input_file = "input_text.txt"
+
+    if not os.path.exists(input_file):
+        raise FileNotFoundError("Place your contract text in input_text.txt")
+
+    # Load file
+    with open(input_file, "r", encoding="utf-8") as f:
+        text = f.read()
+
+    # Process entire document
+    rows = process_document(text)
+
+    print("Total final rows:", len(rows))
+
+    # Convert to DataFrame
+    df = pd.DataFrame(rows)
+
+    # Print final dataframe
+    display(df)  # Databricks-friendly
