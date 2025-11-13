@@ -1,3 +1,25 @@
+import os
+import asyncio
+import json
+import re
+import time
+from typing import List, Dict, Any
+
+import pandas as pd
+
+# Use your organization's AsyncOpenAI client import (adjust if necessary)
+from openai import AsyncOpenAI
+
+# -------------------- CONFIG --------------------
+API_KEY = os.getenv("OPENAI_API_KEY", "<PUT_API_KEY_HERE>")
+GATEWAY_URL = os.getenv("OPENAI_GATEWAY_URL", "")  # set if your org uses a gateway
+MODEL = "gpt-4"  # change if you use another GPT-4 variant
+CHUNK_SIZE = 3500
+CHUNK_OVERLAP = 400
+MAX_RETRIES = 3
+EXTRA_HEADERS = {"api-key": API_KEY, "ai-gateway-version": "v2"}
+
+
 # -------------------- UTIL: split text --------------------
 def split_text(text: str, size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) -> List[str]:
     if len(text) <= size:
@@ -158,3 +180,4 @@ def run_from_file(input_path: str = "input_text.txt"):
 if __name__ == "__main__":
     _df = run_from_file("input_text.txt")
     print("Completed. Rows:", len(_df))
+
