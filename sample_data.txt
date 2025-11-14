@@ -1,26 +1,27 @@
+# async_single_prompt_databricks.py
+# Full, ready-to-run async streaming pipeline for Databricks/Jupyter notebooks.
+# - Uses a single MASTER_PROMPT (the full extraction prompt)
+# - Streams responses (reduces upstream timeouts)
+# - Handles running inside an existing event loop using nest_asyncio
+# - Processes document sequentially (Databricks-friendly)
+# - Prints result as a pandas DataFrame (no files written)
+
 import os
-import asyncio
-import json
 import re
+import json
 import time
+import asyncio
 from typing import List, Dict, Any
 
 import pandas as pd
 
-# Use your organization's AsyncOpenAI client import (adjust if necessary)
+# Replace with your org's async client import if different.
+# Example used in prior messages:
 from openai import AsyncOpenAI
 
-# -------------------- CONFIG --------------------
-API_KEY = os.getenv("OPENAI_API_KEY", "<PUT_API_KEY_HERE>")
-GATEWAY_URL = os.getenv("OPENAI_GATEWAY_URL", "")  # set if your org uses a gateway
-MODEL = "gpt-4"  # change if you use another GPT-4 variant
-CHUNK_SIZE = 3500
-CHUNK_OVERLAP = 400
-MAX_RETRIES = 3
-EXTRA_HEADERS = {"api-key": API_KEY, "ai-gateway-version": "v2"}
 
 
-# -------------------- UTIL: split text --------------------
+# -------------------- HELPERS --------------------
 def split_text(text: str, size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) -> List[str]:
     if len(text) <= size:
         return [text]
@@ -34,11 +35,15 @@ def split_text(text: str, size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) 
             break
     return chunks
 
-# -------------------- STREAM HELPER --------------------
-async def stream_chat_completion(client: AsyncOpenAI, prompt: str, chunk: str, request_timeout: int = 120) -> str:
+
+async def stream_chat_completion(client: AsyncOpenAI, prompt: str, chunk: str, request_timeout: int = REQUEST_TIMEOUT) -> str:
+    """
+    Call client's chat.completions.create with stream=True and assemble the output.
+    This is robust to common streaming event shapes; adapt parsing if your gateway differs.
+    """
     assembled = ""
     message = prompt + "\n\nTEXT:\n" + chunk
-    last_exception = None
+    last_exc = None
 
     for attempt in range(1, MAX_RETRIES + 1):
         try:
@@ -53,9 +58,10 @@ async def stream_chat_completion(client: AsyncOpenAI, prompt: str, chunk: str, r
             )
 
             async for event in response:
+                # Try several safe access patterns for event content
                 try:
                     ev = event
-                    # If event is an object with to_json, convert
+                    parsed = None
                     if hasattr(ev, "to_json"):
                         raw = ev.to_json()
                         parsed = json.loads(raw) if isinstance(raw, str) else raw
@@ -66,6 +72,7 @@ async def stream_chat_completion(client: AsyncOpenAI, prompt: str, chunk: str, r
 
                     content_piece = ""
                     if isinstance(parsed, dict):
+                        # common gateway streaming delta shape
                         choices = parsed.get("choices")
                         if choices and isinstance(choices, list):
                             first = choices[0]
@@ -73,6 +80,7 @@ async def stream_chat_completion(client: AsyncOpenAI, prompt: str, chunk: str, r
                                 delta = first.get("delta") or {}
                                 if isinstance(delta, dict):
                                     content_piece = delta.get("content", "")
+                        # fallback fields
                         if not content_piece:
                             content_piece = parsed.get("text") or parsed.get("message") or parsed.get("raw_text", "")
                     else:
@@ -81,23 +89,28 @@ async def stream_chat_completion(client: AsyncOpenAI, prompt: str, chunk: str, r
                     if content_piece:
                         assembled += content_piece
                 except Exception:
+                    # append stringified event as last resort
                     try:
                         assembled += str(event)
                     except Exception:
                         pass
 
+            # streaming completed successfully
             return assembled
 
         except Exception as e:
-            last_exception = e
+            last_exc = e
             wait = 1.5 * attempt
             print(f"Stream attempt {attempt} failed: {e}. Retrying in {wait:.1f}s...")
             await asyncio.sleep(wait)
 
-    raise RuntimeError(f"Streaming failed after {MAX_RETRIES} attempts. Last error: {last_exception}")
+    raise RuntimeError(f"Streaming failed after {MAX_RETRIES} attempts. Last error: {last_exc}")
 
-# -------------------- SAFE JSON PARSE --------------------
+
 def safe_json_load(s: str) -> Any:
+    """
+    Extract JSON array from the model output string robustly.
+    """
     text = s.strip()
     if text.startswith("```"):
         text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.I)
@@ -106,7 +119,7 @@ def safe_json_load(s: str) -> Any:
     first_br = text.find("[")
     last_br = text.rfind("]")
     if first_br != -1 and last_br != -1 and last_br > first_br:
-        json_text = text[first_br:last_br+1]
+        json_text = text[first_br:last_br + 1]
     else:
         json_text = text
 
@@ -116,7 +129,7 @@ def safe_json_load(s: str) -> Any:
         debug_excerpt = json_text[:1000]
         raise ValueError(f"Failed to parse JSON. Error: {e}\nJSON excerpt:\n{debug_excerpt}")
 
-# -------------------- PROCESS CHUNK --------------------
+
 async def process_chunk(client: AsyncOpenAI, chunk_text: str, chunk_index: int) -> List[Dict[str, Any]]:
     print(f"[chunk {chunk_index}] start")
     raw = await stream_chat_completion(client, MASTER_PROMPT, chunk_text)
@@ -128,14 +141,12 @@ async def process_chunk(client: AsyncOpenAI, chunk_text: str, chunk_index: int) 
         print(f"[chunk {chunk_index}] parse error: {e}")
         rows = []
 
-    # add chunk index
     for r in rows:
         r["_chunk_index"] = chunk_index
-
     print(f"[chunk {chunk_index}] done, rows: {len(rows)}")
     return rows
 
-# -------------------- MAIN PROCESS --------------------
+
 async def process_document_async(text: str) -> pd.DataFrame:
     # instantiate async client
     if GATEWAY_URL:
@@ -149,15 +160,34 @@ async def process_document_async(text: str) -> pd.DataFrame:
     all_rows: List[Dict[str, Any]] = []
     for i, chunk in enumerate(chunks):
         try:
-            rows = await process_chunk(client, chunk, i)
-            all_rows.extend(rows)
+            merged_rows = await process_chunk(client, chunk, i)
+            all_rows.extend(merged_rows)
         except Exception as e:
             print(f"Error processing chunk {i}: {e}")
             # continue to next chunk
 
+    # sort by chunk index
     all_rows.sort(key=lambda x: x.get("_chunk_index", 0))
     df = pd.DataFrame(all_rows) if all_rows else pd.DataFrame()
     return df
+
+# -------------------- run_coro helper for notebook compatibility --------------------
+def run_coro(coro):
+    """
+    Run a coroutine from synchronous code in both normal python and notebook environments.
+    If an event loop is already running (notebook), apply nest_asyncio and run until complete.
+    """
+    try:
+        return asyncio.run(coro)
+    except RuntimeError as e:
+        # running inside existing loop (Jupyter/Databricks)
+        try:
+            import nest_asyncio
+        except ImportError:
+            raise RuntimeError("nest_asyncio is required when running inside a notebook event loop. Install it with: pip install nest_asyncio") from e
+        nest_asyncio.apply()
+        loop = asyncio.get_event_loop()
+        return loop.run_until_complete(coro)
 
 # -------------------- RUNNER --------------------
 def run_from_file(input_path: str = "input_text.txt"):
@@ -167,7 +197,9 @@ def run_from_file(input_path: str = "input_text.txt"):
     with open(input_path, "r", encoding="utf-8") as f:
         text = f.read()
 
-    df = asyncio.run(process_document_async(text))
+    df = run_coro(process_document_async(text))
+
+    # display in notebook-friendly way
     try:
         from IPython.display import display
         display(df)
@@ -176,8 +208,10 @@ def run_from_file(input_path: str = "input_text.txt"):
 
     return df
 
-# -------------------- ENTRYPOINT --------------------
-if __name__ == "__main__":
-    _df = run_from_file("input_text.txt")
-    print("Completed. Rows:", len(_df))
 
+if __name__ == "__main__":
+    # set API_KEY env var or ensure API_KEY variable set at top
+    if API_KEY == "<PUT_API_KEY_HERE>" and not os.getenv("OPENAI_API_KEY"):
+        print("Warning: API key not configured. Set OPENAI_API_KEY environment variable or edit API_KEY in the script.")
+    df_result = run_from_file("input_text.txt")
+    print("Completed. Rows:", len(df_result))
