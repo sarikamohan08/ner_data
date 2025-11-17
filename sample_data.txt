@@ -1,16 +1,1 @@
-===================================================================
-### EFFECTIVE DATE INHERITANCE (REQUIRED)
-===================================================================
-- Every service row MUST contain an "Effective_Date" value.
-- If a service row DOES NOT contain its own explicit Effective Date in the text,
-  then inherit (copy) the most recent Provider-level Effective Date that appears
-  earlier in the document or earlier in the chunk.
-- NEVER create or guess new dates.
-- NEVER modify or transform the date format.
-- Valid sources for inherited Effective Date include:
-    • Provider Effective Date
-    • Facility Effective Date
-    • Agreement Effective Date
-- If NO provider-level effective date has appeared anywhere earlier,
-  then leave "Effective_Date" as "".
-- This rule applies to ALL services extracted from tables and paragraphs.
+If a table start is detected, capture the full table block (from the first table row/header to the last table row/footer) before extracting rows. If chunking cuts a table, request/infer the continuation via `PREV_TABLE_HEADER` or use chunk overlap.
