@@ -1,63 +1,79 @@
 ===================================================================
-### CIS TYPE DESCRIPTION (Service Category Mapping)
+### 0️⃣ PROVIDER INFORMATION EXTRACTION (COVER SHEET OPTIONAL)
 ===================================================================
 
-Populate "cis_type_description" based on keywords found in the service row, table row,
-or surrounding paragraph. Determine the type using the following rules:
+Extract provider-level information from ANYWHERE in the document, not only from a
+cover sheet. Cover pages may or may not exist — therefore:
 
-1) **SNF / Skilled Nursing**
-Set "cis_type_description" = "SNF" if ANY of these appear:
-    - "SNF"
-    - "SNU"
-    - "Skilled Nursing"
-    - "Skilled Nursing Facility"
-    - "Skilled Nursing Facilities"
-    - "Level 1", "Level 2", "Level 3" (when associated with SNF context)
-    - "Inpatient Nursing", “Nursing Facility”
-Do NOT confuse with rehabilitation levels; use surrounding context.
+IF a cover sheet exists:
+    - Extract all provider-level fields from it.
 
-2) **Rehabilitation**
-Set "cis_type_description" = "Rehab" if ANY appear:
-    - "Rehab"
-    - "Rehabilitation"
-    - "General Rehabilitation"
-    - "Trauma Rehabilitation"
-    - "Brain Injury Rehab"
-    - "Spinal Cord Rehab"
+IF NO cover sheet exists:
+    - Search the entire text for provider identifiers and extract them from
+      any section that contains:
+          “Provider Name”, “Legal Name”, “DBA Name”, 
+          “NPI”, “Tax ID”, “EIN”, 
+          “Effective Date”, “Creation Date”, 
+          “Provider Specialty”, “Address”, “Contact”.
 
-3) **Audiology**
-Set "cis_type_description" = "Audiology" if text contains:
-    - "Audiology"
-    - Audiology-specific V-codes such as V5008, V5010, V5020, V5240, etc.
+Provider information fields to extract whenever available:
 
-4) **Cardiology**
-Set "cis_type_description" = "Cardiology" if text contains:
-    - "Cardiology"
-    - "Outpatient Cardiology"
-    - "Cardiac"
-    - "Cardiac Services", "Cardiac Rehab" (cardiac rehab still maps to Cardiology)
+1. **Provider_Name**
+   - Prefer “Legal Name”.
+   - If DBA exists → store as:   "Legal Name (DBA <DBA Name>)".
+   - If only DBA exists → use DBA as Provider_Name.
+   - If neither appear → leave blank.
 
-5) **Detox**
-Set "cis_type_description" = "Detox" if ANY appear:
-    - "Detox"
-    - "Detoxification"
-    - "Substance Abuse / Detoxification"
-    - "Inpatient Detox"
+2. **Effective_Date**
+   - Extract from ANY of the following if they appear:
+        "Creation Date", 
+        "Effective Date", 
+        "Term Start", 
+        “Agreement effective as of”.
+   - Use the *earliest* date if multiple appear.
+   - Format YYYY-MM-DD when possible.
+   - If NOT found → leave blank, but DO NOT fail.
 
-6) **Dialysis**
-Set "cis_type_description" = "Dialysis" if ANY appear:
-    - "Dialysis"
-    - "Hemodialysis"
-    - "Peritoneal Dialysis"
-    - "Dialysis Services"
+3. **NPI_Number**
+   - Extract any valid NPI (10 digits) appearing anywhere in the document.
 
-7) **Default Rule**
-If none of the above categories match:
-    - Leave "cis_type_description" = "" (blank).
-    - Do NOT guess or fabricate a type.
+4. **Tax_ID**
+   - Extract “Federal Tax ID”, “Tax ID”, “EIN”.
 
-8) MULTIPLE MATCHES
-If multiple keywords appear, select the **most specific** category
-(e.g., “Cardiac Rehab” → "Cardiology", not “Rehab”).
+5. **Provider_Specialty**
+   - Extract exact text (e.g., “DYS-End-Stage Renal Disease (ESRD) Treatment Clinic/Center”).
+
+6. **Addresses**
+   Extract any address blocks labeled:
+       • Contract Contact Information  
+       • Address for Notice  
+       • Contractor Information  
+       • Provider Address  
+       • Physical Address  
+   And parse:
+       - Address Line 1
+       - Address Line 2 (if present)
+       - City
+       - State
+       - Zip
+       - Phone
+       - Fax
+       - Email
+
+7. **DEFAULT PROVIDER INFO**
+   - If no provider info exists anywhere in the document, return empty strings
+     for all provider fields.
+   - Do NOT fabricate or hallucinate any values.
+
+===================================================================
+### EFFECTIVE DATE INHERITANCE RULE
+===================================================================
+For every service row:
+
+If that service row does NOT contain an effective date:
+    → Apply the Provider-Level Effective_Date extracted above.
+
+If provider-level effective date also missing:
+    → Leave service-level effective date blank.
 
 ===================================================================
