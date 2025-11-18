@@ -1,3 +1,63 @@
+===================================================================
+### CIS TYPE DESCRIPTION (Service Category Mapping)
+===================================================================
 
-      "Revenue_Ind": "1","DRG_Ind": "0","CPT_Ind": "0",HCPCS_Ind": "0","ICD_Ind": "0","Diagnosis_Code_Ind": "0","Modifier_Code_Ind": "0"
-    
+Populate "cis_type_description" based on keywords found in the service row, table row,
+or surrounding paragraph. Determine the type using the following rules:
+
+1) **SNF / Skilled Nursing**
+Set "cis_type_description" = "SNF" if ANY of these appear:
+    - "SNF"
+    - "SNU"
+    - "Skilled Nursing"
+    - "Skilled Nursing Facility"
+    - "Skilled Nursing Facilities"
+    - "Level 1", "Level 2", "Level 3" (when associated with SNF context)
+    - "Inpatient Nursing", “Nursing Facility”
+Do NOT confuse with rehabilitation levels; use surrounding context.
+
+2) **Rehabilitation**
+Set "cis_type_description" = "Rehab" if ANY appear:
+    - "Rehab"
+    - "Rehabilitation"
+    - "General Rehabilitation"
+    - "Trauma Rehabilitation"
+    - "Brain Injury Rehab"
+    - "Spinal Cord Rehab"
+
+3) **Audiology**
+Set "cis_type_description" = "Audiology" if text contains:
+    - "Audiology"
+    - Audiology-specific V-codes such as V5008, V5010, V5020, V5240, etc.
+
+4) **Cardiology**
+Set "cis_type_description" = "Cardiology" if text contains:
+    - "Cardiology"
+    - "Outpatient Cardiology"
+    - "Cardiac"
+    - "Cardiac Services", "Cardiac Rehab" (cardiac rehab still maps to Cardiology)
+
+5) **Detox**
+Set "cis_type_description" = "Detox" if ANY appear:
+    - "Detox"
+    - "Detoxification"
+    - "Substance Abuse / Detoxification"
+    - "Inpatient Detox"
+
+6) **Dialysis**
+Set "cis_type_description" = "Dialysis" if ANY appear:
+    - "Dialysis"
+    - "Hemodialysis"
+    - "Peritoneal Dialysis"
+    - "Dialysis Services"
+
+7) **Default Rule**
+If none of the above categories match:
+    - Leave "cis_type_description" = "" (blank).
+    - Do NOT guess or fabricate a type.
+
+8) MULTIPLE MATCHES
+If multiple keywords appear, select the **most specific** category
+(e.g., “Cardiac Rehab” → "Cardiology", not “Rehab”).
+
+===================================================================
