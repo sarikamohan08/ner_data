@@ -1,29 +1,19 @@
-===============================================================
-### AGE GROUP EXTRACTION
-===============================================================
+Extract "Provider Speciality" as TEXT exactly as written in the document.
 
-Extract the Age Group exactly as written in the text.
+This field may appear on cover pages, inside optional information boxes,
+or anywhere in the contract. It may also appear as:
 
-Age Group must ALWAYS be a TEXT FIELD.  
-Do NOT convert to numbers.  
-Do NOT infer any missing values.
+- “Provider Specialty”
+- “Specialty”
+- “Provider Type”
+- “Facility Type”
+- “Provider Service Category”
 
-Examples of valid Age Group patterns include (but are not limited to):
-- "All Ages"
-- "0–18"
-- "18+"
-- "21 & Under"
-- "Adults"
-- "Pediatric"
-- "Geriatric"
-- "Children"
-- "0 to 99 years"
-- "Age: 0-12"
-- "Age Group: Adult"
-- "Age Range: 18-64"
+RULES:
 
-Extraction Rules:
-1. Capture ANY phrase that indicates age, age range, age group, or age category.
-2. Preserve the text EXACTLY as it appears in the source document.
-3. If multiple age groups appear, return all separated by commas.
-4. **If NO age-related text is found anywhere in the document, leave `age_group` as an empty string ("").**
+1. ALWAYS extract the full text following these labels.
+2. Preserve the original wording exactly as printed.
+3. Do NOT convert this into an indicator or boolean. It must always be TEXT.
+4. If multiple specialties are listed, join them as comma-separated text.
+5. If the specialty appears only on the cover sheet, still extract it.
+6. If the document contains **no provider specialty**, return an empty string (“”).
