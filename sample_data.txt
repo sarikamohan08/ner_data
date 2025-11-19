@@ -1,32 +1,29 @@
 ===============================================================
-### NPI EXTRACTION (ROBUST & MULTI-PATTERN)
+### AGE GROUP EXTRACTION
 ===============================================================
 
-Extract NPI from ANYWHERE in the document. The NPI may appear on cover
-sheets, contact blocks, provider specialty lines, tables, or scattered pages.
+Extract the Age Group exactly as written in the text.
 
-The NPI MUST be extracted if ANY of these conditions are true:
+Age Group must ALWAYS be a TEXT FIELD.  
+Do NOT convert to numbers.  
+Do NOT infer any missing values.
 
-1. The text contains:
-      “NPI”
-      “NPI:”
-      “NPI #”
-      “NPI Number”
-      “NPI ID”
-      "NPI#"
-      “Optional Information: NPI”
-      "Provider NPI"
+Examples of valid Age Group patterns include (but are not limited to):
+- "All Ages"
+- "0–18"
+- "18+"
+- "21 & Under"
+- "Adults"
+- "Pediatric"
+- "Geriatric"
+- "Children"
+- "0 to 99 years"
+- "Age: 0-12"
+- "Age Group: Adult"
+- "Age Range: 18-64"
 
-2. The text contains a 10-digit number that matches NPI pattern:
-      - Must be exactly 10 digits
-      - Cannot start with 0
-      - Must pass basic validity (optional)
-
-Extract ALL valid NPIs found, then:
-
-- If multiple NPIs appear, choose the FIRST one as the official provider NPI.
-- Store it in `NPI_Number`.
-
-If NO NPI is found anywhere:
-- Set `NPI_Number` = "" (blank)
-- Do NOT create or infer an NPI.
+Extraction Rules:
+1. Capture ANY phrase that indicates age, age range, age group, or age category.
+2. Preserve the text EXACTLY as it appears in the source document.
+3. If multiple age groups appear, return all separated by commas.
+4. **If NO age-related text is found anywhere in the document, leave `age_group` as an empty string ("").**
