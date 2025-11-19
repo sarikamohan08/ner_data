@@ -1,79 +1,32 @@
-===================================================================
-### 0️⃣ PROVIDER INFORMATION EXTRACTION (COVER SHEET OPTIONAL)
-===================================================================
+===============================================================
+### NPI EXTRACTION (ROBUST & MULTI-PATTERN)
+===============================================================
 
-Extract provider-level information from ANYWHERE in the document, not only from a
-cover sheet. Cover pages may or may not exist — therefore:
+Extract NPI from ANYWHERE in the document. The NPI may appear on cover
+sheets, contact blocks, provider specialty lines, tables, or scattered pages.
 
-IF a cover sheet exists:
-    - Extract all provider-level fields from it.
+The NPI MUST be extracted if ANY of these conditions are true:
 
-IF NO cover sheet exists:
-    - Search the entire text for provider identifiers and extract them from
-      any section that contains:
-          “Provider Name”, “Legal Name”, “DBA Name”, 
-          “NPI”, “Tax ID”, “EIN”, 
-          “Effective Date”, “Creation Date”, 
-          “Provider Specialty”, “Address”, “Contact”.
+1. The text contains:
+      “NPI”
+      “NPI:”
+      “NPI #”
+      “NPI Number”
+      “NPI ID”
+      "NPI#"
+      “Optional Information: NPI”
+      "Provider NPI"
 
-Provider information fields to extract whenever available:
+2. The text contains a 10-digit number that matches NPI pattern:
+      - Must be exactly 10 digits
+      - Cannot start with 0
+      - Must pass basic validity (optional)
 
-1. **Provider_Name**
-   - Prefer “Legal Name”.
-   - If DBA exists → store as:   "Legal Name (DBA <DBA Name>)".
-   - If only DBA exists → use DBA as Provider_Name.
-   - If neither appear → leave blank.
+Extract ALL valid NPIs found, then:
 
-2. **Effective_Date**
-   - Extract from ANY of the following if they appear:
-        "Creation Date", 
-        "Effective Date", 
-        "Term Start", 
-        “Agreement effective as of”.
-   - Use the *earliest* date if multiple appear.
-   - Format YYYY-MM-DD when possible.
-   - If NOT found → leave blank, but DO NOT fail.
+- If multiple NPIs appear, choose the FIRST one as the official provider NPI.
+- Store it in `NPI_Number`.
 
-3. **NPI_Number**
-   - Extract any valid NPI (10 digits) appearing anywhere in the document.
-
-4. **Tax_ID**
-   - Extract “Federal Tax ID”, “Tax ID”, “EIN”.
-
-5. **Provider_Specialty**
-   - Extract exact text (e.g., “DYS-End-Stage Renal Disease (ESRD) Treatment Clinic/Center”).
-
-6. **Addresses**
-   Extract any address blocks labeled:
-       • Contract Contact Information  
-       • Address for Notice  
-       • Contractor Information  
-       • Provider Address  
-       • Physical Address  
-   And parse:
-       - Address Line 1
-       - Address Line 2 (if present)
-       - City
-       - State
-       - Zip
-       - Phone
-       - Fax
-       - Email
-
-7. **DEFAULT PROVIDER INFO**
-   - If no provider info exists anywhere in the document, return empty strings
-     for all provider fields.
-   - Do NOT fabricate or hallucinate any values.
-
-===================================================================
-### EFFECTIVE DATE INHERITANCE RULE
-===================================================================
-For every service row:
-
-If that service row does NOT contain an effective date:
-    → Apply the Provider-Level Effective_Date extracted above.
-
-If provider-level effective date also missing:
-    → Leave service-level effective date blank.
-
-===================================================================
+If NO NPI is found anywhere:
+- Set `NPI_Number` = "" (blank)
+- Do NOT create or infer an NPI.
