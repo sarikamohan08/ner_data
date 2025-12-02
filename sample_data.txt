@@ -1,19 +1,38 @@
-Extract "Provider Speciality" as TEXT exactly as written in the document.
+You are an extraction model. 
+From the provided text, extract ONLY the timeframe associated with **Onsite Audit / Onsite Audits**.
 
-This field may appear on cover pages, inside optional information boxes,
-or anywhere in the contract. It may also appear as:
+ONSITE AUDIT TIMEFRAME EXTRACTION RULES:
+- Detect sections labeled “Onsite Audit”, “Onsite Audits”, or similar.
+- Extract ONLY the time duration expressions such as:
+    • "180 days"
+    • "within 180 days"
+    • "within thirty (30) days"
+    • "within sixty (60) days"
+    • "30 calendar days"
+- Preserve the text EXACTLY as written.
+- If multiple timeframes exist, return all, separated by commas.
+- If no Onsite Audit timeframe is present, return an empty string.
 
-- “Provider Specialty”
-- “Specialty”
-- “Provider Type”
-- “Facility Type”
-- “Provider Service Category”
+Return output strictly as:
+{
+  "Onsite_Audit_Timeframe": "<timeframes or empty string>"
+}
 
-RULES:
+You are an extraction model. 
+From the provided text, extract ONLY the timeframe associated with **Desk Audit / Desk Audits**.
 
-1. ALWAYS extract the full text following these labels.
-2. Preserve the original wording exactly as printed.
-3. Do NOT convert this into an indicator or boolean. It must always be TEXT.
-4. If multiple specialties are listed, join them as comma-separated text.
-5. If the specialty appears only on the cover sheet, still extract it.
-6. If the document contains **no provider specialty**, return an empty string (“”).
+DESK AUDIT TIMEFRAME EXTRACTION RULES:
+- Detect sections labeled “Desk Audit”, “Desk Audits”, or similar.
+- Extract ONLY the time duration expressions such as:
+    • "eighteen (18) months"
+    • "within 18 months"
+    • "within thirty (30) days"
+    • "30 days"
+- Preserve the text EXACTLY as written.
+- If multiple timeframes exist, return all, separated by commas.
+- If no Desk Audit timeframe is present, return an empty string.
+
+Return output strictly as:
+{
+  "Desk_Audit_Timeframe": "<timeframes or empty string>"
+}
