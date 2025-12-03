@@ -1,38 +1,32 @@
-You are an extraction model. 
-From the provided text, extract ONLY the timeframe associated with **Onsite Audit / Onsite Audits**.
+import os
+import shutil
+import pandas as pd
 
-ONSITE AUDIT TIMEFRAME EXTRACTION RULES:
-- Detect sections labeled “Onsite Audit”, “Onsite Audits”, or similar.
-- Extract ONLY the time duration expressions such as:
-    • "180 days"
-    • "within 180 days"
-    • "within thirty (30) days"
-    • "within sixty (60) days"
-    • "30 calendar days"
-- Preserve the text EXACTLY as written.
-- If multiple timeframes exist, return all, separated by commas.
-- If no Onsite Audit timeframe is present, return an empty string.
+# ==== CONFIGURE THESE PATHS ====
+excel_file = r"C:\path\to\filenames.xlsx"   # Excel with filename column
+root_folder = r"C:\path\to\root_folder"     # Folder to search PDFs
+destination_folder = r"C:\path\to\destination"  # Where to copy matched PDFs
+column_name = "filename"  # Column in Excel containing file names (without extension)
 
-Return output strictly as:
-{
-  "Onsite_Audit_Timeframe": "<timeframes or empty string>"
-}
+# Create destination folder if not exists
+os.makedirs(destination_folder, exist_ok=True)
 
-You are an extraction model. 
-From the provided text, extract ONLY the timeframe associated with **Desk Audit / Desk Audits**.
+# Read Excel data
+df = pd.read_excel(excel_file)
 
-DESK AUDIT TIMEFRAME EXTRACTION RULES:
-- Detect sections labeled “Desk Audit”, “Desk Audits”, or similar.
-- Extract ONLY the time duration expressions such as:
-    • "eighteen (18) months"
-    • "within 18 months"
-    • "within thirty (30) days"
-    • "30 days"
-- Preserve the text EXACTLY as written.
-- If multiple timeframes exist, return all, separated by commas.
-- If no Desk Audit timeframe is present, return an empty string.
+filenames = df[column_name].astype(str).tolist()
 
-Return output strictly as:
-{
-  "Desk_Audit_Timeframe": "<timeframes or empty string>"
-}
+# Search all PDFs in root folder recursively
+for root, dirs, files in os.walk(root_folder):
+    for file in files:
+        if file.lower().endswith(".pdf"):
+            file_without_ext = os.path.splitext(file)[0]
+            
+            if file_without_ext in filenames:
+                source_path = os.path.join(root, file)
+                dest_path = os.path.join(destination_folder, file)
+                
+                shutil.copy2(source_path, dest_path)
+                print(f"Copied: {file}")
+
+print("Task Completed!")
