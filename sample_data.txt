@@ -1,32 +1,78 @@
-import os
-import shutil
-import pandas as pd
+===============================================================
+### ASC GROUPER TABLE EXTRACTION (MANDATORY)
+===============================================================
 
-# ==== CONFIGURE THESE PATHS ====
-excel_file = r"C:\path\to\filenames.xlsx"   # Excel with filename column
-root_folder = r"C:\path\to\root_folder"     # Folder to search PDFs
-destination_folder = r"C:\path\to\destination"  # Where to copy matched PDFs
-column_name = "filename"  # Column in Excel containing file names (without extension)
+The extraction must include all ASC (Ambulatory Surgery Center) tables even if:
+- The table does NOT contain the words "service", "code", "rate", or "reimbursement".
+- The table has only two columns (e.g., ASC Grouper | Payment).
+- The table is split across multiple pages.
+- The formatting is irregular or OCR is imperfect.
 
-# Create destination folder if not exists
-os.makedirs(destination_folder, exist_ok=True)
+ASC TABLE IDENTIFICATION RULES:
+Extract a table as an ASC table if ANY of the following appear:
+- “ASC Grouper”
+- “ASC GROUPER”
+- “ASC GROUP”
+- “Ambulatory Surgery Center Grouper”
+- “ASC Groupers are based on…”
+- “Grouper 1”, “Grouper 2”, … (numeric grouper references)
+- A table where first column is a small integer (1–20) and second column is a currency value.
 
-# Read Excel data
-df = pd.read_excel(excel_file)
+===============================================================
+### ASC TABLE EXTRACTION RULES
+===============================================================
 
-filenames = df[column_name].astype(str).tolist()
+For EACH row in an ASC table:
+- Convert the ASC Grouper number into:
+    "Service": "ASC Grouper <number>"
+    "Code": "<number>"      (as string)
+    "Reimbursement_Amount": "<currency>"  (e.g., "$314.39")
+    "Reimbursement_Methodology": "ASC Grouper Rate"
 
-# Search all PDFs in root folder recursively
-for root, dirs, files in os.walk(root_folder):
-    for file in files:
-        if file.lower().endswith(".pdf"):
-            file_without_ext = os.path.splitext(file)[0]
-            
-            if file_without_ext in filenames:
-                source_path = os.path.join(root, file)
-                dest_path = os.path.join(destination_folder, file)
-                
-                shutil.copy2(source_path, dest_path)
-                print(f"Copied: {file}")
+- Extract ALL rows exactly as they appear in the table.
 
-print("Task Completed!")
+- If the table spans multiple pages, combine rows into a single table before extracting.
+
+- If the document states:
+     “procedures not identified by an ASC grouper will be paid at the rate listed for grouper X”
+  then create an additional row:
+    {
+      "Service": "ASC Default Payment",
+      "Code": "Default",
+      "Reimbursement_Amount": "<payment for grouper X>",
+      "Reimbursement_Methodology": "ASC Default Rate Rule",
+      "Description": "Default ASC payment rule based on Grouper X"
+    }
+
+===============================================================
+### OUTPUT EXAMPLE FORMAT
+===============================================================
+
+[
+  {
+    "Service": "ASC Grouper 1",
+    "Code": "1",
+    "Reimbursement_Amount": "$314.39",
+    "Reimbursement_Methodology": "ASC Grouper Rate"
+  },
+  {
+    "Service": "ASC Grouper 2",
+    "Code": "2",
+    "Reimbursement_Amount": "$421.06",
+    "Reimbursement_Methodology": "ASC Grouper Rate"
+  },
+  {
+    "Service": "ASC Default Payment",
+    "Code": "Default",
+    "Reimbursement_Amount": "$481.50",
+    "Reimbursement_Methodology": "ASC Default Rate Rule"
+  }
+]
+
+===============================================================
+### IMPORTANT
+===============================================================
+- DO NOT skip or ignore ASC tables for ANY reason.
+- DO NOT require the presence of “service” or “reimbursement” keywords.
+- DO NOT classify ASC tables as “covered services”; treat them as independent ASC reimbursement rows.
+- Extract ALL numeric + currency rows that follow ASC Grouper structure.
