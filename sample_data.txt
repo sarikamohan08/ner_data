@@ -1,1 +1,203 @@
+# Required imports (place near top of file)
+import time
+import json
+import os
+import random
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
 
+# Thread-local client holder
+_thread_local = threading.local()
+
+def _make_thread_local_client(api_key: str, model_name: str):
+    """
+    Create/reuse an OpenAI client for each thread.
+    Adjust to match how you initialize the client in __init__.
+    """
+    if getattr(_thread_local, "client", None) is None:
+        from openai import OpenAI
+        import httpx
+        base_url = f"https://gateway.ai-npe.humana.com/openai/deployments/{model_name}"
+        _thread_local.client = OpenAI(api_key=api_key, base_url=base_url, http_client=httpx.Client(verify=False))
+    return _thread_local.client
+
+# Backoff + jitter wrapper (no external libs)
+def call_with_retries(client_call_fn, max_retries=6, base_delay=1.0, max_delay=30.0):
+    """
+    client_call_fn: zero-arg function that performs the API call.
+    Retries on exceptions that look like rate-limit / 429 / transient errors.
+    - Uses exponential backoff with full jitter.
+    - Raises the last exception if retries exhausted.
+    """
+    attempt = 0
+    while True:
+        try:
+            resp = client_call_fn()
+            return resp
+        except Exception as e:
+            attempt += 1
+            # If max retries exceeded, re-raise
+            if attempt > max_retries:
+                raise
+
+            msg = str(e).lower()
+            # Detect retryable errors heuristically
+            is_rate_limit = ("429" in msg) or ("ratelimit" in msg) or ("rate limit" in msg) or ("retry-after" in msg) or ("rate_limit" in msg)
+            is_transient = ("timeout" in msg) or ("timed out" in msg) or ("connection reset" in msg) or ("connection aborted" in msg) or ("temporarily unavailable" in msg) or ("500" in msg) or ("502" in msg) or ("503" in msg) or ("504" in msg)
+
+            if not (is_rate_limit or is_transient):
+                # non-retryable error — re-raise
+                raise
+
+            # Exponential backoff with full jitter
+            exp_delay = min(max_delay, base_delay * (2 ** (attempt - 1)))
+            sleep_for = random.uniform(0, exp_delay)
+            print(f"[retry] attempt {attempt}/{max_retries} after error: {e}. sleeping {sleep_for:.2f}s before retry...")
+            time.sleep(sleep_for)
+            continue
+
+# Multithreaded extractor with retries
+def extract_pdf_to_text_file_parallel_with_retries(
+    self,
+    pdf_path: str,
+    output_file: str,
+    save_json: str = "ocr_results_parallel_retry.json",
+    max_workers: int = 4,
+    inter_request_delay: float = 0.12
+):
+    """
+    Parallel extraction with exponential-backoff retry on 429 / transient errors.
+
+    - self: SimplePDFExtractor instance (expects .api_key, .model, and .pdf_to_images())
+    - pdf_path: path to input pdf
+    - output_file: path to write extracted text
+    - save_json: path to write JSON summary
+    - max_workers: number of concurrent threads
+    - inter_request_delay: small sleep between task submissions to avoid bursts
+    """
+    print(f"Starting parallel extraction (with retries) for: {pdf_path}")
+    images_b64 = self.pdf_to_images(pdf_path)   # your existing method
+    total_pages = len(images_b64)
+    print(f"Found {total_pages} pages. max_workers={max_workers}, inter_request_delay={inter_request_delay}s")
+
+    prompt_text = """Extract ALL text and tables from this PDF page image.
+
+For regular text:
+- Preserve paragraphs and line breaks
+- Maintain headings and subheadings
+- Keep bullet points and numbered lists
+
+For tables:
+- Present the table in clear, structured format using Markdown.
+- Preserve the original row and column headers as accurately as possible.
+- Label the tables sequentially (e.g., Table 1, Table 2).
+- Format tables clearly with columns aligned
+- Use | to separate columns
+- Include table headers
+- Add a blank line before and after each table
+
+If any table appears to be split across pages, merge the parts into a complete table.
+Output only the extracted text and tables. Do not add any commentary or explanations.
+""".strip()
+
+    page_tasks = []
+    for i, img_b64 in enumerate(images_b64, start=1):
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt_text},
+                    {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{img_b64}", "detail": "high"}}
+                ]
+            }
+        ]
+        page_tasks.append((i, messages))
+
+    # Worker uses call_with_retries
+    def worker(task):
+        page_num, messages = task
+        client = _make_thread_local_client(self.api_key, self.model)
+
+        def client_call():
+            # Actual API call wrapped into zero-arg function
+            return client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                extra_headers={"api-key": self.api_key, "ai-gateway-version": "v2"},
+                max_tokens=4000,
+                temperature=0
+            )
+
+        start = time.perf_counter()
+        try:
+            resp = call_with_retries(client_call, max_retries=6, base_delay=1.0, max_delay=30.0)
+            text_out = resp.choices[0].message.content.strip()
+            error = None
+        except Exception as e:
+            text_out = f"Error extracting page {page_num}: {e}"
+            error = str(e)
+        elapsed = time.perf_counter() - start
+        return {"page": page_num, "time_s": elapsed, "response_text": text_out, "error": error}
+
+    # Submit tasks with small spacing to avoid burst
+    results = []
+    futures = []
+    print(f"Submitting {len(page_tasks)} tasks to ThreadPoolExecutor with {max_workers} workers...")
+    with ThreadPoolExecutor(max_workers=max_workers) as ex:
+        for task in page_tasks:
+            # small spacing to smooth bursts
+            time.sleep(inter_request_delay)
+            futures.append(ex.submit(worker, task))
+
+        for fut in as_completed(futures):
+            try:
+                res = fut.result()
+            except Exception as e:
+                # unexpected failure
+                res = {"page": None, "time_s": 0.0, "response_text": "", "error": str(e)}
+            page_id = res.get("page", "unknown")
+            print(f"Page {page_id} finished in {res['time_s']:.2f}s, error={res['error'] or 'None'}")
+            results.append(res)
+
+    # sort and write outputs
+    results = [r for r in results if r.get("page") is not None]
+    results.sort(key=lambda x: x["page"])
+
+    all_text = []
+    all_text.append(f"Text extracted from: {os.path.basename(pdf_path)}")
+    all_text.append(f"Extraction date: {time.strftime('%Y-%m-%d %H:%M:%S')}")
+    all_text.append("-" * 60)
+    all_text.append("")
+
+    total_model_time = 0.0
+    for r in results:
+        all_text.append(f"--- PAGE {r['page']} ---")
+        all_text.append(f"[Model call time: {r['time_s']:.2f}s] [Error: {r['error'] or 'None'}]")
+        all_text.append("")
+        all_text.append(r["response_text"])
+        all_text.append("")
+        total_model_time += (r["time_s"] or 0.0)
+
+    try:
+        with open(output_file, "w", encoding="utf-8") as f:
+            f.write("\n".join(all_text))
+        print(f"Saved extracted text to: {output_file}")
+    except Exception as e:
+        print("Error saving output text file:", e)
+
+    summary = {
+        "input_file": pdf_path,
+        "pages": len(results),
+        "total_model_time_s": total_model_time,
+        "per_page": [{"page": r["page"], "model_time_s": r["time_s"], "error": r["error"]} for r in results]
+    }
+    try:
+        with open(save_json, "w", encoding="utf-8") as jf:
+            json.dump(summary, jf, indent=2)
+        print(f"Saved JSON summary to: {save_json}")
+    except Exception as e:
+        print("Error saving JSON summary:", e)
+
+    print("\n=== FINAL SUMMARY ===")
+    print(f"Pages: {len(results)}; Total model time (sum): {total_model_time:.2f}s")
+    return summary
